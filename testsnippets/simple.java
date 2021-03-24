@@ -10,7 +10,7 @@ class Test {
     this.value3 = value + 2;
   }
 
-  public int getValue(int specified, int x, int y, int z) {
+  public int getValue(int specified) {
     if (specified == 1) {
       return this.value;
     } else if (specified == 2) {

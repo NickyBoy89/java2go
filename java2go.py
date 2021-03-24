@@ -16,9 +16,10 @@ parser.add_argument('-out', dest='outdir', type=str, help='Directory to output t
 args = parser.parse_args()
 
 def convert(input):
-    for javaClasses in javaparser.parseClasses(input):
-        print(javaClasses)
-        print(javaparser.parseMethods(input, javaClasses["name"]))
-        gowriter.writeClassToFile(javaClasses, javaparser.parseMethods(input, javaClasses["name"]))
 
-    return input
+    goClasses = ""
+
+    for javaClasses in javaparser.parseClasses(input):
+        goClasses += gowriter.writeClassToFile(javaClasses, javaparser.parseMethodsAndVariables(input, javaClasses["name"]))
+
+    return goClasses

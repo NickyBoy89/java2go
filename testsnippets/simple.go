@@ -1,5 +1,5 @@
 type Test struct {
-  Value int
+  value int
   Value2 int
   value3 int
 }

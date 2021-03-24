@@ -6,7 +6,9 @@ import java2go
 
 class TestSimpleJavaFile(unittest.TestCase):
 
+
     def test_conversion(self):
+        self.maxDiff = None
 
         simpleJava = ''
         simpleGolang = ''
@@ -16,6 +18,9 @@ class TestSimpleJavaFile(unittest.TestCase):
 
         with open('testsnippets/simple.go', 'r') as goFile:
             simpleGolang = goFile.read()
+
+        with open('generated_code.go', 'w') as outfile:
+            outfile.write(java2go.convert(simpleJava))
 
         self.assertEqual(java2go.convert(simpleJava), simpleGolang)
 
