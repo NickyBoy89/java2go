@@ -1,4 +1,4 @@
-package main
+package parsing
 
 import (
   "io/ioutil"
@@ -21,12 +21,12 @@ func TestParseDeclaration(t *testing.T) {
     AccessModifiers: []string{"public"},
   }
 
-  if !reflect.DeepEqual(ParseDeclaration(testClassDec), parsedClassDec) {
-    t.Errorf("Parsing example class failed: %v did not match %v", ParseDeclaration(testClassDec), parsedClassDec)
+  if !reflect.DeepEqual(ParseDeclarationLine(testClassDec), parsedClassDec) {
+    t.Errorf("Parsing example class failed: %v did not match %v", ParseDeclarationLine(testClassDec), parsedClassDec)
   }
 
-  if !reflect.DeepEqual(ParseDeclaration(testMethodDec), parsedMethodDec) {
-    t.Errorf("Parsing example method failed: %v did not match %v", ParseDeclaration(testMethodDec), parsedMethodDec)
+  if !reflect.DeepEqual(ParseDeclarationLine(testMethodDec), parsedMethodDec) {
+    t.Errorf("Parsing example method failed: %v did not match %v", ParseDeclarationLine(testMethodDec), parsedMethodDec)
   }
 }
 
@@ -39,8 +39,8 @@ func TestParseMethodSignature(t *testing.T) {
     AccessModifiers: []string{"public"},
   }
 
-  if !reflect.DeepEqual(ParseMethodSignature(testMethodSig), parsedMethodSig) {
-    t.Errorf("Parsing example method signature failed: result %v and example %v do not match", ParseMethodSignature(testMethodSig), parsedMethodSig)
+  if !reflect.DeepEqual(ParseMethodSignatureLine(testMethodSig), parsedMethodSig) {
+    t.Errorf("Parsing example method signature failed: result %v and example %v do not match", ParseMethodSignatureLine(testMethodSig), parsedMethodSig)
   }
 }
 
@@ -53,8 +53,8 @@ func TestParseMethodVariable(t *testing.T) {
     AccessModifiers: []string{"public"},
   }
 
-  if !reflect.DeepEqual(ParseMemberVariable(testMemVar), parsedMemVar) {
-    t.Errorf("Parsing example member variable failed: result %v and example %v do not match", ParseMemberVariable(testMemVar), parsedMemVar)
+  if !reflect.DeepEqual(ParseMemberVariableLine(testMemVar), parsedMemVar) {
+    t.Errorf("Parsing example member variable failed: result %v and example %v do not match", ParseMemberVariableLine(testMemVar), parsedMemVar)
   }
 }
 
