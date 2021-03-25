@@ -21,6 +21,6 @@ class Test {
   }
 
   public static String hello() {
-    return "Hello World!"
+    return "Hello World!";
   }
 }
