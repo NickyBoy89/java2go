@@ -3,23 +3,8 @@ package parsing
 import (
   "log"
   "strings"
-  "encoding/json"
+  // "encoding/json"
 )
-
-type JavaClass struct {
-  Name string `json:"name"`
-  DeclarationType string `json:"declarationType"`
-  AccessModifiers []string `json:"accessModifiers"`
-  Methods []JavaMethodItem `json:"methods"`
-  MethodVariables []JavaMethodItem `json:"methodVariables"`
-}
-
-type JavaMethodItem struct {
-  Name string `json:"name"`
-  DeclarationType string `json:"declarationType"`
-  ReturnType string `json:"returnType"`
-  AccessModifiers []string `json:"accessModifiers"`
-}
 
 func Convert(fileData string) {
 
@@ -50,27 +35,65 @@ func ParseFileContents(fileContents string) string {
   contentLines := strings.Split(fileContents, "\n")
 
   // First we need to parse the first line of the class file
-  fileMainClass := ParseDeclarationLine(contentLines[0])
+  fileMainClass := ParseClassLine(contentLines[0])
 
-  inMethod := false
-
-  for _, line := range contentLines[1:] { // Already parsed the header line
-    if line != "" {
-      // Opening parenths should get method
-      // signatures and declarations
-      if strings.Contains(line, "(") {
-        if strings.Contains(line, "{") { // Is a declaration
-          ParseDeclarationLine(line)
-        } else { // Is a method signature
-          ParseMethodSignatureLine(line)
-        }
-      } else {
-        ParseMemberVariableLine(line)
-      }
-    }
-  }
+  // Already parsed the header line, and las free bracket will be on last line
+  ParseClass(fileMainClass, contentLines[1:len(contentLines) - 2])
 
   return ""
 }
 
-func ParseDeclaration()
+func ParseClass(classDeclaration map[string]interface{}, classBody []string) map[string]interface{} {
+
+  var parsedMethods []map[string]interface{}
+  var parsedMemberVariables []map[string]interface{}
+
+  inMethod := false
+  indexUntilOutOfMethod := 0
+
+  for li, line := range classBody {
+    if line != "" {
+      // Opening parenths should get method
+      // signatures and declarations
+      if strings.ContainsRune(line, '(') { // Parenths detected
+        if strings.ContainsRune(line, '{') { // Is a declaration
+          if strings.Contains(line, "class") {
+            parsedMethods = append(parsedMethods, ParseClass(ParseClassLine(line), classBody[li + 1:findNextBracketIndex(classBody, li + 1)]))
+            log.Printf("Found class: %v", ParseClass(ParseClassLine(line), classBody[li + 1:findNextBracketIndex(classBody, li + 1)])["name"])
+            indexUntilOutOfMethod = findNextBracketIndex(classBody, li + 1)
+            inMethod = true
+          } else {
+            parsedMethods = append(parsedMethods, ParseMethod(ParseMethodLine(line), classBody[li + 1:findNextBracketIndex(classBody, li + 1)]))
+            log.Printf("Found method: %v", ParseMethod(ParseMethodLine(line), classBody[li + 1:findNextBracketIndex(classBody, li + 1)])["name"])
+            indexUntilOutOfMethod = findNextBracketIndex(classBody, li + 1)
+            inMethod = true
+          }
+        } else { // Is a method signature
+          ParseMethodSignatureLine(line)
+          log.Printf("Found methodSignature: %v", ParseMethodSignatureLine(line)["name"])
+        }
+      } else if !inMethod { // No parenthesies or brackets detected, must be a member variable
+        parsedMemberVariables = append(parsedMemberVariables, ParseMemberVariableLine(line))
+        log.Printf("Found memberVariable: %v", ParseMemberVariableLine(line)["name"])
+      }
+    }
+    log.Println(li, indexUntilOutOfMethod)
+    if li > indexUntilOutOfMethod {
+      inMethod = false
+    }
+  }
+
+  log.Println(parsedMethods)
+  log.Println(parsedMemberVariables)
+
+  return nil
+
+}
+
+func ParseMethod(methodDeclaration map[string]interface{}, methodBody []string) map[string]interface{} {
+  result := methodDeclaration
+  result["contentLines"] = methodBody
+
+  return result
+
+}

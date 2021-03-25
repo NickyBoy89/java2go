@@ -8,35 +8,39 @@ import (
 
 func TestParseDeclaration(t *testing.T) {
   testClassDec := "public protected static class TestClass {"
-  parsedClassDec := JavaClass{
-    Name: "TestClass",
-    DeclarationType: "class",
-    AccessModifiers: []string{"public", "protected", "static"},
+  parsedClassDec := map[string]interface{}{
+    "name": "TestClass",
+    "declarationType": "class",
+    "accessModifiers": []string{"public", "protected", "static"},
+    "methods": []map[string]interface{}{},
+    "methodVariables": []map[string]interface{}{},
   }
-  testMethodDec := "public int GetValue {"
-  parsedMethodDec := JavaMethodItem{
-    Name: "GetValue",
-    DeclarationType: "method",
-    ReturnType: "int",
-    AccessModifiers: []string{"public"},
+  testMethodDec := "public int GetValue() {"
+  parsedMethodDec := map[string]interface{}{
+    "name": "GetValue",
+    "declarationType": "method",
+    "returnType": "int",
+    "accessModifiers": []string{"public"},
+    "contentLines": []string{},
   }
 
-  if !reflect.DeepEqual(ParseDeclarationLine(testClassDec), parsedClassDec) {
-    t.Errorf("Parsing example class failed: %v did not match %v", ParseDeclarationLine(testClassDec), parsedClassDec)
+  if !reflect.DeepEqual(ParseClassLine(testClassDec), parsedClassDec) {
+    t.Errorf("Parsing example class failed: %v did not match %v", ParseClassLine(testClassDec), parsedClassDec)
   }
 
-  if !reflect.DeepEqual(ParseDeclarationLine(testMethodDec), parsedMethodDec) {
-    t.Errorf("Parsing example method failed: %v did not match %v", ParseDeclarationLine(testMethodDec), parsedMethodDec)
+  if !reflect.DeepEqual(ParseMethodLine(testMethodDec), parsedMethodDec) {
+    t.Errorf("Parsing example method failed: %v did not match %v", ParseMethodLine(testMethodDec), parsedMethodDec)
   }
 }
 
 func TestParseMethodSignature(t *testing.T) {
   testMethodSig := "public int getX();"
-  parsedMethodSig := JavaMethodItem{
-    Name: "getX",
-    DeclarationType: "methodSignature",
-    ReturnType: "int",
-    AccessModifiers: []string{"public"},
+  parsedMethodSig := map[string]interface{}{
+    "name": "getX",
+    "declarationType": "methodSignature",
+    "returnType": "int",
+    "accessModifiers": []string{"public"},
+    "contentLines": []string{},
   }
 
   if !reflect.DeepEqual(ParseMethodSignatureLine(testMethodSig), parsedMethodSig) {
@@ -46,11 +50,11 @@ func TestParseMethodSignature(t *testing.T) {
 
 func TestParseMethodVariable(t *testing.T) {
   testMemVar := "public int value;"
-  parsedMemVar := JavaMethodItem{
-    Name: "value",
-    DeclarationType: "memberVariable",
-    ReturnType: "int",
-    AccessModifiers: []string{"public"},
+  parsedMemVar := map[string]interface{}{
+    "name": "value",
+    "declarationType": "memberVariable",
+    "returnType": "int",
+    "accessModifiers": []string{"public"},
   }
 
   if !reflect.DeepEqual(ParseMemberVariableLine(testMemVar), parsedMemVar) {
@@ -59,12 +63,12 @@ func TestParseMethodVariable(t *testing.T) {
 }
 
 func TestSimpleClass(t *testing.T) {
-  f, err := ioutil.ReadFile("testsnippets/simple.java")
+  f, err := ioutil.ReadFile("../testsnippets/simple.java")
   if err != nil {
     t.Fatalf("Opening source file failed with err: %v", err)
   }
 
-  o, err := ioutil.ReadFile("testsnippets/simple.go")
+  o, err := ioutil.ReadFile("../testsnippets/simple.go")
   if err != nil {
     t.Fatalf("Opening example file failed with err: %v", err)
   }
