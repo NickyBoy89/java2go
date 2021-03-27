@@ -60,3 +60,13 @@ func findNextBracketIndex(text []string, startingIndex int) int {
   log.Fatal("Could not find next bracket because brackets were unmatched")
   return -1
 }
+
+func removeEmptyStringItems(input []string) []string {
+  var result []string
+  for _, i := range input {
+    if i != "" {
+      result = append(result, i)
+    }
+  }
+  return result
+}

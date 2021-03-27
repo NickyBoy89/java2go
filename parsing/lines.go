@@ -3,7 +3,7 @@ package parsing
 import (
   "strings"
   "regexp"
-  // "log"
+  "log"
 )
 
 // Parses the declaration of a method in the Java code
@@ -16,8 +16,14 @@ func ParseMethodLine(dec string) map[string]interface{} {
 
   declarationWords := strings.Split(dec[:methodInputsInd[0]] + dec[methodInputsInd[1]:], " ")
 
+  declarationWords = removeEmptyStringItems(declarationWords)
+
+  log.Println(len(declarationWords))
+  log.Println(declarationWords)
+
   // Constructors don't have any return type, so they're shorter
   if len(declarationWords) < 3 {
+    log.Println("Constructor")
     return map[string]interface{}{
       "name": declarationWords[len(declarationWords) - 2],
       "declarationType": "methodConstructor",

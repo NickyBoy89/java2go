@@ -58,14 +58,14 @@ func ParseClass(classDeclaration map[string]interface{}, classBody []string) map
       if strings.ContainsRune(line, '(') { // Parenths detected
         if strings.ContainsRune(line, '{') { // Is a declaration
           if strings.Contains(line, "class") {
-            parsedMethods = append(parsedMethods, ParseClass(ParseClassLine(line), classBody[li + 1:findNextBracketIndex(classBody, li + 1)]))
-            log.Printf("Found class: %v", ParseClass(ParseClassLine(line), classBody[li + 1:findNextBracketIndex(classBody, li + 1)])["name"])
-            indexUntilOutOfMethod = findNextBracketIndex(classBody, li + 1)
+            parsedMethods = append(parsedMethods, ParseClass(ParseClassLine(line), classBody[li + 1:findNextBracketIndex(classBody, li)]))
+            log.Printf("Found class: %v", ParseClass(ParseClassLine(line), classBody[li + 1:findNextBracketIndex(classBody, li)])["name"])
+            indexUntilOutOfMethod = findNextBracketIndex(classBody, li)
             inMethod = true
-          } else {
-            parsedMethods = append(parsedMethods, ParseMethod(ParseMethodLine(line), classBody[li + 1:findNextBracketIndex(classBody, li + 1)]))
-            log.Printf("Found method: %v", ParseMethod(ParseMethodLine(line), classBody[li + 1:findNextBracketIndex(classBody, li + 1)])["name"])
-            indexUntilOutOfMethod = findNextBracketIndex(classBody, li + 1)
+          } else if !inMethod { // If already in a method, and it isn't a class, then  don't add it
+            parsedMethods = append(parsedMethods, ParseMethod(ParseMethodLine(line), classBody[li + 1:findNextBracketIndex(classBody, li)]))
+            log.Printf("Found method: %v", ParseMethod(ParseMethodLine(line), classBody[li + 1:findNextBracketIndex(classBody, li)])["name"])
+            indexUntilOutOfMethod = findNextBracketIndex(classBody, li)
             inMethod = true
           }
         } else { // Is a method signature
