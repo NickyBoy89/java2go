@@ -1,7 +1,9 @@
-package bytelevel
+package keywords
 
+// List from https://www.w3schools.com/java/java_modifiers.asp
 var (
   AccessModifiers = []string{"private", "protected", "public"}
+  NonAccessModifiers = []string{"final", "static", "abstract", "transient", "synchronized", "volatile"}
 )
 
 // abstract 	continue 	for 	new 	switch

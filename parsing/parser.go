@@ -1,99 +1,220 @@
 package parsing
 
 import (
-  "log"
   "strings"
-  // "encoding/json"
+  // "fmt"
+
+  "gitlab.nicholasnovak.io/snapdragon/java2go/keywords"
 )
+/*
+*/
+func ParseClass(sourceString string) ParsedClass {
+  sourceString = RemoveComments(sourceString)
+  sourceString = RemoveImports(sourceString)
 
-func Convert(fileData string) {
+  sourceString = strings.ReplaceAll(sourceString, "\t", "")
+  sourceString = strings.ReplaceAll(sourceString, "\r", "")
 
-  // parsed := make(map[string]interface{})
+  sourceString = strings.Trim(sourceString, "\n")
 
-  log.Println(strings.Split(fileData, "\n"))
+  var result ParsedClass
 
-  var parsed []string
+  bodyDivider := strings.IndexRune(sourceString, '{')
 
-  lastWordIndex := 0
+  words := discardBlankStrings(strings.Split(sourceString[:bodyDivider], " "))
 
-  for charind, char := range fileData {
-    if char == ' ' {
-      // parsed[fileData[lastWordIndex:charind]] = 0
-      parsed = append(parsed, strings.Trim(fileData[lastWordIndex:charind], " "))
-      lastWordIndex = charind
-    }
-  }
+  result.Name = words[len(words) - 1]
+  result.Modifiers = words[:len(words) - 2]
+  result.Classes = []ParsedClass{}
 
-  log.Println(parsed)
-}
+  classBody := sourceString[bodyDivider + 1:IndexOfMatchingBrace(sourceString, bodyDivider)]
 
-func ParseFileContents(fileContents string) string {
-  if !doBracketsMatchInString(fileContents) {
-    log.Fatal("Brackets do not match in Java input")
-  }
-
-  contentLines := strings.Split(fileContents, "\n")
-
-  // First we need to parse the first line of the class file
-  fileMainClass := ParseClassLine(contentLines[0])
-
-  // Already parsed the header line, and las free bracket will be on last line
-  ParseClass(fileMainClass, contentLines[1:len(contentLines) - 2])
-
-  return ""
-}
-
-func ParseClass(classDeclaration map[string]interface{}, classBody []string) map[string]interface{} {
-
-  var parsedMethods []map[string]interface{}
-  var parsedMemberVariables []map[string]interface{}
-
-  inMethod := false
-  indexUntilOutOfMethod := 0
-
-  for li, line := range classBody {
-    if line != "" {
-      // Opening parenths should get method
-      // signatures and declarations
-      if strings.ContainsRune(line, '(') { // Parenths detected
-        if strings.ContainsRune(line, '{') { // Is a declaration
-          if strings.Contains(line, "class") {
-            parsedMethods = append(parsedMethods, ParseClass(ParseClassLine(line), classBody[li + 1:findNextBracketIndex(classBody, li)]))
-            log.Printf("Found class: %v", ParseClass(ParseClassLine(line), classBody[li + 1:findNextBracketIndex(classBody, li)])["name"])
-            indexUntilOutOfMethod = findNextBracketIndex(classBody, li)
-            inMethod = true
-          } else if !inMethod { // If already in a method, and it isn't a class, then  don't add it
-            parsedMethods = append(parsedMethods, ParseMethod(ParseMethodLine(line), classBody[li + 1:findNextBracketIndex(classBody, li)]))
-            log.Printf("Found method: %v", ParseMethod(ParseMethodLine(line), classBody[li + 1:findNextBracketIndex(classBody, li)])["name"])
-            indexUntilOutOfMethod = findNextBracketIndex(classBody, li)
-            inMethod = true
-          }
-        } else { // Is a method signature
-          ParseMethodSignatureLine(line)
-          log.Printf("Found methodSignature: %v", ParseMethodSignatureLine(line)["name"])
-        }
-      } else if !inMethod { // No parenthesies or brackets detected, must be a member variable
-        parsedMemberVariables = append(parsedMemberVariables, ParseMemberVariableLine(line))
-        log.Printf("Found memberVariable: %v", ParseMemberVariableLine(line)["name"])
+  lastInterest := 0
+  ci := 0
+  for ; ci < len(classBody); ci++ {
+    char := classBody[ci]
+    if char == ';' {
+      result.ClassVariables = append(result.ClassVariables, ParseClassVariable(strings.Trim(classBody[lastInterest + 1:ci], " \n")))
+      lastInterest = ci
+    } else if char == '{' {
+      if strings.Contains(classBody[lastInterest:ci], "class") {
+        result.Classes = append(result.Classes, ParseClass(strings.Trim(classBody[lastInterest + 1:IndexOfMatchingBrace(classBody, ci) + 1], " \n")))
+        ci = IndexOfMatchingBrace(classBody, ci)
+        lastInterest = ci
       }
-    }
-    log.Println(li, indexUntilOutOfMethod)
-    if li > indexUntilOutOfMethod {
-      inMethod = false
+    } else if char == '(' {
+      startingBraceIndex := strings.IndexRune(classBody[ci:], '{') + ci
+      result.Methods = append(result.Methods, ParseMethod(strings.Trim(classBody[lastInterest + 1:IndexOfMatchingBrace(classBody, startingBraceIndex)], " \n")))
+      ci = IndexOfMatchingBrace(classBody, startingBraceIndex)
+      lastInterest = ci
     }
   }
-
-  log.Println(parsedMethods)
-  log.Println(parsedMemberVariables)
-
-  return nil
-
-}
-
-func ParseMethod(methodDeclaration map[string]interface{}, methodBody []string) map[string]interface{} {
-  result := methodDeclaration
-  result["contentLines"] = methodBody
 
   return result
+}
 
+func ParseMethod(source string) ParsedMethod {
+  indexOfDelimiter := strings.IndexRune(source, '(')
+
+  words := discardBlankStrings(strings.Split(source[:indexOfDelimiter], " "))
+
+  // Tests for a constructor by the presence of a modifier word where the
+  // return type should be, or just the absence of a return type
+  // and any other access modifiers
+  if len(words) < 2 || Contains(words[len(words) - 2], append(keywords.AccessModifiers, keywords.NonAccessModifiers...)) {
+    return ParsedMethod{
+      Name: words[len(words) - 1],
+      Modifiers: words[:len(words) - 1],
+      Parameters: ParseParameters(source[indexOfDelimiter + 1:strings.IndexRune(source, ')')]),
+      ReturnType: "constructor",
+      Body: RemoveIndentation(source[strings.IndexRune(source, '{') + 1:]),
+    }
+  }
+
+  return ParsedMethod{
+    Name: words[len(words) - 1],
+    Modifiers: words[:len(words) - 2],
+    Parameters: ParseParameters(source[indexOfDelimiter + 1:strings.IndexRune(source, ')')]),
+    ReturnType: words[len(words) - 2],
+    Body: RemoveIndentation(source[strings.IndexRune(source, '{') + 1:]),
+  }
+}
+
+func IndexOfMatchingBrace(searchString string, openingBraceIndex int) int {
+  bracketBalance := -1
+  if searchString[openingBraceIndex] != '{' {
+    panic("Invalid starting brace")
+  }
+  for ci, char := range searchString[openingBraceIndex + 1:] {
+    switch char {
+    case '{':
+      bracketBalance -= 1
+    case '}':
+      bracketBalance += 1
+    }
+    if bracketBalance == 0 {
+      return openingBraceIndex + ci + 1 // Account for skipping the first character in the loop
+    }
+  }
+  panic("No matching bracket found, the target code probably has unbalanced brackets")
+}
+
+func ParseClassVariable(source string) ParsedVariable {
+  if strings.ContainsRune(source, '=') {
+    sides := discardBlankStrings(TrimAll(strings.Split(source, "="), " \n;"))
+    words := discardBlankStrings(strings.Split(sides[0], " "))
+    return ParsedVariable{
+      Name: words[len(words) - 1],
+      DataType: words[len(words) - 2],
+      Modifiers: words[:len(words) - 2],
+      InitialValue: strings.Trim(sides[1], " \n"),
+    }
+  }
+
+
+  words := discardBlankStrings(strings.Split(source, " "))
+  return ParsedVariable{
+    Name: words[len(words) - 1],
+    DataType: words[len(words) - 2],
+    Modifiers: discardBlankStrings(TrimAll(words[:len(words) - 2], " \n;")),
+    InitialValue: "",
+  }
+}
+
+func ParseParameters(source string) []ParsedVariable {
+  var parsedParameters []ParsedVariable
+
+  if source == "" {
+    return []ParsedVariable{}
+  }
+
+  params := strings.Split(source, ",")
+  for _, param := range params {
+    paramParts := discardBlankStrings(strings.Split(param, " "))
+    parsedParameters = append(parsedParameters, ParsedVariable{Name: strings.Trim(paramParts[len(paramParts) - 1], " ,"), Modifiers: []string{}, DataType: paramParts[0], InitialValue: ""})
+  }
+
+  return parsedParameters
+}
+
+func RemoveIndentation(input string) string {
+  var body string
+
+  lines := strings.Split(input, "\n")
+  for _, line := range discardBlankStrings(lines) {
+    body += strings.Trim(line, " ")
+  }
+
+  return body
+}
+
+func TrimAll(raw []string, pattern string) []string {
+  var trimmed []string
+
+  for _, str := range raw {
+    trimmed = append(trimmed, strings.Trim(str, pattern))
+  }
+
+  return trimmed
+}
+
+func RemoveComments(source string) string {
+  modified := source
+
+  for strings.Contains(modified, "/*") {
+    openingIndex := strings.Index(modified, "/*")
+    closingIndex := strings.Index(modified[openingIndex:], "*/") + openingIndex
+    modified = modified[:openingIndex] + modified[closingIndex + 2:]
+  }
+
+  for strings.Contains(modified, "//") {
+    openingIndex := strings.Index(modified, "//")
+    closingIndex := strings.Index(modified[openingIndex:], "\n") + openingIndex
+    modified = modified[:openingIndex] + modified[closingIndex + 1:]
+  }
+
+  return modified
+}
+
+func RemoveImports(source string) string {
+  modified := source
+
+  for strings.Contains(modified, "import") {
+    openingIndex := strings.Index(modified, "import")
+    closingIndex := strings.Index(modified[openingIndex:], "\n") + openingIndex
+    modified = modified[:openingIndex] + modified[closingIndex + 1:]
+  }
+
+  return modified
+}
+
+func discardBlankStrings(arr []string) []string {
+  result := []string{}
+
+  for _, item := range arr {
+    if item != "" {
+      result = append(result, item)
+    }
+  }
+
+  return result
+}
+
+func findNextChar(searchString string, target rune) int {
+  result := 0
+  for _, c := range searchString {
+    if c == target {
+      return result
+    }
+  }
+  return -1
+}
+
+func Contains(str string, searchFields []string) bool {
+  for _, field := range searchFields {
+    if field == str {
+      return true
+    }
+  }
+  return false
 }

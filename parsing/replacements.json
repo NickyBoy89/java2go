@@ -1,0 +1,16 @@
+{
+  "double": "float64",
+  "float": "float32",
+  "short": "int16",
+  "char": "rune",
+  "boolean": "bool",
+  "long": "int64",
+  "Integer": "int",
+  "Short": "int16",
+  "Byte": "byte",
+  "Long": "int64",
+  "Float": "float32",
+  "Double": "float64",
+  "Boolean": "bool",
+  "Character": "rune",
+}
