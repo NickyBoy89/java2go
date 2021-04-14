@@ -17,6 +17,7 @@ func TestBasicClass(t *testing.T) {
   comparison, err := json.MarshalIndent(ParsedClass{
     Name: "Test",
     Modifiers: []string{},
+    Implements: []string{},
     ClassVariables: []ParsedVariable{
       ParsedVariable{Name: "value", DataType: "int", Modifiers: []string{}},
     },
@@ -36,7 +37,7 @@ func TestBasicClass(t *testing.T) {
         Body: `return this.value;`,
       },
     },
-    Classes: []ParsedClass{},
+    NestedClasses: []ParsedClasses{},
   }, "", "  ")
   if err != nil {
     t.Fatalf("Failed to parse result with err: %v", err)
@@ -64,6 +65,7 @@ func TestSimpleParse(t *testing.T) {
   comparison, err := json.MarshalIndent(ParsedClass{
     Name: "Test",
     Modifiers: []string{},
+    Implements: []string{},
     ClassVariables: []ParsedVariable{
       ParsedVariable{Name: "value", DataType: "int", Modifiers: []string{}},
       ParsedVariable{Name: "value2", DataType: "int", Modifiers: []string{"public"}},
@@ -92,7 +94,7 @@ func TestSimpleParse(t *testing.T) {
         Body: `return "Hello World!";`,
       },
     },
-    Classes: []ParsedClass{},
+    NestedClasses: []ParsedClasses{},
   }, "", "  ")
   if err != nil {
     t.Fatalf("Failed to parse result with err: %v", err)
@@ -120,6 +122,7 @@ func TestParseLinkedList(t *testing.T) {
   comparison, err := json.MarshalIndent(ParsedClass{
     Name: "IntLinkedList",
     Modifiers: []string{"public"},
+    Implements: []string{},
     ClassVariables: []ParsedVariable{
       ParsedVariable{
         Name: "size",
@@ -265,10 +268,11 @@ func TestParseLinkedList(t *testing.T) {
         Body: `test1();test2();test3();test4();test5();System.out.println("pass");`,
       },
     },
-    Classes: []ParsedClass{
+    NestedClasses: []ParsedClasses{
       ParsedClass{
         Name: "Node",
         Modifiers: []string{},
+        Implements: []string{},
         ClassVariables: []ParsedVariable{
           ParsedVariable{
             Name: "data",
@@ -296,7 +300,7 @@ func TestParseLinkedList(t *testing.T) {
             Body: `this.data = data;this.next = null;`,
           },
         },
-        Classes: []ParsedClass{},
+        NestedClasses: []ParsedClasses{},
       },
     },
   }, "", "  ")
@@ -323,43 +327,41 @@ func TestParseSimpleInterface(t *testing.T) {
   }
 
   comparison, err := json.MarshalIndent(ParsedInterface{
-    Name: "Test",
+    Name: "TestCoordGetter",
     Modifiers: []string{},
-    ClassVariables: []ParsedVariable{
-      ParsedVariable{Name: "value", DataType: "int", Modifiers: []string{}},
-      ParsedVariable{Name: "value2", DataType: "int", Modifiers: []string{"public"}},
-      ParsedVariable{Name: "value3", DataType: "int", Modifiers: []string{"private"}},
-    },
     Methods: []ParsedMethod{
       ParsedMethod{
-        Name: "Test",
-        Modifiers: []string{},
-        ReturnType: "constructor",
-        Parameters: []ParsedVariable{ParsedVariable{Name: "value", DataType: "int", Modifiers: []string{}}},
-        Body: `this.value = value;this.value2 = value + 1;this.value3 = value + 2;`,
-      },
-      ParsedMethod{
-        Name: "getValue",
+        Name: "getX",
         Modifiers: []string{"public"},
-        Parameters: []ParsedVariable{ParsedVariable{Name: "specified", DataType: "int", Modifiers: []string{}}},
         ReturnType: "int",
-        Body: `if (specified == 1) {return this.value;} else if (specified == 2) {return this.value2;} else {return this.value3;}`,
+        Parameters: []ParsedVariable{},
       },
       ParsedMethod{
-        Name: "hello",
-        Modifiers: []string{"public", "static"},
+        Name: "getY",
+        Modifiers: []string{"public"},
+        ReturnType: "int",
         Parameters: []ParsedVariable{},
-        ReturnType: "String",
-        Body: `return "Hello World!";`,
+      },
+      ParsedMethod{
+        Name: "getZ",
+        Modifiers: []string{"public"},
+        ReturnType: "int",
+        Parameters: []ParsedVariable{},
+      },
+      ParsedMethod{
+        Name: "choose",
+        Modifiers: []string{},
+        ReturnType: "int",
+        Parameters: []ParsedVariable{},
       },
     },
-    Classes: []ParsedClass{},
+    DefaultMethods: []ParsedMethod{},
   }, "", "  ")
   if err != nil {
     t.Fatalf("Failed to parse result with err: %v", err)
   }
 
-  parsedResult, err := json.MarshalIndent(ParseClass(string(testFile)), "", "  ")
+  parsedResult, err := json.MarshalIndent(ParseFile(string(testFile)), "", "  ")
   if err != nil {
     t.Fatalf("Failed to parse result with err: %v", err)
   }

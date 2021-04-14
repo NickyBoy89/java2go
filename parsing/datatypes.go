@@ -4,13 +4,24 @@ import (
   "fmt"
 )
 
+type ParsedClasses interface {
+  // Returns the type of the parsed class structure
+  // Ex: "class" for a class, "interface" for an interface
+  GetType() string
+}
+
 // Represents a Java class
 type ParsedClass struct {
   Name string
   Modifiers []string
+  Implements []string
   ClassVariables []ParsedVariable
   Methods []ParsedMethod
-  Classes []ParsedClass
+  NestedClasses []ParsedClasses
+}
+
+func (c ParsedClass) GetType() string {
+  return "class"
 }
 
 // Represents a Java interface
@@ -19,6 +30,11 @@ type ParsedInterface struct {
   Modifiers []string
   Methods []ParsedMethod
   DefaultMethods []ParsedMethod
+  NestedClasses []ParsedClasses
+}
+
+func (i ParsedInterface) GetType() string {
+  return "interface"
 }
 
 // Represents a Java Enum
@@ -28,6 +44,10 @@ type ParsedEnum struct {
   ClassVariables []ParsedVariable
   Methods []ParsedMethod
   EnumFields []EnumField
+}
+
+func (e ParsedEnum) GetType() string {
+  return "enum"
 }
 
 type EnumField struct {

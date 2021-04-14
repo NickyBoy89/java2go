@@ -6,11 +6,28 @@ import (
 
   "gitlab.nicholasnovak.io/snapdragon/java2go/keywords"
 )
-/*
-*/
+
+func ParseFile(sourceString string) ParsedClasses {
+  modifierWords := strings.Split(sourceString[:strings.IndexRune(sourceString, '{')], " ")
+  if Contains("class", modifierWords) {
+    return ParseClass(sourceString)
+  } else if Contains("interface", modifierWords) {
+    return ParseInterface(sourceString)
+  } else if Contains("enum", modifierWords) {
+    return ParseEnum(sourceString)
+  } else {
+    panic("No valid file type found")
+  }
+}
+
+func ParseEnum(sourceString string) ParsedEnum {
+  return ParsedEnum{}
+}
+
 func ParseClass(sourceString string) ParsedClass {
   sourceString = RemoveComments(sourceString)
   sourceString = RemoveImports(sourceString)
+  sourceString = RemovePackage(sourceString)
 
   sourceString = strings.ReplaceAll(sourceString, "\t", "")
   sourceString = strings.ReplaceAll(sourceString, "\r", "")
@@ -23,9 +40,17 @@ func ParseClass(sourceString string) ParsedClass {
 
   words := discardBlankStrings(strings.Split(sourceString[:bodyDivider], " "))
 
+  result.Implements = []string{}
+  for wi, testWord := range words {
+    if testWord == "implements" {
+      result.Implements = append(result.Implements, TrimAll(words[wi + 1:], ",")...)
+      words = words[:wi]
+    }
+  }
+
   result.Name = words[len(words) - 1]
   result.Modifiers = words[:len(words) - 2]
-  result.Classes = []ParsedClass{}
+  result.NestedClasses = []ParsedClasses{}
 
   classBody := sourceString[bodyDivider + 1:IndexOfMatchingBrace(sourceString, bodyDivider)]
 
@@ -38,7 +63,7 @@ func ParseClass(sourceString string) ParsedClass {
       lastInterest = ci
     } else if char == '{' {
       if strings.Contains(classBody[lastInterest:ci], "class") {
-        result.Classes = append(result.Classes, ParseClass(strings.Trim(classBody[lastInterest + 1:IndexOfMatchingBrace(classBody, ci) + 1], " \n")))
+        result.NestedClasses = append(result.NestedClasses, ParseClass(strings.Trim(classBody[lastInterest + 1:IndexOfMatchingBrace(classBody, ci) + 1], " \n")))
         ci = IndexOfMatchingBrace(classBody, ci)
         lastInterest = ci
       }
@@ -46,6 +71,55 @@ func ParseClass(sourceString string) ParsedClass {
       startingBraceIndex := strings.IndexRune(classBody[ci:], '{') + ci
       result.Methods = append(result.Methods, ParseMethod(strings.Trim(classBody[lastInterest + 1:IndexOfMatchingBrace(classBody, startingBraceIndex)], " \n")))
       ci = IndexOfMatchingBrace(classBody, startingBraceIndex)
+      lastInterest = ci
+    }
+  }
+
+  return result
+}
+
+func ParseInterface(sourceString string) ParsedInterface {
+  sourceString = RemoveComments(sourceString)
+  sourceString = RemoveImports(sourceString)
+
+  sourceString = strings.ReplaceAll(sourceString, "\t", "")
+  sourceString = strings.ReplaceAll(sourceString, "\r", "")
+
+  sourceString = strings.Trim(sourceString, "\n")
+
+  var result ParsedInterface
+
+  bodyDivider := strings.IndexRune(sourceString, '{')
+
+  words := discardBlankStrings(strings.Split(sourceString[:bodyDivider], " "))
+
+  result.Name = words[len(words) - 1]
+  result.Modifiers = words[:len(words) - 2]
+  result.Methods = []ParsedMethod{}
+  result.DefaultMethods = []ParsedMethod{}
+
+  classBody := sourceString[bodyDivider + 1:IndexOfMatchingBrace(sourceString, bodyDivider)]
+
+  lastInterest := 0
+  ci := 0
+  for ; ci < len(classBody); ci++ {
+    char := classBody[ci]
+    if char == '{' {
+      if strings.Contains(classBody[lastInterest:ci], "class") {
+        result.NestedClasses = append(result.NestedClasses, ParseClass(strings.Trim(classBody[lastInterest + 1:IndexOfMatchingBrace(classBody, ci) + 1], " \n")))
+        ci = IndexOfMatchingBrace(classBody, ci)
+        lastInterest = ci
+      }
+    } else if char == '(' {
+      closingParenthsIndex := strings.IndexRune(classBody[ci:], ')') + ci
+      if FindNextNonBlankChar(classBody[closingParenthsIndex + 1:]) == ';' {
+        result.Methods = append(result.Methods, ParseMethod(strings.Trim(classBody[lastInterest + 1:closingParenthsIndex + 1], " \n")))
+        ci = closingParenthsIndex + 1 // Removes the semicolon
+      } else {
+        startingBraceIndex := strings.IndexRune(classBody[ci:], '{') + ci
+        result.Methods = append(result.Methods, ParseMethod(strings.Trim(classBody[lastInterest + 1:IndexOfMatchingBrace(classBody, startingBraceIndex)], " \n")))
+        ci = IndexOfMatchingBrace(classBody, startingBraceIndex)
+      }
       lastInterest = ci
     }
   }
@@ -68,6 +142,16 @@ func ParseMethod(source string) ParsedMethod {
       Parameters: ParseParameters(source[indexOfDelimiter + 1:strings.IndexRune(source, ')')]),
       ReturnType: "constructor",
       Body: RemoveIndentation(source[strings.IndexRune(source, '{') + 1:]),
+    }
+  }
+
+  if !strings.ContainsRune(source, '{') {
+    return ParsedMethod{
+      Name: words[len(words) - 1],
+      Modifiers: words[:len(words) - 2],
+      Parameters: ParseParameters(source[indexOfDelimiter + 1:strings.IndexRune(source, ')')]),
+      ReturnType: words[len(words) - 2],
+      Body: "",
     }
   }
 
@@ -188,6 +272,18 @@ func RemoveImports(source string) string {
   return modified
 }
 
+func RemovePackage(source string) string {
+  modified := source
+
+  for strings.Contains(modified, "package") {
+    openingIndex := strings.Index(modified, "package")
+    closingIndex := strings.Index(modified[openingIndex:], "\n") + openingIndex
+    modified = modified[:openingIndex] + modified[closingIndex + 1:]
+  }
+
+  return modified
+}
+
 func discardBlankStrings(arr []string) []string {
   result := []string{}
 
@@ -200,14 +296,13 @@ func discardBlankStrings(arr []string) []string {
   return result
 }
 
-func findNextChar(searchString string, target rune) int {
-  result := 0
-  for _, c := range searchString {
-    if c == target {
-      return result
+func FindNextNonBlankChar(source string) rune {
+  for _, i := range source {
+    if i != ' ' {
+      return i
     }
   }
-  return -1
+  panic("No non blank character found")
 }
 
 func Contains(str string, searchFields []string) bool {
