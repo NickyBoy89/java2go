@@ -18,6 +18,7 @@ type ParsedClass struct {
   ClassVariables []ParsedVariable
   Methods []ParsedMethod
   NestedClasses []ParsedClasses
+  StaticBlocks []string
 }
 
 func (c ParsedClass) GetType() string {
@@ -58,6 +59,7 @@ type EnumField struct {
 type ParsedVariable struct {
   Name string
   Modifiers []string
+  Annotation string
   DataType string
   InitialValue string
 }
@@ -73,6 +75,7 @@ func (c ParsedClass) String() string {
 type ParsedMethod struct {
   Name string
   Modifiers []string
+  Annotation string
   Parameters []ParsedVariable
   ReturnType string
   Body string

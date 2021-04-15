@@ -38,6 +38,7 @@ func TestBasicClass(t *testing.T) {
       },
     },
     NestedClasses: []ParsedClasses{},
+    StaticBlocks: []string{},
   }, "", "  ")
   if err != nil {
     t.Fatalf("Failed to parse result with err: %v", err)
@@ -95,6 +96,7 @@ func TestSimpleParse(t *testing.T) {
       },
     },
     NestedClasses: []ParsedClasses{},
+    StaticBlocks: []string{},
   }, "", "  ")
   if err != nil {
     t.Fatalf("Failed to parse result with err: %v", err)
@@ -301,8 +303,10 @@ func TestParseLinkedList(t *testing.T) {
           },
         },
         NestedClasses: []ParsedClasses{},
+        StaticBlocks: []string{},
       },
     },
+    StaticBlocks: []string{},
   }, "", "  ")
   if err != nil {
     t.Fatalf("Failed to parse result with err: %v", err)
@@ -362,6 +366,152 @@ func TestParseSimpleInterface(t *testing.T) {
   }
 
   parsedResult, err := json.MarshalIndent(ParseFile(string(testFile)), "", "  ")
+  if err != nil {
+    t.Fatalf("Failed to parse result with err: %v", err)
+  }
+
+  if string(parsedResult) != string(comparison) {
+    t.Log(string(parsedResult))
+    diff := diffmatchpatch.New()
+    t.Log(diff.DiffPrettyText(diff.DiffMain(string(parsedResult), string(comparison), false)))
+    t.Error("Result and Original did not match")
+  }
+}
+
+func TestSimpleAnnotation(t *testing.T) {
+  testFile, err := ioutil.ReadFile("../testfiles/simpleannotation.java")
+  if err != nil {
+    t.Fatalf("Reading file failed with err: %v", err)
+  }
+
+  comparison, err := json.MarshalIndent(ParsedClass{
+    Name: "Pet",
+    Modifiers: []string{"public"},
+    Implements: []string{},
+    ClassVariables: []ParsedVariable{
+      ParsedVariable{
+        Name: "name",
+        DataType: "String",
+        Annotation: "@Nullable",
+        Modifiers: []string{"private"},
+      },
+    },
+    Methods: []ParsedMethod{
+      ParsedMethod{
+        Name: "setName",
+        Modifiers: []string{"public"},
+        ReturnType: "void",
+        Parameters: []ParsedVariable{
+          ParsedVariable{
+            Name: "name",
+            DataType: "String",
+            Annotation: "@Nullable",
+            Modifiers: []string{},
+          },
+        },
+        Body: `this.name = name;`,
+      },
+      ParsedMethod{
+        Name: "getName",
+        Modifiers: []string{"public"},
+        Annotation: "@Nullable",
+        Parameters: []ParsedVariable{},
+        ReturnType: "String",
+        Body: `return this.name;`,
+      },
+      ParsedMethod{
+        Name: "sayHello",
+        Modifiers: []string{"public"},
+        Annotation: `@Deprecated
+@Environment(EnvType.CLIENT)`,
+        Parameters: []ParsedVariable{},
+        ReturnType: "String",
+        Body: `return "Hello World!";`,
+      },
+    },
+    NestedClasses: []ParsedClasses{},
+    StaticBlocks: []string{},
+  }, "", "  ")
+  if err != nil {
+    t.Fatalf("Failed to parse result with err: %v", err)
+  }
+
+  parsedResult, err := json.MarshalIndent(ParseClass(string(testFile)), "", "  ")
+  if err != nil {
+    t.Fatalf("Failed to parse result with err: %v", err)
+  }
+
+  if string(parsedResult) != string(comparison) {
+    t.Log(string(parsedResult))
+    diff := diffmatchpatch.New()
+    t.Log(diff.DiffPrettyText(diff.DiffMain(string(parsedResult), string(comparison), false)))
+    t.Error("Result and Original did not match")
+  }
+}
+
+func TestSimpleStatic(t *testing.T) {
+  testFile, err := ioutil.ReadFile("../testfiles/simplestatic.java")
+  if err != nil {
+    t.Fatalf("Reading file failed with err: %v", err)
+  }
+
+  comparison, err := json.MarshalIndent(ParsedClass{
+    Name: "MathUtils",
+    Modifiers: []string{},
+    Implements: []string{},
+    ClassVariables: []ParsedVariable{
+      ParsedVariable{
+        Name: "PI",
+        DataType: "double",
+        Modifiers: []string{"public", "static", "final"},
+        InitialValue: "3.14159",
+      },
+      ParsedVariable{
+        Name: "NILSTRING",
+        DataType: "String",
+        Annotation: "@Nullable",
+        Modifiers: []string{"public", "static", "final"},
+        InitialValue: "new String()",
+      },
+    },
+    Methods: []ParsedMethod{
+      ParsedMethod{
+        Name: "Min",
+        Modifiers: []string{"public", "static"},
+        ReturnType: "int",
+        Parameters: []ParsedVariable{
+          ParsedVariable{
+            Name: "x1",
+            DataType: "int",
+            Modifiers: []string{},
+          },
+          ParsedVariable{
+            Name: "x2",
+            DataType: "int",
+            Modifiers: []string{},
+          },
+        },
+        Body: `return x1 < x2 ? x1 : x2;`,
+      },
+      ParsedMethod{
+        Name: "GetPi",
+        Modifiers: []string{"public", "static"},
+        Parameters: []ParsedVariable{},
+        ReturnType: "double",
+        Body: `return PI;`,
+      },
+    },
+    NestedClasses: []ParsedClasses{},
+    StaticBlocks: []string{`int i = 10;
+for (int j = 0; j < i; j++) {
+System.out.println(j);
+}`},
+  }, "", "  ")
+  if err != nil {
+    t.Fatalf("Failed to parse result with err: %v", err)
+  }
+
+  parsedResult, err := json.MarshalIndent(ParseClass(string(testFile)), "", "  ")
   if err != nil {
     t.Fatalf("Failed to parse result with err: %v", err)
   }

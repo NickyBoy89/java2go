@@ -1,27 +1,29 @@
 package main
 
 import (
-  "os"
   "log"
+  "os"
   "io/ioutil"
   "strings"
   "encoding/json"
+  "flag"
 
   "gitlab.nicholasnovak.io/snapdragon/java2go/parsing"
 )
 
 func main() {
-  if len(os.Args) < 2 {
+  outputDir := flag.String("o", "", "Directory to put the parsed files into, defaults to the same directory that the files appear in")
+  dryRun := flag.Bool("dry-run", false, "Don't create the parsed files (check if parsing succeeds)")
+
+  flag.Parse()
+
+  if len(flag.Args()) == 0 {
     log.Fatal("No files specified to convert")
   }
 
-  for _, filePath := range os.Args[1:] {
-    if strings.ContainsRune(filePath, '.') {
-      if filePath[strings.LastIndex(filePath, "."):] != ".java" {
-        continue
-      }
-    } else {
-      continue
+  for _, filePath := range flag.Args() {
+    if !strings.ContainsRune(filePath, '.') || filePath[strings.LastIndex(filePath, "."):] != ".java" {
+      continue // Skips all non-java files
     }
     log.Printf("Started parsing file %v", filePath)
 
@@ -36,10 +38,34 @@ func main() {
       log.Fatal(err)
     }
 
-    err = ioutil.WriteFile(ChangeFileExtension(filePath, ".json"), formatted, 0775)
-    if err != nil {
-      log.Fatal(err)
+    fileDirectory := filePath[:strings.LastIndex(filePath, "/")]
+
+    if !*dryRun {
+      if *outputDir == "" {
+        outputFile, err := os.OpenFile(ChangeFileExtension(filePath, ".json"), os.O_CREATE|os.O_WRONLY, 0775)
+        if err != nil {
+          log.Fatalf("Failed to open output file: %v", err)
+        }
+        _, err = outputFile.Write([]byte(formatted))
+        if err != nil {
+          log.Fatalf("Failed to write output file: %v", err)
+        }
+      } else {
+        if _, err := os.Stat(*outputDir + "/" + fileDirectory); os.IsNotExist(err) {
+          os.MkdirAll(*outputDir + "/" + fileDirectory, 0775)
+        }
+        outputFile, err := os.OpenFile(*outputDir + "/" + ChangeFileExtension(filePath, ".json"), os.O_WRONLY|os.O_CREATE, 0775)
+        if err != nil {
+          log.Fatalf("Failed to open output file: %v", err)
+        }
+        _, err = outputFile.Write([]byte(formatted))
+        if err != nil {
+          log.Fatalf("Failed to write output file: %v", err)
+        }
+      }
+
     }
+
     log.Printf("Compiled %v", filePath)
   }
 }

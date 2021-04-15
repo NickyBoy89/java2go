@@ -1,13 +1,13 @@
-all: build run
+all: build
 
 .PHONY:
 build:
 	go build .
 
 .PHONY:
-run:
-	./java2go
-
-.PHONY:
 compileJava:
 	javac testfiles/*.java
+
+.PHONY:
+testParseDirectory: build
+	time find $1 | xargs ./java2go --dry-run
