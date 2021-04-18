@@ -11,17 +11,117 @@ func ParseFile(sourceString string) ParsedClasses {
   modifierWords := strings.Split(sourceString[:strings.IndexRune(sourceString, '{')], " ")
   if Contains("class", modifierWords) {
     return ParseClass(sourceString)
-  } else if Contains("interface", modifierWords) {
+  } else if Contains("interface", modifierWords) || Contains("@interface", modifierWords) {
     return ParseInterface(sourceString)
   } else if Contains("enum", modifierWords) {
     return ParseEnum(sourceString)
   } else {
-    panic("No valid file type found")
+    panic("No valid class in specified file")
   }
 }
 
 func ParseEnum(sourceString string) ParsedEnum {
-  panic("Enum not implemented")
+  // panic("Enum not implemented")
+  sourceString = RemoveComments(sourceString)
+  sourceString = RemoveImports(sourceString)
+  sourceString = RemovePackage(sourceString)
+
+  sourceString = strings.ReplaceAll(sourceString, "\t", "")
+  sourceString = strings.ReplaceAll(sourceString, "\r", "")
+
+  sourceString = strings.Trim(sourceString, "\n")
+
+  var result ParsedEnum
+
+  bodyDivider := strings.IndexRune(sourceString, '{')
+
+  words := discardBlankStrings(strings.Split(sourceString[:bodyDivider], " "))
+
+  result.Name = words[len(words) - 1]
+  result.Modifiers = words[:len(words) - 2]
+  result.ClassVariables = []ParsedVariable{}
+  result.NestedClasses = []ParsedClasses{}
+
+  classBody := sourceString[bodyDivider + 1:IndexOfMatchingBrace(sourceString, bodyDivider)]
+
+  // Start parsing the enum constants
+  enumEnd := FindNextSemicolonIndex(classBody)
+  enumStart := strings.LastIndex(classBody[:enumEnd], "}")
+
+  enumBody := strings.Trim(classBody[enumStart + 1:enumEnd], " \n")
+  classBody = classBody[:enumStart + 1] + classBody[enumEnd + 1:]
+
+  enumFields := TrimAll(strings.Split(enumBody, ","), " \n")
+
+  for _, field := range enumFields {
+    if fieldStart := strings.IndexRune(field, '('); fieldStart != -1 {
+      result.EnumFields = append(result.EnumFields, EnumField{Name: field[:fieldStart], Parameters: ParseParameters(field[fieldStart + 1:len(field) - 1])})
+    } else {
+      result.EnumFields = append(result.EnumFields, EnumField{Name: field, Parameters: []ParsedVariable{}})
+    }
+  }
+
+  var currentAnnotation string
+
+  lastInterest := 0
+  ci := 0
+  for ; ci < len(classBody); ci++ {
+    char := classBody[ci]
+    if char == '@' { // Detected an annotation
+      var newlineIndex, spaceIndex int // Also assumes that there are at least one of the characters in the file
+      if strings.ContainsRune(classBody[ci:], '\n') {
+        newlineIndex = strings.IndexRune(classBody[ci:], '\n') + ci
+      }
+      if strings.ContainsRune(classBody[ci:], ' ') {
+        spaceIndex = strings.IndexRune(classBody[ci:], ' ') + ci
+      }
+      if spaceIndex == 0 || newlineIndex < spaceIndex {
+        if currentAnnotation != "" { // Stacked annotaions
+          currentAnnotation += "\n" + classBody[ci:newlineIndex]
+        } else {
+          currentAnnotation = classBody[ci:newlineIndex]
+        }
+        ci = newlineIndex
+        lastInterest = ci
+      } else {
+        if currentAnnotation != "" {
+          currentAnnotation += "\n" + classBody[ci:spaceIndex]
+        } else {
+          currentAnnotation = classBody[ci:spaceIndex]
+        }
+        ci = spaceIndex
+        lastInterest = ci
+      }
+    } else if char == ';' || char == '=' { // Semicolon and equal detect class variables
+      semicolonIndex := FindNextSemicolonIndex(classBody[ci:]) + ci
+      result.ClassVariables = append(result.ClassVariables, ParseClassVariable(strings.Trim(classBody[lastInterest + 1:semicolonIndex], " \n"), currentAnnotation))
+      ci = semicolonIndex
+      currentAnnotation = ""
+      lastInterest = ci
+    } else if char == '{' {
+      if strings.Contains(classBody[lastInterest:ci], "class") { // Nested class
+        result.NestedClasses = append(result.NestedClasses, ParseClass(strings.Trim(classBody[lastInterest + 1:IndexOfMatchingBrace(classBody, ci) + 1], " \n")))
+        ci = IndexOfMatchingBrace(classBody, ci)
+        lastInterest = ci
+      } else if strings.Contains(classBody[lastInterest:ci], "interface") { // Nested interface
+        result.NestedClasses = append(result.NestedClasses, ParseInterface(strings.Trim(classBody[lastInterest + 1:IndexOfMatchingBrace(classBody, ci) + 1], " \n")))
+        ci = IndexOfMatchingBrace(classBody, ci)
+        lastInterest = ci
+      } else if strings.Contains(classBody[lastInterest:ci], "enum") { // Nested enum
+        result.NestedClasses = append(result.NestedClasses, ParseEnum(strings.Trim(classBody[lastInterest + 1:IndexOfMatchingBrace(classBody, ci) + 1], " \n")))
+        ci = IndexOfMatchingBrace(classBody, ci)
+        lastInterest = ci
+      }
+    } else if char == '(' {
+      startingBraceIndex := strings.IndexRune(classBody[ci:], '{') + ci
+      result.Methods = append(result.Methods, ParseMethod(strings.Trim(classBody[lastInterest + 1:IndexOfMatchingBrace(classBody, startingBraceIndex)], " \n"), currentAnnotation))
+      currentAnnotation = ""
+      ci = IndexOfMatchingBrace(classBody, startingBraceIndex) + 1
+      lastInterest = ci
+    }
+  }
+
+  return result
 }
 
 func ParseClass(sourceString string) ParsedClass {
@@ -41,12 +141,21 @@ func ParseClass(sourceString string) ParsedClass {
   words := discardBlankStrings(strings.Split(sourceString[:bodyDivider], " "))
 
   result.Implements = []string{}
+
+  classWordRange := len(words)
   for wi, testWord := range words {
-    if testWord == "implements" {
+    if testWord == "extends" { // Extends comes before implements
+      result.Extends = strings.Trim(words[wi + 1], ",")
+      classWordRange = wi
+    } else if testWord == "implements" {
       result.Implements = append(result.Implements, TrimAll(words[wi + 1:], ",")...)
-      words = words[:wi]
+      if classWordRange != len(words) && wi < classWordRange {
+        classWordRange = wi
+      }
     }
   }
+
+  words = words[:classWordRange]
 
   result.Name = words[len(words) - 1]
   result.Modifiers = words[:len(words) - 2]
@@ -112,10 +221,16 @@ func ParseClass(sourceString string) ParsedClass {
         lastInterest = ci
       }
     } else if char == '(' {
-      startingBraceIndex := strings.IndexRune(classBody[ci:], '{') + ci
-      result.Methods = append(result.Methods, ParseMethod(strings.Trim(classBody[lastInterest + 1:IndexOfMatchingBrace(classBody, startingBraceIndex)], " \n"), currentAnnotation))
+      if !strings.ContainsRune(classBody[ci:strings.IndexRune(classBody[ci:], ';') + ci], '{') {
+        closingParenthsIndex := strings.IndexRune(classBody[ci:], ')') + ci
+        result.Methods = append(result.Methods, ParseMethod(strings.Trim(classBody[lastInterest + 1:closingParenthsIndex + 1], " \n"), currentAnnotation))
+        ci = closingParenthsIndex + 1 // Removes the semicolon
+      } else {
+        startingBraceIndex := strings.IndexRune(classBody[ci:], '{') + ci
+        result.Methods = append(result.Methods, ParseMethod(strings.Trim(classBody[lastInterest + 1:IndexOfMatchingBrace(classBody, startingBraceIndex)], " \n"), currentAnnotation))
+        ci = IndexOfMatchingBrace(classBody, startingBraceIndex) + 1
+      }
       currentAnnotation = ""
-      ci = IndexOfMatchingBrace(classBody, startingBraceIndex) + 1
       lastInterest = ci
     }
   }
@@ -126,6 +241,7 @@ func ParseClass(sourceString string) ParsedClass {
 func ParseInterface(sourceString string) ParsedInterface {
   sourceString = RemoveComments(sourceString)
   sourceString = RemoveImports(sourceString)
+  sourceString = RemovePackage(sourceString)
 
   sourceString = strings.ReplaceAll(sourceString, "\t", "")
   sourceString = strings.ReplaceAll(sourceString, "\r", "")
@@ -154,12 +270,12 @@ func ParseInterface(sourceString string) ParsedInterface {
     if char == '@' { // Detected an annotation
       var newlineIndex, spaceIndex int
       if strings.ContainsRune(classBody[ci:], '\n') {
-        newlineIndex = strings.IndexRune(classBody[ci:], '\n')
+        newlineIndex = strings.IndexRune(classBody[ci:], '\n') + ci
       }
       if strings.ContainsRune(classBody[ci:], ' ') {
-        newlineIndex = strings.IndexRune(classBody[ci:], ' ')
+        spaceIndex = strings.IndexRune(classBody[ci:], ' ') + ci
       }
-      if newlineIndex < spaceIndex {
+      if newlineIndex < spaceIndex && newlineIndex != 0 {
         if currentAnnotation != "" { // Stacked annotaions
           currentAnnotation += "\n" + classBody[ci:newlineIndex]
         } else {
@@ -190,9 +306,14 @@ func ParseInterface(sourceString string) ParsedInterface {
         ci = closingParenthsIndex + 1 // Removes the semicolon
       } else {
         startingBraceIndex := strings.IndexRune(classBody[ci:], '{') + ci
-        result.Methods = append(result.Methods, ParseMethod(strings.Trim(classBody[lastInterest + 1:IndexOfMatchingBrace(classBody, startingBraceIndex)], " \n"), currentAnnotation))
+        if startingBraceIndex - ci == -1 {
+          result.Methods = append(result.Methods, ParseMethod(strings.Trim(classBody[lastInterest + 1:strings.IndexRune(classBody[lastInterest + 1:], ';') + lastInterest + 1], " \n"), currentAnnotation))
+          ci = strings.IndexRune(classBody[lastInterest + 1:], ';') + lastInterest + 1
+        } else {
+          result.Methods = append(result.Methods, ParseMethod(strings.Trim(classBody[lastInterest + 1:IndexOfMatchingBrace(classBody, startingBraceIndex)], " \n"), currentAnnotation))
+          ci = IndexOfMatchingBrace(classBody, startingBraceIndex)
+        }
         currentAnnotation = ""
-        ci = IndexOfMatchingBrace(classBody, startingBraceIndex)
       }
       lastInterest = ci
     }
@@ -342,11 +463,10 @@ func FindNextSemicolonIndex(source string) int {
   ci := 0
   for ; ci < len(source); ci++ {
     char := source[ci]
-    if char == ';' {
-      return ci
-    }
     if char == '{' {
-      ci += strings.IndexRune(source[ci:], '}')
+      ci = IndexOfMatchingBrace(source, ci)
+    } else if char == ';' {
+      return ci
     }
   }
   panic("No semicolon found")
@@ -428,12 +548,16 @@ func discardBlankStrings(arr []string) []string {
 }
 
 func FindNextNonBlankChar(source string) rune {
-  for _, i := range source {
-    if i != ' ' {
-      return i
+  return rune(source[IndexOfNextNonBlankChar(source)])
+}
+
+func IndexOfNextNonBlankChar(source string) int {
+  for ci, c := range source {
+    if c != ' ' && c != '\n' {
+      return ci
     }
   }
-  panic("No non blank character found")
+  panic("No next blank character found")
 }
 
 func Contains(str string, searchFields []string) bool {

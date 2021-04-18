@@ -15,6 +15,7 @@ type ParsedClass struct {
   Name string
   Modifiers []string
   Implements []string
+  Extends string // A class can only extend one class
   ClassVariables []ParsedVariable
   Methods []ParsedMethod
   NestedClasses []ParsedClasses
@@ -45,6 +46,7 @@ type ParsedEnum struct {
   ClassVariables []ParsedVariable
   Methods []ParsedMethod
   EnumFields []EnumField
+  NestedClasses []ParsedClasses
 }
 
 func (e ParsedEnum) GetType() string {

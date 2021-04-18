@@ -524,6 +524,105 @@ System.out.println(j);
   }
 }
 
+func TestSimpleEnum(t *testing.T) {
+  testFile, err := ioutil.ReadFile("../testfiles/simpleenum.java")
+  if err != nil {
+    t.Fatalf("Reading file failed with err: %v", err)
+  }
+
+  comparison, err := json.MarshalIndent(ParsedEnum{
+    Name: "Compass",
+    Modifiers: []string{},
+    ClassVariables: []ParsedVariable{},
+    Methods: []ParsedMethod{
+      ParsedMethod{
+        Name: "hello",
+        Modifiers: []string{"public", "static"},
+        ReturnType: "String",
+        Parameters: []ParsedVariable{},
+        Body: `return "Hello World";`,
+      },
+      ParsedMethod{
+        Name: "main",
+        Modifiers: []string{"public", "static"},
+        ReturnType: "void",
+        Parameters: []ParsedVariable{
+          ParsedVariable{
+            Name: "args",
+            Modifiers: []string{},
+            DataType: "String[]",
+          },
+        },
+        Body: `for (Compass c : Compass.values()) {System.out.println(c);}`,
+      },
+    },
+    EnumFields: []EnumField{
+      EnumField{Name: "NORTH", Parameters: []ParsedVariable{}},
+      EnumField{Name: "SOUTH", Parameters: []ParsedVariable{}},
+      EnumField{Name: "EAST", Parameters: []ParsedVariable{}},
+      EnumField{Name: "WEST", Parameters: []ParsedVariable{}},
+    },
+    NestedClasses: []ParsedClasses{},
+  }, "", "  ")
+  if err != nil {
+    t.Fatalf("Failed to parse result with err: %v", err)
+  }
+
+  parsedResult, err := json.MarshalIndent(ParseEnum(string(testFile)), "", "  ")
+  if err != nil {
+    t.Fatalf("Failed to parse result with err: %v", err)
+  }
+
+  if string(parsedResult) != string(comparison) {
+    t.Log(string(parsedResult))
+    diff := diffmatchpatch.New()
+    t.Log(diff.DiffPrettyText(diff.DiffMain(string(parsedResult), string(comparison), false)))
+    t.Error("Result and Original did not match")
+  }
+}
+
+func TestExtendsAndImplements(t *testing.T) {
+  testFile, err := ioutil.ReadFile("../testfiles/extendsandimplements.java")
+  if err != nil {
+    t.Fatalf("Reading file failed with err: %v", err)
+  }
+
+  comparison, err := json.MarshalIndent(ParsedClass{
+    Name: "Cat",
+    Modifiers: []string{"public"},
+    ClassVariables: []ParsedVariable{},
+    Implements: []string{"Pet"},
+    Extends: "Animal",
+    Methods: []ParsedMethod{
+      ParsedMethod{
+        Name: "pat",
+        Annotation: "@Override",
+        Modifiers: []string{"public"},
+        ReturnType: "void",
+        Parameters: []ParsedVariable{},
+        Body: `System.out.println("The cat purrs");`,
+      },
+    },
+    NestedClasses: []ParsedClasses{},
+    StaticBlocks: []string{},
+  }, "", "  ")
+  if err != nil {
+    t.Fatalf("Failed to parse result with err: %v", err)
+  }
+
+  parsedResult, err := json.MarshalIndent(ParseClass(string(testFile)), "", "  ")
+  if err != nil {
+    t.Fatalf("Failed to parse result with err: %v", err)
+  }
+
+  if string(parsedResult) != string(comparison) {
+    t.Log(string(parsedResult))
+    diff := diffmatchpatch.New()
+    t.Log(diff.DiffPrettyText(diff.DiffMain(string(parsedResult), string(comparison), false)))
+    t.Error("Result and Original did not match")
+  }
+}
+
 func IndexThatStringsDiffer(s1, s2 string) int {
   for i := range s1 {
     if i > len(s2) || s1[i] != s2[i] {

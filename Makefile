@@ -9,5 +9,5 @@ compileJava:
 	javac testfiles/*.java
 
 .PHONY:
-testParseDirectory: build
-	time find $1 | xargs ./java2go --dry-run
+parseDecompiled: build
+	time find decompiled/ | xargs ./java2go --dry-run
