@@ -1,12 +1,15 @@
 package main
 
 import (
-  "log"
   "os"
+  "path/filepath"
+  "io/fs"
   "io/ioutil"
   "strings"
   "encoding/json"
   "flag"
+
+  log "github.com/sirupsen/logrus"
 
   "gitlab.nicholasnovak.io/snapdragon/java2go/parsing"
 )
@@ -22,19 +25,18 @@ func main() {
     log.Fatal("No files specified to convert")
   }
 
-  for _, filePath := range flag.Args() {
-    if !strings.ContainsRune(filePath, '.') || filePath[strings.LastIndex(filePath, "."):] != ".java" {
+  walkDirFunc := func(path string, d fs.DirEntry, err error) error {
+    if !strings.ContainsRune(path, '.') || path[strings.LastIndex(path, "."):] != ".java" {
       if *verbose {
-        log.Printf("Skipping file %v", filePath)
+        log.Debugf("Skipping file %v", path)
       }
-      continue // Skips all non-java files
+      return nil // Skips all non-java files
     }
-    log.Printf("Started parsing file %v", filePath)
+    log.Printf("Started parsing file %v", path)
 
-    contents, err := ioutil.ReadFile(filePath)
+    contents, err := ioutil.ReadFile(path)
     if err != nil {
-      log.Printf("Failed to read some input files: %v", err)
-      continue
+      return err
     }
 
     formatted, err := json.MarshalIndent(parsing.ParseFile(string(contents)), "", "  ")
@@ -42,11 +44,11 @@ func main() {
       log.Fatal(err)
     }
 
-    fileDirectory := filePath[:strings.LastIndex(filePath, "/")]
+    fileDirectory := path[:strings.LastIndex(path, "/")]
 
     if !*dryRun {
       if *outputDir == "" {
-        outputFile, err := os.OpenFile(ChangeFileExtension(filePath, ".json"), os.O_CREATE|os.O_WRONLY, 0775)
+        outputFile, err := os.OpenFile(ChangeFileExtension(path, ".json"), os.O_CREATE|os.O_WRONLY, 0775)
         if err != nil {
           log.Fatalf("Failed to open output file: %v", err)
         }
@@ -58,7 +60,7 @@ func main() {
         if _, err := os.Stat(*outputDir + "/" + fileDirectory); os.IsNotExist(err) {
           os.MkdirAll(*outputDir + "/" + fileDirectory, 0775)
         }
-        outputFile, err := os.OpenFile(*outputDir + "/" + ChangeFileExtension(filePath, ".json"), os.O_WRONLY|os.O_CREATE, 0775)
+        outputFile, err := os.OpenFile(*outputDir + "/" + ChangeFileExtension(path, ".json"), os.O_WRONLY|os.O_CREATE, 0775)
         if err != nil {
           log.Fatalf("Failed to open output file: %v", err)
         }
@@ -70,7 +72,16 @@ func main() {
 
     }
 
-    log.Printf("Compiled %v", filePath)
+    log.Printf("Compiled %v", path)
+    if err != nil {
+      return err
+    }
+    return nil
+  }
+
+  for _, filePath := range flag.Args() {
+    err := filepath.WalkDir(filePath, walkDirFunc)
+    log.Fatalf("Unable to parse directory %v: %v", filePath, err)
   }
 }
 

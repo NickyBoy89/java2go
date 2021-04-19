@@ -359,6 +359,7 @@ func TestParseSimpleInterface(t *testing.T) {
         Parameters: []ParsedVariable{},
       },
     },
+    StaticFields: []ParsedVariable{},
     DefaultMethods: []ParsedMethod{},
   }, "", "  ")
   if err != nil {
@@ -533,6 +534,7 @@ func TestSimpleEnum(t *testing.T) {
   comparison, err := json.MarshalIndent(ParsedEnum{
     Name: "Compass",
     Modifiers: []string{},
+    Implements: []string{},
     ClassVariables: []ParsedVariable{},
     Methods: []ParsedMethod{
       ParsedMethod{

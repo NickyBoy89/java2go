@@ -31,6 +31,7 @@ type ParsedInterface struct {
   Name string
   Modifiers []string
   Methods []ParsedMethod
+  StaticFields []ParsedVariable
   DefaultMethods []ParsedMethod
   NestedClasses []ParsedClasses
 }
@@ -43,10 +44,12 @@ func (i ParsedInterface) GetType() string {
 type ParsedEnum struct {
   Name string
   Modifiers []string
+  Implements []string
   ClassVariables []ParsedVariable
   Methods []ParsedMethod
   EnumFields []EnumField
   NestedClasses []ParsedClasses
+  StaticBlocks []string
 }
 
 func (e ParsedEnum) GetType() string {
