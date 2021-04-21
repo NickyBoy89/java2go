@@ -10,17 +10,13 @@ import (
 func ParseFile(sourceString string) ParsedClasses {
   sourceString = RemoveImports(sourceString)
   sourceString = RemovePackage(sourceString)
+  sourceString = RemoveComments(sourceString)
 
-  // Splitwords contains all the annotations on the entire class,
-  // and the rest of the modifier words as the last index
-  // Currently, we are throwing all the annotations away
-  splitWords := discardBlankStrings(TrimAll(strings.Split(sourceString[:strings.IndexRune(sourceString, '{')], "\n"), " \n"))
+  _, annotationEnd := ParseAnnotations(sourceString)
 
-  fmt.Println(splitWords)
+  sourceString = sourceString[annotationEnd:]
 
-  modifierWords := TrimAll(strings.Split(splitWords[len(splitWords) - 1], " "), " \n")
-
-  fmt.Println(modifierWords)
+  modifierWords := TrimAll(strings.Split(sourceString, " "), " \n")
 
   if Contains("class", modifierWords) {
     return ParseClass(sourceString)
@@ -73,55 +69,68 @@ func ParseMethod(source, annotation string) ParsedMethod {
   }
 }
 
-func ParseAnnotations(source string) []string {
+func ParseAnnotations(source string) ([]string, int) {
   var annotations []string
 
   ci := 0
-  for ci, c := range source {
-    if c == '\n' {
-      annotations = append(annotations, source)
+  for ; ci < len(source); ci++ {
+    if source[ci] == '\n' {
+      // if !strings.ContainsRune(source[:ci], '@') { // There are no annotations
+      //   return []string{}, 0
+      // }
+      switch source[ci + 1] {
+      case '@':
+        newlineIndex, err := FindNextIndexOfChar(source[ci + 1:], '\n')
+        if err != nil {
+          panic(err)
+        }
+        newlineIndex += ci + 1
+        annotations = append(annotations, source[ci + 1:newlineIndex])
+        ci = newlineIndex - 1
+      case ' ', '\n':
+        continue
+      default:
+        return annotations, ci + 1
+      }
     }
   }
 
-  return annotations
+  return annotations, ci
 }
 
 func IndexOfMatchingBrace(searchString string, openingBraceIndex int) int {
-  bracketBalance := -1
-  if searchString[openingBraceIndex] != '{' {
-    panic("Invalid starting brace")
+  index, err := IndexOfMatchingChar(searchString, openingBraceIndex, '{', '}')
+  if err != nil {
+    panic(err)
   }
-  for ci, char := range searchString[openingBraceIndex + 1:] {
-    switch char {
-    case '{':
-      bracketBalance -= 1
-    case '}':
-      bracketBalance += 1
-    }
-    if bracketBalance == 0 {
-      return openingBraceIndex + ci + 1 // Account for skipping the first character in the loop
-    }
-  }
-  panic("No matching bracket found, the target code probably has unbalanced brackets")
+  return index
 }
 
 func IndexOfMatchingParenths(searchString string, openingBraceIndex int) int {
-  bracketBalance := -1
-  if searchString[openingBraceIndex] != '(' {
-    panic("Invalid starting parenths")
+  index, err := IndexOfMatchingChar(searchString, openingBraceIndex, '(', ')')
+  if err != nil {
+    panic(err)
   }
-  for ci, char := range searchString[openingBraceIndex + 1:] {
+  return index
+}
+
+func IndexOfMatchingChar(searchString string, openingIndex int, openingChar, closingChar rune) (int, error) {
+  balance := -1 // Start with the opening character
+  if searchString[openingIndex] != byte(openingChar) {
+    return 0, fmt.Errorf("Invalid starting character: %v", searchString[openingIndex])
+  }
+  for ci, char := range searchString[openingIndex + 1:] { // Cut out the first character that has already been evaluated
     switch char {
-    case '(':
-      bracketBalance -= 1
-    case ')':
-      bracketBalance += 1
+    case openingChar:
+      balance -= 1
+    case closingChar:
+      balance += 1
     }
-    if bracketBalance == 0 {
-      return openingBraceIndex + ci + 1 // Account for skipping the first character in the loop
+    if balance == 0 {
+      return openingIndex + ci + 1, nil // Account for skipping the first character in the loop
     }
   }
-  panic("No matching parenths found, the target code probably has unbalanced brackets")
+  return 0, fmt.Errorf("No matching bracket found, the target code probably has unbalanced brackets")
 }
 
 func ParseClassVariable(source, annotation string) ParsedVariable {
@@ -183,7 +192,16 @@ func ParseParameters(source string) []ParsedVariable {
   return parsedParameters
 }
 
+// Finds the index of the next semicolon in the string, skipping over areas in brackets, or single + double quotes
 func FindNextSemicolonIndex(source string) int {
+  index, err := FindNextIndexOfChar(source, ';')
+  if err != nil {
+    panic(err)
+  }
+  return index
+}
+
+func FindNextIndexOfChar(source string, target rune) (int, error) {
   ci := 0
   for ; ci < len(source); ci++ {
     char := source[ci]
@@ -194,11 +212,13 @@ func FindNextSemicolonIndex(source string) int {
       ci = strings.IndexRune(source[ci + 1:], '"') + ci + 1
     case '\'':
       ci = strings.IndexRune(source[ci + 1:], '\'') + ci + 1
-    case ';':
-      return ci
+    case '(':
+      ci = strings.IndexRune(source[ci + 1:], ')') + ci + 1
+    case byte(target):
+      return ci, nil
     }
   }
-  panic("No semicolon found")
+  return 0, fmt.Errorf("Could not find the character: %v", string(target))
 }
 
 func RemoveIndentation(input string) string {

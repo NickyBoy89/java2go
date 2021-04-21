@@ -2,7 +2,7 @@ package parsing
 
 import (
   "strings"
-  // "fmt"
+  "fmt"
 )
 
 func ParseInterface(sourceString string) ParsedInterface {
@@ -36,6 +36,7 @@ func ParseInterface(sourceString string) ParsedInterface {
   for ; ci < len(classBody); ci++ {
     char := classBody[ci]
     if char == '@' { // Detected an annotation
+      fmt.Println("Annotation")
       var newlineIndex, spaceIndex int
       if strings.ContainsRune(classBody[ci:], '\n') {
         newlineIndex = strings.IndexRune(classBody[ci:], '\n') + ci
@@ -61,12 +62,14 @@ func ParseInterface(sourceString string) ParsedInterface {
         lastInterest = ci
       }
     } else if char == ';' || char == '=' { // Semicolon and equal detect class variables
+      fmt.Println("Found semicolon or equals")
       semicolonIndex := FindNextSemicolonIndex(classBody[ci:]) + ci
       result.StaticFields = append(result.StaticFields, ParseClassVariable(strings.Trim(classBody[lastInterest + 1:semicolonIndex], " \n"), currentAnnotation))
       ci = semicolonIndex
       currentAnnotation = ""
       lastInterest = ci
     } else if char == '{' {
+      fmt.Println("Found brace")
       if strings.Contains(classBody[lastInterest:ci], "class") { // Nested class
         result.NestedClasses = append(result.NestedClasses, ParseClass(strings.Trim(classBody[lastInterest + 1:IndexOfMatchingBrace(classBody, ci) + 1], " \n")))
         ci = IndexOfMatchingBrace(classBody, ci)
@@ -81,23 +84,28 @@ func ParseInterface(sourceString string) ParsedInterface {
         lastInterest = ci
       }
     } else if char == '(' {
-      closingParenthsIndex := strings.IndexRune(classBody[ci:], ')') + ci
-      if FindNextNonBlankChar(classBody[closingParenthsIndex + 1:]) == ';' {
-        result.Methods = append(result.Methods, ParseMethod(strings.Trim(classBody[lastInterest + 1:closingParenthsIndex + 1], " \n"), currentAnnotation))
-        currentAnnotation = ""
-        ci = closingParenthsIndex + 1 // Removes the semicolon
+      fmt.Println("Found parenths")
+      firstWordIndex := IndexOfNextNonBlankChar(classBody[lastInterest:]) + lastInterest
+      if classBody[firstWordIndex:strings.IndexRune(classBody[firstWordIndex:], ' ') + firstWordIndex] == "default" {
+        fmt.Println("Found block-level default method in interface")
+        openingBracket := strings.IndexRune(classBody[lastInterest:], '{') + lastInterest
+        closingBracket := IndexOfMatchingBrace(classBody, openingBracket)
+        result.Methods = append(result.Methods, ParseMethod(strings.Trim(classBody[lastInterest + 1:closingBracket + 1], " \n"), currentAnnotation))
+        ci = closingBracket + 1
+      } else if classBody[firstWordIndex:strings.IndexRune(classBody[firstWordIndex:], ' ') + firstWordIndex] == "static" {
+        openingBracket := strings.IndexRune(classBody[lastInterest:], '{') + lastInterest
+        closingBracket := IndexOfMatchingBrace(classBody, openingBracket)
+        result.Methods = append(result.Methods, ParseMethod(strings.Trim(classBody[lastInterest + 1:closingBracket + 1], " \n"), currentAnnotation))
+        ci = closingBracket + 1
       } else {
-        startingBraceIndex := strings.IndexRune(classBody[ci:], '{') + ci
-        if startingBraceIndex - ci == -1 {
-          result.Methods = append(result.Methods, ParseMethod(strings.Trim(classBody[lastInterest + 1:strings.IndexRune(classBody[lastInterest + 1:], ';') + lastInterest + 1], " \n"), currentAnnotation))
-          ci = strings.IndexRune(classBody[lastInterest + 1:], ';') + lastInterest + 1
-        } else {
-          result.Methods = append(result.Methods, ParseMethod(strings.Trim(classBody[lastInterest + 1:IndexOfMatchingBrace(classBody, startingBraceIndex)], " \n"), currentAnnotation))
-          ci = IndexOfMatchingBrace(classBody, startingBraceIndex)
-        }
-        currentAnnotation = ""
+        fmt.Println("Found inline block-level default method in interface")
+        closingSemicolon := FindNextSemicolonIndex(classBody[ci:]) + ci
+        result.Methods = append(result.Methods, ParseMethod(strings.Trim(classBody[lastInterest + 1:closingSemicolon], " \n"), currentAnnotation))
+        ci = closingSemicolon + 1
       }
+      fmt.Printf("Found default method in interface: %v\n", classBody[lastInterest:ci + 1])
       lastInterest = ci
+      currentAnnotation = ""
     }
   }
 
