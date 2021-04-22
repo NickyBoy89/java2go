@@ -115,19 +115,28 @@ func IndexOfMatchingParenths(searchString string, openingBraceIndex int) int {
 }
 
 func IndexOfMatchingChar(searchString string, openingIndex int, openingChar, closingChar rune) (int, error) {
-  balance := -1 // Start with the opening character
   if searchString[openingIndex] != byte(openingChar) {
     return 0, fmt.Errorf("Invalid starting character: %v", searchString[openingIndex])
   }
 
+  bodyString := searchString[openingIndex + 1:]
+
+  // fmt.Println(bodyString)
+
+  balance := -1 // Start with the opening character
+
   ci := 0
-  for ; ci < len(searchString[openingIndex + 1:]); ci++ { // Cut out the first character that has already been evaluated
-    char := rune(searchString[openingIndex + 1:][ci])
+  for ; ci < len(bodyString); ci++ { // Cut out the first character that has already been evaluated
+    char := rune(bodyString[ci])
     switch char {
     case '"':
-      ci += strings.IndexRune(searchString[openingIndex + 1 + ci:], '"') + 1
+      fmt.Println("Double quotes")
+      fmt.Printf("[%v]\n", bodyString[ci:strings.IndexRune(bodyString[ci + 1:], '"') + ci + 2])
+      ci = strings.IndexRune(bodyString[ci + 1:], '"') + ci + 1
     case '\'':
-      ci += strings.IndexRune(searchString[openingIndex + 1 + ci:], '\'') + 1
+      fmt.Println("Single quotes")
+      fmt.Printf("[%v]\n", bodyString[ci:strings.IndexRune(bodyString[ci + 1:], '\'') + ci + 2])
+      ci = strings.IndexRune(bodyString[ci + 1:], '\'') + ci + 1
     case openingChar:
       balance -= 1
     case closingChar:
