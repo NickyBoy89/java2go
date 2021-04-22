@@ -32,7 +32,9 @@ func main() {
       }
       return nil // Skips all non-java files
     }
-    log.Printf("Started parsing file %v", path)
+    if *verbose {
+      log.Printf("Started parsing file %v", path)
+    }
 
     contents, err := ioutil.ReadFile(path)
     if err != nil {
@@ -72,7 +74,9 @@ func main() {
 
     }
 
-    log.Printf("Compiled %v", path)
+    if *verbose {
+      log.Printf("Compiled %v", path)
+    }
     if err != nil {
       return err
     }

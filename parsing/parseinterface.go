@@ -2,7 +2,7 @@ package parsing
 
 import (
   "strings"
-  "fmt"
+  // "fmt"
 )
 
 func ParseInterface(sourceString string) ParsedInterface {
@@ -36,7 +36,7 @@ func ParseInterface(sourceString string) ParsedInterface {
   for ; ci < len(classBody); ci++ {
     char := classBody[ci]
     if char == '@' { // Detected an annotation
-      fmt.Println("Annotation")
+      // fmt.Println("Annotation")
       var newlineIndex, spaceIndex int
       if strings.ContainsRune(classBody[ci:], '\n') {
         newlineIndex = strings.IndexRune(classBody[ci:], '\n') + ci
@@ -62,14 +62,14 @@ func ParseInterface(sourceString string) ParsedInterface {
         lastInterest = ci
       }
     } else if char == ';' || char == '=' { // Semicolon and equal detect class variables
-      fmt.Println("Found semicolon or equals")
+      // fmt.Println("Found semicolon or equals")
       semicolonIndex := FindNextSemicolonIndex(classBody[ci:]) + ci
       result.StaticFields = append(result.StaticFields, ParseClassVariable(strings.Trim(classBody[lastInterest + 1:semicolonIndex], " \n"), currentAnnotation))
       ci = semicolonIndex
       currentAnnotation = ""
       lastInterest = ci
     } else if char == '{' {
-      fmt.Println("Found brace")
+      // fmt.Println("Found brace")
       if strings.Contains(classBody[lastInterest:ci], "class") { // Nested class
         result.NestedClasses = append(result.NestedClasses, ParseClass(strings.Trim(classBody[lastInterest + 1:IndexOfMatchingBrace(classBody, ci) + 1], " \n")))
         ci = IndexOfMatchingBrace(classBody, ci)
@@ -84,10 +84,10 @@ func ParseInterface(sourceString string) ParsedInterface {
         lastInterest = ci
       }
     } else if char == '(' {
-      fmt.Println("Found parenths")
+      // fmt.Println("Found parenths")
       firstWordIndex := IndexOfNextNonBlankChar(classBody[lastInterest:]) + lastInterest
       if classBody[firstWordIndex:strings.IndexRune(classBody[firstWordIndex:], ' ') + firstWordIndex] == "default" {
-        fmt.Println("Found block-level default method in interface")
+        // fmt.Println("Found block-level default method in interface")
         openingBracket := strings.IndexRune(classBody[lastInterest:], '{') + lastInterest
         closingBracket := IndexOfMatchingBrace(classBody, openingBracket)
         result.Methods = append(result.Methods, ParseMethod(strings.Trim(classBody[lastInterest + 1:closingBracket + 1], " \n"), currentAnnotation))
@@ -98,12 +98,12 @@ func ParseInterface(sourceString string) ParsedInterface {
         result.Methods = append(result.Methods, ParseMethod(strings.Trim(classBody[lastInterest + 1:closingBracket + 1], " \n"), currentAnnotation))
         ci = closingBracket + 1
       } else {
-        fmt.Println("Found inline block-level default method in interface")
+        // fmt.Println("Found inline block-level default method in interface")
         closingSemicolon := FindNextSemicolonIndex(classBody[ci:]) + ci
         result.Methods = append(result.Methods, ParseMethod(strings.Trim(classBody[lastInterest + 1:closingSemicolon], " \n"), currentAnnotation))
         ci = closingSemicolon + 1
       }
-      fmt.Printf("Found default method in interface: %v\n", classBody[lastInterest:ci + 1])
+      // fmt.Printf("Found default method in interface: %v\n", classBody[lastInterest:ci + 1])
       lastInterest = ci
       currentAnnotation = ""
     }

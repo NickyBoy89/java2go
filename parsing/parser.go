@@ -16,7 +16,7 @@ func ParseFile(sourceString string) ParsedClasses {
 
   sourceString = sourceString[annotationEnd:]
 
-  modifierWords := TrimAll(strings.Split(sourceString, " "), " \n")
+  modifierWords := TrimAll(strings.Split(sourceString[:strings.IndexRune(sourceString, '{')], " "), " \n")
 
   if Contains("class", modifierWords) {
     return ParseClass(sourceString)
@@ -119,8 +119,15 @@ func IndexOfMatchingChar(searchString string, openingIndex int, openingChar, clo
   if searchString[openingIndex] != byte(openingChar) {
     return 0, fmt.Errorf("Invalid starting character: %v", searchString[openingIndex])
   }
-  for ci, char := range searchString[openingIndex + 1:] { // Cut out the first character that has already been evaluated
+
+  ci := 0
+  for ; ci < len(searchString[openingIndex + 1:]); ci++ { // Cut out the first character that has already been evaluated
+    char := rune(searchString[openingIndex + 1:][ci])
     switch char {
+    case '"':
+      ci += strings.IndexRune(searchString[openingIndex + 1 + ci:], '"') + 1
+    case '\'':
+      ci += strings.IndexRune(searchString[openingIndex + 1 + ci:], '\'') + 1
     case openingChar:
       balance -= 1
     case closingChar:
