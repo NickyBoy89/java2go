@@ -129,10 +129,18 @@ func IndexOfMatchingChar(searchString string, openingIndex int, openingChar, clo
   for ; ci < len(bodyString); ci++ { // Cut out the first character that has already been evaluated
     char := rune(bodyString[ci])
     switch char {
+    case '\\':
+      fmt.Printf("Escaped %v\n", bodyString[ci:ci + 2])
+      ci += 1
+      fmt.Printf("[%v]\n", string(bodyString[ci:ci + 3]))
     case '"':
       fmt.Println("Double quotes")
       fmt.Printf("[%v]\n", bodyString[ci:strings.IndexRune(bodyString[ci + 1:], '"') + ci + 2])
-      ci = strings.IndexRune(bodyString[ci + 1:], '"') + ci + 1
+      ind, err := FindNextIndexOfChar(bodyString[ci + 1:], '"')
+      if err != nil {
+        panic(err)
+      }
+      ci = ind + ci + 1
     case '\'':
       fmt.Println("Single quotes")
       fmt.Printf("[%v]\n", bodyString[ci:strings.IndexRune(bodyString[ci + 1:], '\'') + ci + 2])
@@ -222,6 +230,8 @@ func FindNextIndexOfChar(source string, target rune) (int, error) {
   for ; ci < len(source); ci++ {
     char := source[ci]
     switch char {
+    case '\\':
+      ci += 1
     case '{':
       ci = IndexOfMatchingBrace(source, ci)
     case '"':
@@ -234,7 +244,7 @@ func FindNextIndexOfChar(source string, target rune) (int, error) {
       return ci, nil
     }
   }
-  return 0, fmt.Errorf("Could not find the character: %v", string(target))
+  return -1, fmt.Errorf("Could not find the character: %v", string(target))
 }
 
 func RemoveIndentation(input string) string {
@@ -261,16 +271,19 @@ func TrimAll(raw []string, pattern string) []string {
 func RemoveComments(source string) string {
   modified := source
 
-  for strings.Contains(modified, "/*") {
-    openingIndex := strings.Index(modified, "/*")
-    closingIndex := strings.Index(modified[openingIndex:], "*/") + openingIndex
-    modified = modified[:openingIndex] + modified[closingIndex + 2:]
-  }
-
-  for strings.Contains(modified, "//") {
-    openingIndex := strings.Index(modified, "//")
-    closingIndex := strings.Index(modified[openingIndex:], "\n") + openingIndex
-    modified = modified[:openingIndex] + modified[closingIndex + 1:]
+  ind := 0
+  for ; ind != -1; {
+    ind, _ = FindNextIndexOfChar(modified, '/')
+    switch modified[ind + 1] {
+    case '*': // Block-level comments
+      closingIndex := strings.Index(modified[ind + 2:], "*/") + ind + 2
+      fmt.Println(modified[:ind] + modified[closingIndex + 2:])
+      modified = modified[:ind] + modified[closingIndex + 2:]
+    case '/': // Inline commends
+      closingIndex := strings.IndexRune(modified[ind:], '\n') + ind
+      fmt.Println(modified[:ind] + modified[closingIndex + 1:])
+      modified = modified[:ind] + modified[closingIndex + 1:]
+    }
   }
 
   return modified
