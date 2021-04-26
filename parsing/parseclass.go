@@ -2,7 +2,7 @@ package parsing
 
 import (
   "strings"
-  // "fmt"
+  //"fmt"
 )
 
 func ParseClass(sourceString string) ParsedClass {
@@ -26,7 +26,7 @@ func ParseClass(sourceString string) ParsedClass {
       classWordRange = wi
     } else if testWord == "implements" {
       result.Implements = append(result.Implements, TrimAll(words[wi + 1:], ",")...)
-      if classWordRange != len(words) && wi < classWordRange {
+      if classWordRange >= len(words) { // No extends already cut out of the string
         classWordRange = wi
       }
     }

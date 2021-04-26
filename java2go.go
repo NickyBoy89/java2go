@@ -85,7 +85,10 @@ func main() {
 
   for _, filePath := range flag.Args() {
     err := filepath.WalkDir(filePath, walkDirFunc)
-    log.Fatalf("Unable to parse directory %v: %v", filePath, err)
+    if err != nil {
+      log.Fatalf("Unable to parse file or directory %v: %v", filePath, err)
+    }
+    log.Printf("Parsed file or directory %v", filePath)
   }
 }
 

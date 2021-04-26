@@ -27,12 +27,10 @@ func ParseEnum(sourceString string) ParsedEnum {
   classWordRange := len(words)
   for wi, testWord := range words {
     if testWord == "extends" { // Extends comes before implements
-      panic("Enum should not extend anything")
-      // result.Extends = strings.Trim(words[wi + 1], ",")
-      // classWordRange = wi
+      panic("Enum already extends by default Enum, so it should not extend anything else")
     } else if testWord == "implements" {
       result.Implements = append(result.Implements, TrimAll(words[wi + 1:], ",")...)
-      if classWordRange != len(words) || wi < classWordRange {
+      if classWordRange >= len(words) { // No extends already cut out of the string
         classWordRange = wi
       }
     }
