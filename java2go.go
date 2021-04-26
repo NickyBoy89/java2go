@@ -8,6 +8,7 @@ import (
   "strings"
   "encoding/json"
   "flag"
+  "runtime/pprof"
 
   log "github.com/sirupsen/logrus"
 
@@ -18,8 +19,18 @@ func main() {
   outputDir := flag.String("o", "", "Directory to put the parsed files into, defaults to the same directory that the files appear in")
   dryRun := flag.Bool("dry-run", false, "Don't create the parsed files (check if parsing succeeds)")
   verbose := flag.Bool("v", false, "Additional debug info")
+  cpuprofile := flag.String("cpuprofile", "", "write cpu profile to file")
 
   flag.Parse()
+
+  if *cpuprofile != "" {
+    f, err := os.Create(*cpuprofile)
+    if err != nil {
+        log.Fatal(err)
+    }
+    pprof.StartCPUProfile(f)
+    defer pprof.StopCPUProfile()
+  }
 
   if len(flag.Args()) == 0 {
     log.Fatal("No files specified to convert")
