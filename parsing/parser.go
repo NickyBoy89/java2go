@@ -75,21 +75,20 @@ func ParseAnnotations(source string) ([]string, int) {
   ci := 0
   for ; ci < len(source); ci++ {
     if source[ci] == '\n' {
-      // if !strings.ContainsRune(source[:ci], '@') { // There are no annotations
-      //   return []string{}, 0
-      // }
       switch source[ci + 1] {
-      case '@':
+      case ' ', '\n':
+        continue
+      case '@': // Annotation detected
         newlineIndex, err := FindNextIndexOfChar(source[ci + 1:], '\n')
         if err != nil {
           panic(err)
         }
-        newlineIndex += ci + 1
-        annotations = append(annotations, source[ci + 1:newlineIndex])
-        ci = newlineIndex - 1
-      case ' ', '\n':
-        continue
+        annotations = append(annotations, source[ci + 1:newlineIndex + ci])
+        ci += newlineIndex
       default:
+        if len(annotations) == 0 {
+          return []string{}, 0
+        }
         return annotations, ci + 1
       }
     }
@@ -121,7 +120,9 @@ func IndexOfMatchingChar(searchString string, openingIndex int, openingChar, clo
 
   bodyString := searchString[openingIndex + 1:]
 
-  // fmt.Println(bodyString)
+  if strings.ContainsAny(string(openingChar), `\"'`) {
+    panic("Tried to find the matching char of a skipped character")
+  }
 
   balance := -1 // Start with the opening character
 
@@ -130,21 +131,19 @@ func IndexOfMatchingChar(searchString string, openingIndex int, openingChar, clo
     char := rune(bodyString[ci])
     switch char {
     case '\\':
-      fmt.Printf("Escaped %v\n", bodyString[ci:ci + 2])
       ci += 1
-      fmt.Printf("[%v]\n", string(bodyString[ci:ci + 3]))
     case '"':
-      fmt.Println("Double quotes")
-      fmt.Printf("[%v]\n", bodyString[ci:strings.IndexRune(bodyString[ci + 1:], '"') + ci + 2])
-      ind, err := FindNextIndexOfChar(bodyString[ci + 1:], '"')
+      ind, err := FindNextIndexOfCharWithSkip(bodyString[ci + 1:], '"', ``)
       if err != nil {
         panic(err)
       }
-      ci = ind + ci + 1
+      ci += ind + 1
     case '\'':
-      fmt.Println("Single quotes")
-      fmt.Printf("[%v]\n", bodyString[ci:strings.IndexRune(bodyString[ci + 1:], '\'') + ci + 2])
-      ci = strings.IndexRune(bodyString[ci + 1:], '\'') + ci + 1
+      ind, err := FindNextIndexOfCharWithSkip(bodyString[ci + 1:], '\'', ``)
+      if err != nil {
+        panic(err)
+      }
+      ci += ind + 1
     case openingChar:
       balance -= 1
     case closingChar:
@@ -226,21 +225,26 @@ func FindNextSemicolonIndex(source string) int {
 }
 
 func FindNextIndexOfChar(source string, target rune) (int, error) {
+  ind, err := FindNextIndexOfCharWithSkip(source, target, `"'({`)
+  if err != nil {
+    panic(err)
+  }
+  return ind, nil
+}
+
+func FindNextIndexOfCharWithSkip(source string, target rune, skiplist string) (int, error) {
   ci := 0
   for ; ci < len(source); ci++ {
     char := source[ci]
-    switch char {
-    case '\\':
+    if char == '\\' { // Skip escaped characters
       ci += 1
-    case '{':
+    } else if char == '{' && strings.ContainsRune(skiplist, '{') { // Enable skipping brackets only if enabled
       ci = IndexOfMatchingBrace(source, ci)
-    case '"':
-      ci = strings.IndexRune(source[ci + 1:], '"') + ci + 1
-    case '\'':
-      ci = strings.IndexRune(source[ci + 1:], '\'') + ci + 1
-    case '(':
-      ci = strings.IndexRune(source[ci + 1:], ')') + ci + 1
-    case byte(target):
+    } else if char == '(' && strings.ContainsRune(skiplist, '(') {
+      ci = IndexOfMatchingParenths(source, ci)
+    } else if strings.ContainsAny(string(char), skiplist) { // Just find the matching one for all of these
+      ci = strings.IndexRune(source[ci + 1:], rune(char)) + ci + 1
+    } else if char == byte(target) {
       return ci, nil
     }
   }
@@ -271,18 +275,23 @@ func TrimAll(raw []string, pattern string) []string {
 func RemoveComments(source string) string {
   modified := source
 
-  ind := 0
-  for ; ind != -1; {
-    ind, _ = FindNextIndexOfChar(modified, '/')
+  var visitedIndexes []int
+
+  for {
+    ind, _ := FindNextIndexOfCharWithSkip(modified, '/', `"'`)
+    if ContainsInt(ind, visitedIndexes) { // First time it comes back around, it exits
+      break
+    }
+    visitedIndexes = append(visitedIndexes, ind)
+
     switch modified[ind + 1] {
-    case '*': // Block-level comments
-      closingIndex := strings.Index(modified[ind + 2:], "*/") + ind + 2
-      fmt.Println(modified[:ind] + modified[closingIndex + 2:])
-      modified = modified[:ind] + modified[closingIndex + 2:]
-    case '/': // Inline commends
+    case '/': // Inline comment
+      visitedIndexes = append(visitedIndexes, ind + 1) // Because this character is a slash also
       closingIndex := strings.IndexRune(modified[ind:], '\n') + ind
-      fmt.Println(modified[:ind] + modified[closingIndex + 1:])
       modified = modified[:ind] + modified[closingIndex + 1:]
+    case '*': // Block-level comment
+      closingIndex := strings.Index(modified[ind + 2:], "*/") + ind + 2
+      modified = modified[:ind] + modified[closingIndex + 3:]
     }
   }
 
@@ -317,7 +326,7 @@ func discardBlankStrings(arr []string) []string {
   result := []string{}
 
   for _, item := range arr {
-    if item != "" {
+    if strings.Trim(item, "\n") != "" {
       result = append(result, item)
     }
   }
@@ -339,6 +348,15 @@ func IndexOfNextNonBlankChar(source string) int {
 }
 
 func Contains(str string, searchFields []string) bool {
+  for _, field := range searchFields {
+    if field == str {
+      return true
+    }
+  }
+  return false
+}
+
+func ContainsInt(str int, searchFields []int) bool {
   for _, field := range searchFields {
     if field == str {
       return true

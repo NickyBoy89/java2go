@@ -6,10 +6,6 @@ import (
 )
 
 func ParseInterface(sourceString string) ParsedInterface {
-  sourceString = RemoveComments(sourceString)
-  sourceString = RemoveImports(sourceString)
-  sourceString = RemovePackage(sourceString)
-
   sourceString = strings.ReplaceAll(sourceString, "\t", "")
   sourceString = strings.ReplaceAll(sourceString, "\r", "")
 
@@ -36,74 +32,53 @@ func ParseInterface(sourceString string) ParsedInterface {
   for ; ci < len(classBody); ci++ {
     char := classBody[ci]
     if char == '@' { // Detected an annotation
-      // fmt.Println("Annotation")
-      var newlineIndex, spaceIndex int
-      if strings.ContainsRune(classBody[ci:], '\n') {
-        newlineIndex = strings.IndexRune(classBody[ci:], '\n') + ci
+      newlineIndex, err := FindNextIndexOfChar(classBody[ci:], '\n')
+      if err != nil {
+        panic(err)
       }
-      if strings.ContainsRune(classBody[ci:], ' ') {
-        spaceIndex = strings.IndexRune(classBody[ci:], ' ') + ci
-      }
-      if newlineIndex < spaceIndex && newlineIndex != 0 {
-        if currentAnnotation != "" { // Stacked annotaions
-          currentAnnotation += "\n" + classBody[ci:newlineIndex]
-        } else {
-          currentAnnotation = classBody[ci:newlineIndex]
-        }
-        ci = newlineIndex
-        lastInterest = ci
+
+      if currentAnnotation == "" { // No annotation already there
+        currentAnnotation = classBody[ci:newlineIndex + ci]
       } else {
-        if currentAnnotation != "" {
-          currentAnnotation += "\n" + classBody[ci:spaceIndex]
-        } else {
-          currentAnnotation = classBody[ci:spaceIndex]
-        }
-        ci = spaceIndex
-        lastInterest = ci
+        currentAnnotation += "\n" + classBody[ci:newlineIndex + ci]
       }
+      ci += newlineIndex + 1
+      lastInterest = ci
     } else if char == ';' || char == '=' { // Semicolon and equal detect class variables
-      // fmt.Println("Found semicolon or equals")
       semicolonIndex := FindNextSemicolonIndex(classBody[ci:]) + ci
       result.StaticFields = append(result.StaticFields, ParseClassVariable(strings.Trim(classBody[lastInterest + 1:semicolonIndex], " \n"), currentAnnotation))
       ci = semicolonIndex
       currentAnnotation = ""
-      lastInterest = ci
+      lastInterest = ci + 1
     } else if char == '{' {
-      // fmt.Println("Found brace")
+      closingBrace := IndexOfMatchingBrace(classBody, ci)
       if strings.Contains(classBody[lastInterest:ci], "class") { // Nested class
         result.NestedClasses = append(result.NestedClasses, ParseClass(strings.Trim(classBody[lastInterest + 1:IndexOfMatchingBrace(classBody, ci) + 1], " \n")))
-        ci = IndexOfMatchingBrace(classBody, ci)
-        lastInterest = ci
       } else if strings.Contains(classBody[lastInterest:ci], "interface") { // Nested interface
         result.NestedClasses = append(result.NestedClasses, ParseInterface(strings.Trim(classBody[lastInterest + 1:IndexOfMatchingBrace(classBody, ci) + 1], " \n")))
-        ci = IndexOfMatchingBrace(classBody, ci)
-        lastInterest = ci
       } else if strings.Contains(classBody[lastInterest:ci], "enum") { // Nested enum
         result.NestedClasses = append(result.NestedClasses, ParseEnum(strings.Trim(classBody[lastInterest + 1:IndexOfMatchingBrace(classBody, ci) + 1], " \n")))
-        ci = IndexOfMatchingBrace(classBody, ci)
-        lastInterest = ci
       }
+      ci = closingBrace
+      lastInterest = ci + 1
     } else if char == '(' {
-      // fmt.Println("Found parenths")
-      firstWordIndex := IndexOfNextNonBlankChar(classBody[lastInterest:]) + lastInterest
-      if classBody[firstWordIndex:strings.IndexRune(classBody[firstWordIndex:], ' ') + firstWordIndex] == "default" {
-        // fmt.Println("Found block-level default method in interface")
+      methodWords := discardBlankStrings(strings.Split(classBody[lastInterest:ci], " "))
+      switch methodWords[0] {
+      case "default":
         openingBracket := strings.IndexRune(classBody[lastInterest:], '{') + lastInterest
         closingBracket := IndexOfMatchingBrace(classBody, openingBracket)
         result.Methods = append(result.Methods, ParseMethod(strings.Trim(classBody[lastInterest + 1:closingBracket + 1], " \n"), currentAnnotation))
         ci = closingBracket + 1
-      } else if classBody[firstWordIndex:strings.IndexRune(classBody[firstWordIndex:], ' ') + firstWordIndex] == "static" {
+      case "static":
         openingBracket := strings.IndexRune(classBody[lastInterest:], '{') + lastInterest
         closingBracket := IndexOfMatchingBrace(classBody, openingBracket)
         result.Methods = append(result.Methods, ParseMethod(strings.Trim(classBody[lastInterest + 1:closingBracket + 1], " \n"), currentAnnotation))
         ci = closingBracket + 1
-      } else {
-        // fmt.Println("Found inline block-level default method in interface")
+      default:
         closingSemicolon := FindNextSemicolonIndex(classBody[ci:]) + ci
         result.Methods = append(result.Methods, ParseMethod(strings.Trim(classBody[lastInterest + 1:closingSemicolon], " \n"), currentAnnotation))
         ci = closingSemicolon + 1
       }
-      // fmt.Printf("Found default method in interface: %v\n", classBody[lastInterest:ci + 1])
       lastInterest = ci
       currentAnnotation = ""
     }

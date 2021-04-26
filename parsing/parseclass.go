@@ -6,10 +6,6 @@ import (
 )
 
 func ParseClass(sourceString string) ParsedClass {
-  sourceString = RemoveComments(sourceString)
-  sourceString = RemoveImports(sourceString)
-  sourceString = RemovePackage(sourceString)
-
   sourceString = strings.ReplaceAll(sourceString, "\t", "")
   sourceString = strings.ReplaceAll(sourceString, "\r", "")
 

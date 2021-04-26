@@ -8,6 +8,18 @@ import (
   "github.com/sergi/go-diff/diffmatchpatch"
 )
 
+func TestParseParenthesies(t *testing.T) {
+	testString := `"this is a quote:\"yes\" but should not be escaped, neither should something like \'this\' either"`
+	ind, err := FindNextIndexOfCharWithSkip(testString[1:], '"', ``)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if testString[:ind + 2] != testString {
+		t.Errorf("Parsed string: %v and original: %v do not match", testString[:ind + 1], testString)
+	}
+}
+
 func TestBasicClass(t *testing.T) {
   testFile, err := ioutil.ReadFile("../testfiles/Test.java")
   if err != nil {
@@ -44,7 +56,7 @@ func TestBasicClass(t *testing.T) {
     t.Fatalf("Failed to parse result with err: %v", err)
   }
 
-  parsedResult, err := json.MarshalIndent(ParseClass(string(testFile)), "", "  ")
+  parsedResult, err := json.MarshalIndent(ParseFile(string(testFile)), "", "  ")
   if err != nil {
     t.Fatalf("Failed to parse result with err: %v", err)
   }
@@ -102,7 +114,7 @@ func TestSimpleParse(t *testing.T) {
     t.Fatalf("Failed to parse result with err: %v", err)
   }
 
-  parsedResult, err := json.MarshalIndent(ParseClass(string(testFile)), "", "  ")
+  parsedResult, err := json.MarshalIndent(ParseFile(string(testFile)), "", "  ")
   if err != nil {
     t.Fatalf("Failed to parse result with err: %v", err)
   }
@@ -312,7 +324,7 @@ func TestParseLinkedList(t *testing.T) {
     t.Fatalf("Failed to parse result with err: %v", err)
   }
 
-  parsedResult, err := json.MarshalIndent(ParseClass(string(testFile)), "", "  ")
+  parsedResult, err := json.MarshalIndent(ParseFile(string(testFile)), "", "  ")
   if err != nil {
     t.Fatalf("Failed to parse result with err: %v", err)
   }
@@ -437,7 +449,7 @@ func TestSimpleAnnotation(t *testing.T) {
     t.Fatalf("Failed to parse result with err: %v", err)
   }
 
-  parsedResult, err := json.MarshalIndent(ParseClass(string(testFile)), "", "  ")
+  parsedResult, err := json.MarshalIndent(ParseFile(string(testFile)), "", "  ")
   if err != nil {
     t.Fatalf("Failed to parse result with err: %v", err)
   }
@@ -512,7 +524,7 @@ System.out.println(j);
     t.Fatalf("Failed to parse result with err: %v", err)
   }
 
-  parsedResult, err := json.MarshalIndent(ParseClass(string(testFile)), "", "  ")
+  parsedResult, err := json.MarshalIndent(ParseFile(string(testFile)), "", "  ")
   if err != nil {
     t.Fatalf("Failed to parse result with err: %v", err)
   }
@@ -612,7 +624,7 @@ func TestExtendsAndImplements(t *testing.T) {
     t.Fatalf("Failed to parse result with err: %v", err)
   }
 
-  parsedResult, err := json.MarshalIndent(ParseClass(string(testFile)), "", "  ")
+  parsedResult, err := json.MarshalIndent(ParseFile(string(testFile)), "", "  ")
   if err != nil {
     t.Fatalf("Failed to parse result with err: %v", err)
   }
