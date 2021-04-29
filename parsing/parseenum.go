@@ -20,7 +20,7 @@ func ParseEnum(sourceString string) ParsedEnum {
 
   bodyDivider := strings.IndexRune(sourceString, '{')
 
-  words := discardBlankStrings(strings.Split(sourceString[:bodyDivider], " "))
+  words := DiscardBlankStrings(strings.Split(sourceString[:bodyDivider], " "))
 
   result.Implements = []string{}
 

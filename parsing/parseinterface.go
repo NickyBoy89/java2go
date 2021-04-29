@@ -15,7 +15,7 @@ func ParseInterface(sourceString string) ParsedInterface {
 
   bodyDivider := strings.IndexRune(sourceString, '{')
 
-  words := discardBlankStrings(strings.Split(sourceString[:bodyDivider], " "))
+  words := DiscardBlankStrings(strings.Split(sourceString[:bodyDivider], " "))
 
   result.Name = words[len(words) - 1]
   result.Modifiers = words[:len(words) - 2]
@@ -62,7 +62,7 @@ func ParseInterface(sourceString string) ParsedInterface {
       ci = closingBrace
       lastInterest = ci + 1
     } else if char == '(' {
-      methodWords := discardBlankStrings(strings.Split(classBody[lastInterest:ci], " "))
+      methodWords := DiscardBlankStrings(strings.Split(classBody[lastInterest:ci], " "))
       switch methodWords[0] {
       case "default":
         openingBracket := strings.IndexRune(classBody[lastInterest:], '{') + lastInterest

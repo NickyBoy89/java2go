@@ -32,7 +32,7 @@ func ParseFile(sourceString string) ParsedClasses {
 func ParseMethod(source, annotation string) ParsedMethod {
   indexOfDelimiter := strings.IndexRune(source, '(')
 
-  words := discardBlankStrings(strings.Split(source[:indexOfDelimiter], " "))
+  words := DiscardBlankStrings(strings.Split(source[:indexOfDelimiter], " "))
 
   // Tests for a constructor by the presence of a modifier word where the
   // return type should be, or just the absence of a return type
@@ -113,6 +113,14 @@ func IndexOfMatchingParenths(searchString string, openingBraceIndex int) int {
   return index
 }
 
+func IndexOfMatchingAngles(searchString string, openingBraceIndex int) int {
+  index, err := IndexOfMatchingChar(searchString, openingBraceIndex, '<', '>')
+  if err != nil {
+    panic(err)
+  }
+  return index
+}
+
 func IndexOfMatchingChar(searchString string, openingIndex int, openingChar, closingChar rune) (int, error) {
   if searchString[openingIndex] != byte(openingChar) {
     return 0, fmt.Errorf("Invalid starting character: %v", searchString[openingIndex])
@@ -158,8 +166,8 @@ func IndexOfMatchingChar(searchString string, openingIndex int, openingChar, clo
 
 func ParseClassVariable(source, annotation string) ParsedVariable {
   if strings.ContainsRune(source, '=') {
-    sides := discardBlankStrings(TrimAll(strings.Split(source, "="), " \n;"))
-    words := discardBlankStrings(strings.Split(sides[0], " "))
+    sides := DiscardBlankStrings(TrimAll(strings.Split(source, "="), " \n;"))
+    words := DiscardBlankStrings(strings.Split(sides[0], " "))
     return ParsedVariable{
       Name: words[len(words) - 1],
       DataType: words[len(words) - 2],
@@ -170,12 +178,12 @@ func ParseClassVariable(source, annotation string) ParsedVariable {
   }
 
 
-  words := discardBlankStrings(strings.Split(source, " "))
+  words := DiscardBlankStrings(strings.Split(source, " "))
   return ParsedVariable{
     Name: words[len(words) - 1],
     DataType: words[len(words) - 2],
     Annotation: annotation,
-    Modifiers: discardBlankStrings(TrimAll(words[:len(words) - 2], " \n;")),
+    Modifiers: DiscardBlankStrings(TrimAll(words[:len(words) - 2], " \n;")),
     InitialValue: "",
   }
 }
@@ -189,7 +197,7 @@ func ParseParameters(source string) []ParsedVariable {
 
   params := strings.Split(source, ",")
   for _, param := range params {
-    paramParts := discardBlankStrings(strings.Split(param, " "))
+    paramParts := DiscardBlankStrings(strings.Split(param, " "))
     if paramParts[0][0] == '@' { // First letter of first word is an annotation
       parsedParameters = append(parsedParameters,
         ParsedVariable{
@@ -242,6 +250,8 @@ func FindNextIndexOfCharWithSkip(source string, target rune, skiplist string) (i
       ci = IndexOfMatchingBrace(source, ci)
     } else if char == '(' && strings.ContainsRune(skiplist, '(') {
       ci = IndexOfMatchingParenths(source, ci)
+    } else if char == '<' && strings.ContainsRune(skiplist, '<') {
+      ci = IndexOfMatchingAngles(source, ci)
     } else if strings.ContainsAny(string(char), skiplist) { // Just find the matching one for all of these
       ci = strings.IndexRune(source[ci + 1:], rune(char)) + ci + 1
     } else if char == byte(target) {
@@ -251,11 +261,28 @@ func FindNextIndexOfCharWithSkip(source string, target rune, skiplist string) (i
   return -1, fmt.Errorf("Could not find the character: %v", string(target))
 }
 
+func CountRuneWithSkip(source string, target rune, skiplist string) int {
+  var total int
+  modified := source
+
+  nextInd, _ := FindNextIndexOfCharWithSkip(modified, target, skiplist)
+  if nextInd != -1 {
+    modified = modified[nextInd + 1:]
+  }
+  for ; nextInd != -1; {
+    nextInd, _ = FindNextIndexOfCharWithSkip(modified, target, skiplist)
+    total += 1
+    modified = modified[nextInd + 1:]
+  }
+
+  return total
+}
+
 func RemoveIndentation(input string) string {
   var body string
 
   lines := strings.Split(input, "\n")
-  for _, line := range discardBlankStrings(lines) {
+  for _, line := range DiscardBlankStrings(lines) {
     body += strings.Trim(line, " ")
   }
 
@@ -322,7 +349,7 @@ func RemovePackage(source string) string {
   return modified
 }
 
-func discardBlankStrings(arr []string) []string {
+func DiscardBlankStrings(arr []string) []string {
   result := []string{}
 
   for _, item := range arr {

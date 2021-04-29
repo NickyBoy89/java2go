@@ -52,27 +52,6 @@ func ParseEnum(sourceEnum parsing.ParsedEnum, newEnum bool) string {
 	return ""
 }
 
-// Parses the blocked content of the data
-func ParseContent(content string) string {
-	contentWords := strings.Split()
-	var parsed string
-
-	fmt.Println(strings.Split(content, " "))
-
-	lastInterest := 0
-	ci := 0
-	for ; ci < len(content); ci++ {
-		c := content[ci]
-		switch c {
-		case ';':
-			parsed += strings.Repeat(" ", indentNum) + content[lastInterest:ci] + "\n"
-			lastInterest = ci + 1 // Skip the semicolon
-		}
-	}
-
-	return parsed
-}
-
 func CreateStruct(name string, fields []parsing.ParsedVariable) string {
 	result := fmt.Sprintf("type %s struct {", name)
 	for _, field := range fields { // Struct fields
