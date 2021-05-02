@@ -18,6 +18,20 @@ func TestParseVariable(t *testing.T) {
 	}
 }
 
+func TestParseVariableAlreadyCreated(t *testing.T) {
+	testVar := "value = 1;"
+	testResult := "value = 1"
+	testVar2 := "value=1;" // Just without spacing
+
+	if ParseContent(testVar) != testResult {
+		t.Errorf("Original: [%s] and parsed: [%s] were not the same", testResult, ParseContent(testVar))
+	}
+
+	if ParseContent(testVar2) != testResult {
+		t.Errorf("Original: [%s] and parsed: [%s] were not the same", testResult, ParseContent(testVar2))
+	}
+}
+
 func TestParseVarWithFunction(t *testing.T) {
 	testVar := "Node curNode = GetNode();"
 	testResult := "curNode := GetNode()"
@@ -35,7 +49,6 @@ func TestParseFunctionFromDifferentPackage(t *testing.T) {
 		t.Errorf("Original: [%s] and parsed: [%s] were not the same", testResult, ParseContent(testVar))
 	}
 }
-
 
 func TestParseGenericType(t *testing.T) {
 	testVar := "ArrayList<String> wordCounts = new ArrayList<String>();"

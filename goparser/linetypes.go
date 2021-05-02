@@ -1,24 +1,24 @@
 package goparser
 
 type LineTyper interface {
-  GetName() string
+	Name() string
 }
 
 type LineType struct {
-  Name string
-  Words []string
+	name  string
+	Words map[string]interface{}
 }
 
-func (t LineType) GetName() string {
-  return t.Name
+func (t LineType) Name() string {
+	return t.name
 }
 
 type LineBlock struct {
-  Name string
-  Words []string
-  Lines []LineTyper
+	name  string
+	Words []string
+	Lines []LineTyper
 }
 
-func (b LineBlock) GetName() string {
-  return b.Name
+func (b LineBlock) Name() string {
+	return b.name
 }
