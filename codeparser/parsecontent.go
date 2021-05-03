@@ -1,8 +1,7 @@
-package goparser
+package codeparser
 
 import (
-	"encoding/json"
-	"fmt"
+	// "fmt"
 	"strings"
 
 	"gitlab.nicholasnovak.io/snapdragon/java2go/parsing"
@@ -10,8 +9,8 @@ import (
 
 // Expressions evaluate to a value, statements do not
 
-func ParseContent(sourceData string) string {
-	var content string
+func ParseContent(sourceData string) []LineTyper {
+	contentLines := []LineTyper{}
 
 	lastLine := 0
 
@@ -19,37 +18,33 @@ func ParseContent(sourceData string) string {
 	for ; ci < len(sourceData); ci++ {
 		switch rune(sourceData[ci]) {
 		case ';': // An expression
-			parsedLine, err := json.MarshalIndent(ParseLine(sourceData[lastLine:ci]), "", "  ")
-			if err != nil {
-				panic(err)
-			}
-			content += string(parsedLine)
+			contentLines = append(contentLines, ParseLine(sourceData[lastLine:ci]))
 		case '(':
 			panic("Parenthesies not implemented")
 		}
 	}
-	return content
+	return contentLines
 }
 
-func ParseLine(sourceString string) LineTyper {
+func ParseLine(sourceString string) LineType {
 	if equalsIndex := strings.IndexRune(sourceString, '='); equalsIndex != -1 {
-		fmt.Println(parsing.CountRuneWithSkip(strings.Trim(sourceString[:equalsIndex], " \n"), ' ', "<"))
 		switch parsing.CountRuneWithSkip(strings.Trim(sourceString[:equalsIndex], " \n"), ' ', "<") {
 		case 0:
 			return LineType{
 				name: "AssignVariable",
 				Words: map[string]interface{}{
 					"VariableName": strings.Trim(sourceString[:equalsIndex], " \n"),
-					"Expression":   ParseExpression(strings.Trim(sourceString[equalsIndex+1:], " \n")),
+					"Expression": ParseExpression(strings.Trim(sourceString[equalsIndex+1:], " \n")),
 				},
 			}
 		case 1:
+			spaceIndex, _ := parsing.FindNextIndexOfCharWithSkip(sourceString, ' ', "<") // Skips generic types
 			return LineType{
 				name: "CreateAndAssignVariable",
 				Words: map[string]interface{}{
-					"VariableName": nil,
-					"VariableType": nil,
-					"Expression":   ParseExpression(),
+					"VariableName": strings.Trim(sourceString[spaceIndex + 1:equalsIndex], " \n"),
+					"VariableType": strings.Trim(sourceString[:spaceIndex], " \n"),
+					"Expression": ParseExpression(strings.Trim(sourceString[equalsIndex + 1:], " \n")),
 				},
 			}
 
@@ -58,6 +53,7 @@ func ParseLine(sourceString string) LineTyper {
 	return LineType{}
 }
 
+// Assumes that the input has already been stripped
 func ParseExpression(source string) []LineType {
 	words := []LineType{}
 
@@ -73,10 +69,28 @@ func ParseExpression(source string) []LineType {
 					"Expression": source[lastWord:ci],
 				},
 			})
+			lastWord = ci + 1
 		case '.':
-			panic("Non-package things not implemented")
+			words = append(words, LineType{
+				name: "RemoteVariableOrExpression",
+				Words: map[string]interface{}{
+					"RemotePackage": source[lastWord:ci],
+					"Expression": source[ci + 1:strings.IndexRune(source[ci:], ' ') + ci],
+				},
+			})
 		case '(':
 			panic("Parenthesies in expression not implemented")
+		}
+	}
+
+	if len(words) == 0 {
+		return []LineType{
+			LineType{
+				name: "LocalVariableOrExpression",
+				Words: map[string]interface{}{
+					"Expression": strings.Trim(source, " \n"),
+				},
+			},
 		}
 	}
 

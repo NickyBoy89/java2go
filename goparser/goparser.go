@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"gitlab.nicholasnovak.io/snapdragon/java2go/parsing"
+	"gitlab.nicholasnovak.io/snapdragon/java2go/codeparser"
 )
 
 const indentNum = 2
@@ -122,9 +123,9 @@ func CreateMethod(className string, methodSource parsing.ParsedMethod) string {
 	}
 
 	if methodSource.ReturnType == "constructor" {
-		result += fmt.Sprintf(") *%s {\n%sresult := new(%s)\n%s\n%sreturn result\n}", className, strings.Repeat(" ", indentNum), className, ParseContent(methodSource.Body), strings.Repeat(" ", indentNum))
+		result += fmt.Sprintf(") *%s {\n%sresult := new(%s)\n%s\n%sreturn result\n}", className, strings.Repeat(" ", indentNum), className, codeparser.ParseContent(methodSource.Body), strings.Repeat(" ", indentNum))
 		return result
 	}
-	result += fmt.Sprintf(") %v {\n%s\n}", ReplaceWord(methodSource.ReturnType), ParseContent(methodSource.Body))
+	result += fmt.Sprintf(") %v {\n%s\n}", ReplaceWord(methodSource.ReturnType), codeparser.ParseContent(methodSource.Body))
 	return result
 }

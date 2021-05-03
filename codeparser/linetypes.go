@@ -1,4 +1,4 @@
-package goparser
+package codeparser
 
 type LineTyper interface {
 	Name() string

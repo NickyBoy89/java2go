@@ -2,6 +2,9 @@ package goparser
 
 import (
 	"testing"
+	"encoding/json"
+
+	"gitlab.nicholasnovak.io/snapdragon/java2go/codeparser"
 )
 
 func TestParseVariable(t *testing.T) {
@@ -9,13 +12,7 @@ func TestParseVariable(t *testing.T) {
 	testResult := "value := 1"
 	testVar2 := "int value=1;" // Just without spacing
 
-	if ParseContent(testVar) != testResult {
-		t.Errorf("Original: [%s] and parsed: [%s] were not the same", testResult, ParseContent(testVar))
-	}
-
-	if ParseContent(testVar2) != testResult {
-		t.Errorf("Original: [%s] and parsed: [%s] were not the same", testResult, ParseContent(testVar2))
-	}
+	DoubleTestTemplate(testVar, testVar2, testResult, t)
 }
 
 func TestParseVariableAlreadyCreated(t *testing.T) {
@@ -23,40 +20,28 @@ func TestParseVariableAlreadyCreated(t *testing.T) {
 	testResult := "value = 1"
 	testVar2 := "value=1;" // Just without spacing
 
-	if ParseContent(testVar) != testResult {
-		t.Errorf("Original: [%s] and parsed: [%s] were not the same", testResult, ParseContent(testVar))
-	}
-
-	if ParseContent(testVar2) != testResult {
-		t.Errorf("Original: [%s] and parsed: [%s] were not the same", testResult, ParseContent(testVar2))
-	}
+	DoubleTestTemplate(testVar, testVar2, testResult, t)
 }
 
 func TestParseVarWithFunction(t *testing.T) {
 	testVar := "Node curNode = GetNode();"
 	testResult := "curNode := GetNode()"
 
-	if ParseContent(testVar) != testResult {
-		t.Errorf("Original: [%s] and parsed: [%s] were not the same", testResult, ParseContent(testVar))
-	}
+	SingleTestTemplate(testVar, testResult, t)
 }
 
 func TestParseFunctionFromDifferentPackage(t *testing.T) {
 	testVar := "int pi = Math.GetPi();"
 	testResult := "pi := Math.GetPi()"
 
-	if ParseContent(testVar) != testResult {
-		t.Errorf("Original: [%s] and parsed: [%s] were not the same", testResult, ParseContent(testVar))
-	}
+	SingleTestTemplate(testVar, testResult, t)
 }
 
 func TestParseGenericType(t *testing.T) {
 	testVar := "ArrayList<String> wordCounts = new ArrayList<String>();"
 	testResult := "word := make([]string)"
 
-	if ParseContent(testVar) != testResult {
-		t.Errorf("Original: [%s] and parsed: [%s] were not the same", testResult, ParseContent(testVar))
-	}
+	SingleTestTemplate(testVar, testResult, t)
 }
 
 func TestParseForLoop(t *testing.T) {
@@ -71,11 +56,35 @@ System.out.println(i);
 fmt.Println(i)
 }`
 
-	if ParseContent(testVar) != testResult {
-		t.Errorf("Original: [%s] and parsed: [%s] were not the same", testResult, ParseContent(testVar))
+	DoubleTestTemplate(testVar, testVar2, testResult, t)
+}
+
+func SingleTestTemplate(testVar, testResult string, ts *testing.T) {
+	parsed, err := json.MarshalIndent(codeparser.ParseContent(testVar), "", "  ")
+	if err != nil {
+		ts.Fatal(err)
 	}
 
-	if ParseContent(testVar2) != testResult {
-		t.Errorf("Original: [%s] and parsed: [%s] were not the same", testResult, ParseContent(testVar2))
+	if string(parsed) != testResult {
+		ts.Errorf("Original: [%s] and parsed: [%s] were not the same", testResult, string(parsed))
+	}
+}
+
+func DoubleTestTemplate(testVar, testVar2, testResult string, ts *testing.T) {
+	parsed, err := json.MarshalIndent(codeparser.ParseContent(testVar), "", "  ")
+	if err != nil {
+		ts.Fatal(err)
+	}
+	parsed2, err := json.MarshalIndent(codeparser.ParseContent(testVar2), "", "  ")
+	if err != nil {
+		ts.Fatal(err)
+	}
+
+	if string(parsed) != testResult {
+		ts.Errorf("Original: [%s] and parsed: [%s] were not the same", testResult, string(parsed))
+	}
+
+	if string(parsed2) != testResult {
+		ts.Errorf("Original: [%s] and parsed: [%s] were not the same", testResult, string(parsed2))
 	}
 }
