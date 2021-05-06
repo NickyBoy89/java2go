@@ -79,6 +79,21 @@ func ParseExpression(source string) []LineType {
 				},
 			})
 		case '(':
+			functionName := strings.Trim(source[lastWord:ci], " \n") // The word in front of the parenths
+			switch functionName {
+			case "for": // A for loop
+				words = append(words, LineType{
+					name: "ForLoop",
+					Words: map[string]interface{}{
+						"Initializer": "",
+						"Condition": "",
+						"Incrementer": "",
+						"Contents": ParseContent(""),
+					}
+				})
+			default:
+
+			}
 			panic("Parenthesies in expression not implemented")
 		}
 	}
