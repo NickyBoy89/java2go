@@ -6,13 +6,14 @@ import (
   "encoding/json"
 
   "github.com/sergi/go-diff/diffmatchpatch"
+  "gitlab.nicholasnovak.io/snapdragon/java2go/codeparser"
 )
 
 func TestParseParenthesies(t *testing.T) {
 	testString := `"this is a quote:\"yes\" but should not be escaped, neither should something like \'this\' either"`
-	ind, err := FindNextIndexOfCharWithSkip(testString[1:], '"', ``)
-	if err != nil {
-		t.Fatal(err)
+	ind := FindNextIndexOfCharWithSkip(testString[1:], '"', ``)
+	if ind == -1 {
+		t.Fatal("No character found")
 	}
 
 	if testString[:ind + 2] != testString {

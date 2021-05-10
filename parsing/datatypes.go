@@ -2,6 +2,8 @@ package parsing
 
 import (
   "fmt"
+
+  "gitlab.nicholasnovak.io/snapdragon/java2go/codeparser"
 )
 
 type ParsedClasses interface {
@@ -83,5 +85,5 @@ type ParsedMethod struct {
   Annotation string
   Parameters []ParsedVariable
   ReturnType string
-  Body string
+  Body []codeparser.LineTyper
 }

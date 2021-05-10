@@ -1,24 +1,24 @@
 package codeparser
 
 type LineTyper interface {
-	Name() string
+	GetName() string
 }
 
 type LineType struct {
-	name  string
+	Name  string
 	Words map[string]interface{}
 }
 
-func (t LineType) Name() string {
-	return t.name
+func (t LineType) GetName() string {
+	return t.Name
 }
 
 type LineBlock struct {
-	name  string
-	Words []string
+	Name  string
+	Words map[string]interface{}
 	Lines []LineTyper
 }
 
-func (b LineBlock) Name() string {
-	return b.name
+func (b LineBlock) GetName() string {
+	return b.Name
 }

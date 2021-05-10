@@ -23,16 +23,16 @@ func TestParseVariableAlreadyCreated(t *testing.T) {
 	DoubleTestTemplate(testVar, testVar2, testResult, t)
 }
 
-func TestParseVarWithFunction(t *testing.T) {
-	testVar := "Node curNode = GetNode();"
-	testResult := "curNode := GetNode()"
+func TestParseFunctionFromDifferentPackage(t *testing.T) {
+	testVar := "int pi = Math.GetPi();"
+	testResult := "pi := Math.GetPi()"
 
 	SingleTestTemplate(testVar, testResult, t)
 }
 
-func TestParseFunctionFromDifferentPackage(t *testing.T) {
-	testVar := "int pi = Math.GetPi();"
-	testResult := "pi := Math.GetPi()"
+func TestParseVarWithFunction(t *testing.T) {
+	testVar := "Node curNode = GetNode();"
+	testResult := "curNode := GetNode()"
 
 	SingleTestTemplate(testVar, testResult, t)
 }

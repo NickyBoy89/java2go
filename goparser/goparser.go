@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"gitlab.nicholasnovak.io/snapdragon/java2go/parsing"
+	"gitlab.nicholasnovak.io/snapdragon/java2go/parsetools"
 	"gitlab.nicholasnovak.io/snapdragon/java2go/codeparser"
 )
 
@@ -81,7 +82,7 @@ func ToPrivate(name string) string {
 }
 
 func IsPublic(modifiers []string) bool {
-	if parsing.Contains("public", modifiers) || parsing.Contains("protected", modifiers) {
+	if parsetools.Contains("public", modifiers) || parsetools.Contains("protected", modifiers) {
 		return true
 	}
 	return false

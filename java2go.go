@@ -8,21 +8,23 @@ import (
   "strings"
   "encoding/json"
   "flag"
-  "fmt"
+  // "fmt"
   "runtime/pprof"
 
   log "github.com/sirupsen/logrus"
 
   "gitlab.nicholasnovak.io/snapdragon/java2go/parsing"
-  "gitlab.nicholasnovak.io/snapdragon/java2go/goparser"
+  // "gitlab.nicholasnovak.io/snapdragon/java2go/goparser"
 )
 
 func main() {
   outputDir := flag.String("o", "", "Directory to put the parsed files into, defaults to the same directory that the files appear in")
   dryRun := flag.Bool("dry-run", false, "Don't create the parsed files (check if parsing succeeds)")
   verbose := flag.Bool("v", false, "Additional debug info")
+  // Cpu profiling
   cpuprofile := flag.String("cpuprofile", "", "write cpu profile to file")
-  parseJson := flag.String("json", "", "File to parse json from")
+  // Testing options
+  // parseJson := flag.String("json", "", "File to parse json from")
 
   flag.Parse()
 
@@ -34,15 +36,15 @@ func main() {
     pprof.StartCPUProfile(f)
     defer pprof.StopCPUProfile()
   }
-  
-  if *parseJson != "" {
-    jsonFile, err := ioutil.ReadFile(*parseJson)
-    if err != nil {
-      log.Fatal(err)
-    }
-    fmt.Println(goparser.ParseFile(parsing.ParseFile(string(jsonFile)), true))
-    os.Exit(0)
-  }
+
+  // if *parseJson != "" {
+  //   jsonFile, err := ioutil.ReadFile(*parseJson)
+  //   if err != nil {
+  //     log.Fatal(err)
+  //   }
+  //   fmt.Println(goparser.ParseFile(parsing.ParseFile(string(jsonFile)), true))
+  //   os.Exit(0)
+  // }
 
   if len(flag.Args()) == 0 {
     log.Fatal("No files specified to convert")

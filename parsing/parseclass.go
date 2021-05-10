@@ -3,6 +3,8 @@ package parsing
 import (
   "strings"
   //"fmt"
+
+  "gitlab.nicholasnovak.io/snapdragon/java2go/parsetools"
 )
 
 func ParseClass(sourceString string) ParsedClass {
@@ -15,7 +17,7 @@ func ParseClass(sourceString string) ParsedClass {
 
   bodyDivider := strings.IndexRune(sourceString, '{')
 
-  words := DiscardBlankStrings(strings.Split(sourceString[:bodyDivider], " "))
+  words := parsetools.DiscardBlankStrings(strings.Split(sourceString[:bodyDivider], " "))
 
   result.Implements = []string{}
 
@@ -25,7 +27,7 @@ func ParseClass(sourceString string) ParsedClass {
       result.Extends = strings.Trim(words[wi + 1], ",")
       classWordRange = wi
     } else if testWord == "implements" {
-      result.Implements = append(result.Implements, TrimAll(words[wi + 1:], ",")...)
+      result.Implements = append(result.Implements, parsetools.TrimAll(words[wi + 1:], ",")...)
       if classWordRange >= len(words) { // No extends already cut out of the string
         classWordRange = wi
       }
@@ -40,7 +42,7 @@ func ParseClass(sourceString string) ParsedClass {
   result.NestedClasses = []ParsedClasses{}
   result.StaticBlocks = []string{}
 
-  classBody := sourceString[bodyDivider + 1:IndexOfMatchingBrace(sourceString, bodyDivider)]
+  classBody := sourceString[bodyDivider + 1:parsetools.IndexOfMatchingBrace(sourceString, bodyDivider)]
 
   var currentAnnotation string
 
@@ -73,27 +75,27 @@ func ParseClass(sourceString string) ParsedClass {
       }
       lastInterest = ci
     } else if char == ';' || char == '=' { // Semicolon and equal detect class variables
-      semicolonIndex := FindNextSemicolonIndex(classBody[ci:]) + ci
+      semicolonIndex := parsetools.FindNextSemicolonIndex(classBody[ci:]) + ci
       result.ClassVariables = append(result.ClassVariables, ParseClassVariable(strings.Trim(classBody[lastInterest + 1:semicolonIndex], " \n"), currentAnnotation))
       ci = semicolonIndex
       currentAnnotation = ""
       lastInterest = ci + 1
     } else if char == '{' {
       if strings.Trim(classBody[lastInterest:ci], " \n") == "static" { // Handle static block
-        result.StaticBlocks = append(result.StaticBlocks, strings.Trim(classBody[strings.IndexRune(classBody[lastInterest:], '{') + lastInterest + 1:IndexOfMatchingBrace(classBody, ci)], " \n"))
-        ci = IndexOfMatchingBrace(classBody, ci) + 1// Cut out the remaining brace
+        result.StaticBlocks = append(result.StaticBlocks, strings.Trim(classBody[strings.IndexRune(classBody[lastInterest:], '{') + lastInterest + 1:parsetools.IndexOfMatchingBrace(classBody, ci)], " \n"))
+        ci = parsetools.IndexOfMatchingBrace(classBody, ci) + 1// Cut out the remaining brace
         lastInterest = ci
       } else if strings.Contains(classBody[lastInterest:ci], "class") { // Nested class
-        result.NestedClasses = append(result.NestedClasses, ParseClass(strings.Trim(classBody[lastInterest + 1:IndexOfMatchingBrace(classBody, ci) + 1], " \n")))
-        ci = IndexOfMatchingBrace(classBody, ci)
+        result.NestedClasses = append(result.NestedClasses, ParseClass(strings.Trim(classBody[lastInterest + 1:parsetools.IndexOfMatchingBrace(classBody, ci) + 1], " \n")))
+        ci = parsetools.IndexOfMatchingBrace(classBody, ci)
         lastInterest = ci
       } else if strings.Contains(classBody[lastInterest:ci], "interface") { // Nested interface
-        result.NestedClasses = append(result.NestedClasses, ParseInterface(strings.Trim(classBody[lastInterest + 1:IndexOfMatchingBrace(classBody, ci) + 1], " \n")))
-        ci = IndexOfMatchingBrace(classBody, ci)
+        result.NestedClasses = append(result.NestedClasses, ParseInterface(strings.Trim(classBody[lastInterest + 1:parsetools.IndexOfMatchingBrace(classBody, ci) + 1], " \n")))
+        ci = parsetools.IndexOfMatchingBrace(classBody, ci)
         lastInterest = ci
       } else if strings.Contains(classBody[lastInterest:ci], "enum") { // Nested enum
-        result.NestedClasses = append(result.NestedClasses, ParseEnum(strings.Trim(classBody[lastInterest + 1:IndexOfMatchingBrace(classBody, ci) + 1], " \n")))
-        ci = IndexOfMatchingBrace(classBody, ci)
+        result.NestedClasses = append(result.NestedClasses, ParseEnum(strings.Trim(classBody[lastInterest + 1:parsetools.IndexOfMatchingBrace(classBody, ci) + 1], " \n")))
+        ci = parsetools.IndexOfMatchingBrace(classBody, ci)
         lastInterest = ci
       }
     } else if char == '(' {
@@ -101,8 +103,8 @@ func ParseClass(sourceString string) ParsedClass {
       startingBraceIndex := strings.IndexRune(classBody[closingParenthsIndex:], '{') + closingParenthsIndex
       if startingBraceIndex - closingParenthsIndex != -1 {
         // Block-level methods
-        result.Methods = append(result.Methods, ParseMethod(strings.Trim(classBody[lastInterest + 1:IndexOfMatchingBrace(classBody, startingBraceIndex)], " \n"), currentAnnotation))
-        ci = IndexOfMatchingBrace(classBody, startingBraceIndex) + 1
+        result.Methods = append(result.Methods, ParseMethod(strings.Trim(classBody[lastInterest + 1:parsetools.IndexOfMatchingBrace(classBody, startingBraceIndex)], " \n"), currentAnnotation))
+        ci = parsetools.IndexOfMatchingBrace(classBody, startingBraceIndex) + 1
       } else {
         // Inline methods (such as ones on interfaces)
         result.Methods = append(result.Methods, ParseMethod(strings.Trim(classBody[lastInterest + 1:closingParenthsIndex + 1], " \n"), currentAnnotation))
