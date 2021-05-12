@@ -8,13 +8,13 @@ import (
   "strings"
   "encoding/json"
   "flag"
-  // "fmt"
+  "fmt"
   "runtime/pprof"
 
   log "github.com/sirupsen/logrus"
 
   "gitlab.nicholasnovak.io/snapdragon/java2go/parsing"
-  // "gitlab.nicholasnovak.io/snapdragon/java2go/goparser"
+  "gitlab.nicholasnovak.io/snapdragon/java2go/goparser"
 )
 
 func main() {
@@ -24,7 +24,7 @@ func main() {
   // Cpu profiling
   cpuprofile := flag.String("cpuprofile", "", "write cpu profile to file")
   // Testing options
-  // parseJson := flag.String("json", "", "File to parse json from")
+  parseJson := flag.String("json", "", "File to parse json from")
 
   flag.Parse()
 
@@ -37,14 +37,14 @@ func main() {
     defer pprof.StopCPUProfile()
   }
 
-  // if *parseJson != "" {
-  //   jsonFile, err := ioutil.ReadFile(*parseJson)
-  //   if err != nil {
-  //     log.Fatal(err)
-  //   }
-  //   fmt.Println(goparser.ParseFile(parsing.ParseFile(string(jsonFile)), true))
-  //   os.Exit(0)
-  // }
+  if *parseJson != "" {
+    jsonFile, err := ioutil.ReadFile(*parseJson)
+    if err != nil {
+      log.Fatal(err)
+    }
+    fmt.Println(goparser.ParseFile(parsing.ParseFile(string(jsonFile)), true))
+    os.Exit(0)
+  }
 
   if len(flag.Args()) == 0 {
     log.Fatal("No files specified to convert")

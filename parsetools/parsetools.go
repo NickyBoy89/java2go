@@ -63,7 +63,7 @@ func FindNextSemicolonIndex(source string) int {
 func FindNextIndexOfChar(source string, target rune) int {
   ind := FindNextIndexOfCharWithSkip(source, target, `"'({`)
   if ind == -1 {
-    panic("No character found in string")
+    panic("No character [" + string(target) + "] found in string")
   }
   return ind
 }

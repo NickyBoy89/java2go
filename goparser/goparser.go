@@ -7,50 +7,24 @@ import (
 
 	"gitlab.nicholasnovak.io/snapdragon/java2go/parsing"
 	"gitlab.nicholasnovak.io/snapdragon/java2go/parsetools"
-	"gitlab.nicholasnovak.io/snapdragon/java2go/codeparser"
+	// "gitlab.nicholasnovak.io/snapdragon/java2go/codeparser"
 )
 
 const indentNum = 2
 
 func ParseFile(sourceFile parsing.ParsedClasses, newClass bool) string {
+	fmt.Println(sourceFile.GetType())
 	switch sourceFile.GetType() {
-	case "class":
-		return ParseClass(sourceFile.(parsing.ParsedClass), newClass)
-	case "interface":
-		return ParseInterface(sourceFile.(parsing.ParsedInterface), newClass)
-	case "enum":
-		return ParseEnum(sourceFile.(parsing.ParsedEnum), newClass)
+	case "class", "interface", "enum":
+
+		return ""
 	default:
-		panic("Incompatible object to parse, this should only happen for a custom object to parse")
+		panic("Unknown class type: " + sourceFile.GetType())
 	}
 }
 
-// Parses a class, if the newClass param is true, then a package declaration will be made as well
-func ParseClass(sourceClass parsing.ParsedClass, newClass bool) string {
-	var result string
-	if newClass {
-		result += "package main\n\n"
-	}
-
-	result += CreateStruct(sourceClass.Name, sourceClass.ClassVariables) + "\n"
-
-	for _, method := range sourceClass.Methods {
-		result += "\n" + CreateMethod(sourceClass.Name, method) + "\n"
-	}
-
-	// Nested classes
-	for _, nestedClass := range sourceClass.NestedClasses {
-		result += "\n" + ParseFile(nestedClass, false)
-	}
-
-	return result
-}
-
-func ParseInterface(sourceInterface parsing.ParsedInterface, newInterface bool) string {
-	return ""
-}
-
-func ParseEnum(sourceEnum parsing.ParsedEnum, newEnum bool) string {
+// Parse a given class
+func ParseClass(source parsing.ParsedClass) string {
 	return ""
 }
 
@@ -81,6 +55,7 @@ func ToPrivate(name string) string {
 	return string(unicode.ToLower(rune(name[0]))) + name[1:]
 }
 
+// Tests if an object is public, given its modifiers
 func IsPublic(modifiers []string) bool {
 	if parsetools.Contains("public", modifiers) || parsetools.Contains("protected", modifiers) {
 		return true
@@ -94,39 +69,39 @@ func AsShorthand(name string) string {
 
 // Creates a string representation of a method from the parsed method and the name of the class that it came from
 // For a static method (standalone class) pass in an empty class name
-func CreateMethod(className string, methodSource parsing.ParsedMethod) string {
-	var result string
-	if className == "" { // Class name is blank, the method is just a plain function
-		if IsPublic(methodSource.Modifiers) {
-			result += fmt.Sprintf("func %s(", ToPublic(methodSource.Name))
-		} else {
-			result += fmt.Sprintf("func %s(", ToPrivate(methodSource.Name))
-		}
-	} else if methodSource.ReturnType == "constructor" { // Constructor methods just get handled as generator functions
-		if IsPublic(methodSource.Modifiers) {
-			result += fmt.Sprintf("func New%s(", className) // If public, the constructor function is public as well
-		} else {
-			result += fmt.Sprintf("func new%s(", className) // Private constructor
-		}
-	} else {
-		if IsPublic(methodSource.Modifiers) {
-			result += fmt.Sprintf("func (%s %s) %s(", AsShorthand(className), className, ToPublic(methodSource.Name))
-		} else {
-			result += fmt.Sprintf("func (%s %s) %s(", AsShorthand(className), className, ToPrivate(methodSource.Name))
-		}
-	}
-
-	for pi, param := range methodSource.Parameters { // Parameters
-		result += param.Name + " " + JavaToGoArray(param.DataType)
-		if pi < len(methodSource.Parameters) - 1 {
-			result += ", "
-		}
-	}
-
-	if methodSource.ReturnType == "constructor" {
-		result += fmt.Sprintf(") *%s {\n%sresult := new(%s)\n%s\n%sreturn result\n}", className, strings.Repeat(" ", indentNum), className, codeparser.ParseContent(methodSource.Body), strings.Repeat(" ", indentNum))
-		return result
-	}
-	result += fmt.Sprintf(") %v {\n%s\n}", ReplaceWord(methodSource.ReturnType), codeparser.ParseContent(methodSource.Body))
-	return result
-}
+// func CreateMethod(className string, methodSource parsing.ParsedMethod) string {
+// 	var result string
+// 	if className == "" { // Class name is blank, the method is just a plain function
+// 		if IsPublic(methodSource.Modifiers) {
+// 			result += fmt.Sprintf("func %s(", ToPublic(methodSource.Name))
+// 		} else {
+// 			result += fmt.Sprintf("func %s(", ToPrivate(methodSource.Name))
+// 		}
+// 	} else if methodSource.ReturnType == "constructor" { // Constructor methods just get handled as generator functions
+// 		if IsPublic(methodSource.Modifiers) {
+// 			result += fmt.Sprintf("func New%s(", className) // If public, the constructor function is public as well
+// 		} else {
+// 			result += fmt.Sprintf("func new%s(", className) // Private constructor
+// 		}
+// 	} else {
+// 		if IsPublic(methodSource.Modifiers) {
+// 			result += fmt.Sprintf("func (%s %s) %s(", AsShorthand(className), className, ToPublic(methodSource.Name))
+// 		} else {
+// 			result += fmt.Sprintf("func (%s %s) %s(", AsShorthand(className), className, ToPrivate(methodSource.Name))
+// 		}
+// 	}
+//
+// 	for pi, param := range methodSource.Parameters { // Parameters
+// 		result += param.Name + " " + JavaToGoArray(param.DataType)
+// 		if pi < len(methodSource.Parameters) - 1 {
+// 			result += ", "
+// 		}
+// 	}
+//
+// 	if methodSource.ReturnType == "constructor" {
+// 		result += fmt.Sprintf(") *%s {\n%sresult := new(%s)\n%s\n%sreturn result\n}", className, strings.Repeat(" ", indentNum), className, codeparser.ParseContent(methodSource.Body), strings.Repeat(" ", indentNum))
+// 		return result
+// 	}
+// 	result += fmt.Sprintf(") %v {\n%s\n}", ReplaceWord(methodSource.ReturnType), codeparser.ParseContent(methodSource.Body))
+// 	return result
+// }

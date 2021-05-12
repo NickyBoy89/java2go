@@ -28,27 +28,37 @@ func ParseContent(sourceData string) []LineTyper {
 		case '(': // Some type of control flow mechanism (Ex: if, while, etc...) or a function call that does not assign anything
 			closingParenths := parsetools.IndexOfMatchingParenths(sourceData, ci)
 
-			nextChar, ind := parsetools.FindNextNonBlankChar(sourceData[closingParenths + 1:])
+			nextChar, ind := parsetools.FindNextNonBlankChar(sourceData[closingParenths + 1:]) // Get the next character after the closing parenths
+			ind += closingParenths + 1 // Account for the index in relation to the entire string
 			switch nextChar {
 			case '{': // The next character should be an opening brace, anything else and it is likely an inline method
-				closingBrace := parsetools.IndexOfMatchingBrace(sourceData, ind + closingParenths + 1)
-				contentLines = append(contentLines, ParseControlFlow(strings.Trim(sourceData[lastLine:ci], " \n"), sourceData[ci:closingBrace + 1]))
+				closingBrace := parsetools.IndexOfMatchingBrace(sourceData, ind)
+				contentLines = append(contentLines, ParseControlFlow(
+					strings.Trim(sourceData[lastLine:ci], " \n"), // The name of the loop (ex: for, if)
+					sourceData[ci + 1:closingParenths], // The parameters, does not include parenths
+					sourceData[ind + 1:closingBrace]), // The content of the block
+				)
 				ci = closingBrace + 1
-			case ';': // Called function that does not assign anything
-				contentLines = append(contentLines, LineType{
-					Name: "NonAssignedFunction",
-					Words: map[string]interface{}{
-						"Expression": ParseExpression(strings.Trim(sourceData[lastLine:ind + closingParenths + 1], " \n")),
-					},
-				})
-				// contentLines = append(contentLines, ParseLine(sourceData[ci:ind + closingParenths + 1]))
-				ci = ind + closingParenths + 1 + 1 // Skip over the character detected for, should have no compilation difference
 				lastLine = ci
+			case ';': // Called function that does not assign anything, semicolon after the closing
+				ci = ind - 1 // Keep the semicolon so that the expression will be parsed as normal
+				continue // Should just get parsed out as an expression
 			default:
 				panic("Inline method detected found char: [" + string(nextChar) + "]")
 			}
 		case '{': // Certains other types of control flow (ex: do-while loop)
-			panic("Other type of control flow detected")
+			lastBrace := parsetools.IndexOfMatchingBrace(sourceData, ci)
+			switch strings.Trim(sourceData[lastLine:ci], " \n") {
+			case "else":
+				contentLines = append(contentLines, LineBlock{
+					Name: "ElseLoop",
+					Lines: ParseContent(sourceData[ci + 1:lastBrace]),
+				})
+				ci = lastBrace + 1
+				lastLine = ci
+			default:
+				panic("Other type of control flow detected, got [" + sourceData[strings.LastIndex(sourceData[lastLine:ci - 1], " "):ci] + "]")
+			}
 		}
 	}
 	return contentLines
@@ -78,8 +88,37 @@ func ParseLine(sourceString string) LineType {
 
 		}
 	}
-	panic("Line type not implemented")
-	return LineType{}
+	words := strings.Split(sourceString, " ")
+	switch words[0] {
+	case "return": // The return keyword for a line
+		return LineType{
+			Name: "ReturnStatement",
+			Words: map[string]interface{}{
+				"Expression": ParseExpression(sourceString[len(words[0]) + 1:]),
+			},
+		}
+	case "new":
+		return LineType{
+			Name: "NewConstructor",
+			Words: map[string]interface{}{
+				"Expression": ParseLine(sourceString[len(words[0]) + 1:]),
+			},
+		}
+	case "throw":
+		return LineType{
+			Name: "ThrowException",
+			Words: map[string]interface{}{
+				"Expression": ParseLine(sourceString[len(words[0]) + 1:]), // Re-parse the line
+			},
+		}
+	}
+
+	return LineType{
+		Name: "GenericLine",
+		Words: map[string]interface{}{
+			"Statement": sourceString,
+		},
+	}
 }
 
 // Really simply parses a variable of the form (Type Variable), and handles everything else
@@ -145,11 +184,10 @@ func ParseExpression(source string) []LineType {
 	return words
 }
 
-func ParseControlFlow(controlBlockname, source string) LineTyper {
+func ParseControlFlow(controlBlockname, parameters, source string) LineTyper {
 	switch controlBlockname {
 	case "for": // For loop, can be a normal for loop, or a for-each loop
-		closingParenths := parsetools.IndexOfMatchingParenths(source, 0)
-		statement := ParseStatements(source[1:closingParenths])
+		statement := ParseStatements(parameters)
 		return LineBlock{
 			Name: "ForLoop",
 			Words: map[string]interface{}{
@@ -157,10 +195,18 @@ func ParseControlFlow(controlBlockname, source string) LineTyper {
 				"Conditional": statement["Conditional"],
 				"Incrementer": statement["Incrementer"],
 			},
-			Lines: ParseContent(strings.Trim(source[strings.IndexRune(source, '{') + 1:len(source) - 1], " \n")),
+			Lines: ParseContent(strings.Trim(source, " \n")),
+		}
+	case "if":
+		return LineBlock{
+			Name: "IfStatement",
+			Words: map[string]interface{}{
+				"Condition": parameters,
+			},
+			Lines: ParseContent(strings.Trim(source, " \n")),
 		}
 	default:
-		panic("Unrecognized loop type")
+		panic("Unrecognized loop type, got " + controlBlockname)
 	}
 }
 
