@@ -12,20 +12,29 @@ import (
 
 const indentNum = 2
 
+// NewClass is set to true if the class is a nested class
 func ParseFile(sourceFile parsing.ParsedClasses, newClass bool) string {
+	var generated string
+	if newClass {
+		generated += fmt.Sprintf("package main\n\n")
+	}
 	fmt.Println(sourceFile.GetType())
 	switch sourceFile.GetType() {
-	case "class", "interface", "enum":
-
-		return ""
+	case "class":
+		generated += ParseClass(sourceFile.(parsing.ParsedClass)) // Parse the class into one struct
+	case "interface":
+	case "enum":
 	default:
 		panic("Unknown class type: " + sourceFile.GetType())
 	}
+	return generated
 }
 
 // Parse a given class
 func ParseClass(source parsing.ParsedClass) string {
-	return ""
+	var generated string
+	generated += CreateStruct(source.Name, source.ClassVariables)
+	return generated
 }
 
 func CreateStruct(name string, fields []parsing.ParsedVariable) string {
