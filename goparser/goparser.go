@@ -129,42 +129,65 @@ func CreateMethod(className string, methodSource parsing.ParsedMethod) string {
 	}
 
 	if methodSource.ReturnType == "constructor" {
-		result += fmt.Sprintf(") *%s {\n%sresult := new(%s)\n%s\n%sreturn result\n}", className, strings.Repeat(" ", indentNum), className, CreateBody(methodSource.Body), strings.Repeat(" ", indentNum))
+		result += fmt.Sprintf(") *%s {\n%sresult := new(%s)\n%s\n%sreturn result\n}", className, strings.Repeat(" ", indentNum), className, CreateBody(methodSource.Body, className), strings.Repeat(" ", indentNum))
 		return result
 	}
-	result += fmt.Sprintf(") %v {\n%s\n}", ReplaceWord(methodSource.ReturnType), CreateBody(methodSource.Body))
+	result += fmt.Sprintf(") %v {\n%s\n}", ReplaceWord(methodSource.ReturnType), CreateBody(methodSource.Body, className))
 	return result
 }
 
 // Parses the lines of the body
-func CreateBody(body []codeparser.LineTyper) string {
+func CreateBody(body []codeparser.LineTyper, className string) string {
 	var result string
 	for _, line := range body {
-		switch line.GetName() {
-		case "AssignVariable":
-			result += fmt.Sprintf("%s = ", line.(codeparser.LineType).Words["VariableName"], CreateExpression(line.(codeparser.LineType).Words["Expression"].([]codeparser.LineType)))
-		case "ReturnStatement":
-			result += fmt.Sprintf("return %s", CreateExpression(line.(codeparser.LineType).Words["Expression"].([]codeparser.LineType)))
-		default:
-			panic("Unknown line type: " + line.GetName())
-		}
+		// fmt.Printf("Going through line of type: %s\n", line.GetName())
+		result += CreateLine(line, className)
 	}
 	return result
 }
 
-func CreateExpression(exp []codeparser.LineType) string {
-	var result string
-
-	for _, expression := range exp {
-		switch expression.GetName() {
-		case "LocalVariableOrExpression":
-			result += fmt.Sprintf("%s ", expression.Words["Expression"])
-		case "RemoteVariableOrExpression":
-			result += fmt.Sprintf("%s.%s ", expression.Words["RemotePackage"], expression.Words["Expression"])
-		default:
-			panic("Unknown expression type: " + expression.GetName())
+func CreateLine(line codeparser.LineTyper, className string) string {
+	switch line.GetName() {
+	case "GenericLine":
+		return fmt.Sprintf("%s\n", line.(codeparser.LineType).Words["Statement"])
+	case "CreateAndAssignVariable":
+		var body string
+		for _, line := range line.(codeparser.LineType).Words["Expression"].([]codeparser.LineType) {
+			body += CreateLine(line, className)
 		}
+		return fmt.Sprintf("var %s %s = %s\n", line.(codeparser.LineType).Words["VariableName"], line.(codeparser.LineType).Words["VariableType"], body)
+	case "AssignVariable":
+		var body string
+		for _, line := range line.(codeparser.LineType).Words["Expression"].([]codeparser.LineType) {
+			body += CreateLine(line, className)
+		}
+		return fmt.Sprintf("%s = %s\n", line.(codeparser.LineType).Words["VariableName"], body)
+	case "ReturnStatement":
+		var body string
+		for _, line := range line.(codeparser.LineType).Words["Expression"].([]codeparser.LineType) {
+			body += CreateLine(line, className)
+		}
+		return fmt.Sprintf("return %s\n", body)
+	case "IfStatement":
+		return fmt.Sprintf("if %s {\n%s\n}\n", line.(codeparser.LineBlock).Words["Condition"], CreateBody(line.(codeparser.LineBlock).Lines, className))
+	case "ElseLoop":
+		return fmt.Sprintf(" else {\n%s\n}\n", CreateBody(line.(codeparser.LineBlock).Lines, className))
+	case "ForLoop":
+		return fmt.Sprintf("for %s; %s; %s {\n%s\n}\n", line.(codeparser.LineBlock).Words["Initializer"], line.(codeparser.LineBlock).Words["Conditional"], line.(codeparser.LineBlock).Words["Incrementer"], CreateBody(line.(codeparser.LineBlock).Lines, className))
+	case "ThrowException":
+		var body string
+		for _, line := range line.(codeparser.LineType).Words["Expression"].([]codeparser.LineType) {
+			body += CreateLine(line, className)
+		}
+		return fmt.Sprintf("panic(%s)\n", body)
+	case "LocalVariableOrExpression":
+		return fmt.Sprintf("%s\n", line.(codeparser.LineType).Words["Expression"])
+	case "RemoteVariableOrExpression":
+		if line.(codeparser.LineType).Words["RemotePackage"] == "this" {
+			return fmt.Sprintf("%s.%s\n", AsShorthand(className), line.(codeparser.LineType).Words["Expression"])
+		}
+		return fmt.Sprintf("%s.%s\n", line.(codeparser.LineType).Words["RemotePackage"], line.(codeparser.LineType).Words["Expression"])
+	default:
+		panic("Unknown line type: " + line.GetName())
 	}
-
-	return result
 }

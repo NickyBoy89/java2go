@@ -52,6 +52,7 @@ func ParseContent(sourceData string) []LineTyper {
 			case "else":
 				contentLines = append(contentLines, LineBlock{
 					Name: "ElseLoop",
+					Words: make(map[string]interface{}),
 					Lines: ParseContent(sourceData[ci + 1:lastBrace]),
 				})
 				ci = lastBrace + 1
@@ -101,14 +102,14 @@ func ParseLine(sourceString string) LineType {
 		return LineType{
 			Name: "NewConstructor",
 			Words: map[string]interface{}{
-				"Expression": ParseLine(sourceString[len(words[0]) + 1:]),
+				"Expression": ParseExpression(sourceString[len(words[0]) + 1:]),
 			},
 		}
 	case "throw":
 		return LineType{
 			Name: "ThrowException",
 			Words: map[string]interface{}{
-				"Expression": ParseLine(sourceString[len(words[0]) + 1:]), // Re-parse the line
+				"Expression": ParseExpression(sourceString[len(words[0]) + 1:]), // Re-parse the line
 			},
 		}
 	}

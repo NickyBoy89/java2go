@@ -42,7 +42,9 @@ func main() {
     if err != nil {
       log.Fatal(err)
     }
-    fmt.Println(goparser.ParseFile(parsing.ParseFile(string(jsonFile)), true))
+    generated := goparser.ParseFile(parsing.ParseFile(string(jsonFile)), true)
+    fmt.Println(generated)
+    ioutil.WriteFile("test.go", []byte(goparser.ParseFile(parsing.ParseFile(string(jsonFile)), true)), 0777)
     os.Exit(0)
   }
 
