@@ -129,64 +129,64 @@ func CreateMethod(className string, methodSource parsing.ParsedMethod) string {
 	}
 
 	if methodSource.ReturnType == "constructor" {
-		result += fmt.Sprintf(") *%s {\n%sresult := new(%s)\n%s\n%sreturn result\n}", className, strings.Repeat(" ", indentNum), className, CreateBody(methodSource.Body, className), strings.Repeat(" ", indentNum))
+		result += fmt.Sprintf(") *%s {\n%sresult := new(%s)\n%s\n%sreturn result\n}", className, strings.Repeat(" ", indentNum), className, CreateBody(methodSource.Body, className, 2), strings.Repeat(" ", indentNum))
 		return result
 	}
-	result += fmt.Sprintf(") %v {\n%s\n}", ReplaceWord(methodSource.ReturnType), CreateBody(methodSource.Body, className))
+	result += fmt.Sprintf(") %v {\n%s\n}", ReplaceWord(methodSource.ReturnType), CreateBody(methodSource.Body, className, 2))
 	return result
 }
 
 // Parses the lines of the body
-func CreateBody(body []codeparser.LineTyper, className string) string {
+func CreateBody(body []codeparser.LineTyper, className string, indentation int) string {
 	var result string
 	for _, line := range body {
 		// fmt.Printf("Going through line of type: %s\n", line.GetName())
-		result += CreateLine(line, className)
+		result += CreateLine(line, className, indentation)
 	}
 	return result
 }
 
-func CreateLine(line codeparser.LineTyper, className string) string {
+func CreateLine(line codeparser.LineTyper, className string, indentation int) string {
 	switch line.GetName() {
 	case "GenericLine":
-		return fmt.Sprintf("%s\n", line.(codeparser.LineType).Words["Statement"])
+		return strings.Repeat(" ", indentation) + fmt.Sprintf("%s\n", line.(codeparser.LineType).Words["Statement"])
 	case "CreateAndAssignVariable":
 		var body string
 		for _, line := range line.(codeparser.LineType).Words["Expression"].([]codeparser.LineType) {
-			body += CreateLine(line, className)
+			body += CreateLine(line, className, indentation + 2)
 		}
-		return fmt.Sprintf("var %s %s = %s\n", line.(codeparser.LineType).Words["VariableName"], line.(codeparser.LineType).Words["VariableType"], body)
+		return strings.Repeat(" ", indentation) + fmt.Sprintf("var %s %s = %s\n", line.(codeparser.LineType).Words["VariableName"], line.(codeparser.LineType).Words["VariableType"], body)
 	case "AssignVariable":
 		var body string
 		for _, line := range line.(codeparser.LineType).Words["Expression"].([]codeparser.LineType) {
-			body += CreateLine(line, className)
+			body += CreateLine(line, className, indentation + 2)
 		}
-		return fmt.Sprintf("%s = %s\n", line.(codeparser.LineType).Words["VariableName"], body)
+		return strings.Repeat(" ", indentation) + fmt.Sprintf("%s = %s\n", line.(codeparser.LineType).Words["VariableName"], body)
 	case "ReturnStatement":
 		var body string
 		for _, line := range line.(codeparser.LineType).Words["Expression"].([]codeparser.LineType) {
-			body += CreateLine(line, className)
+			body += CreateLine(line, className, indentation + 2)
 		}
-		return fmt.Sprintf("return %s\n", body)
+		return strings.Repeat(" ", indentation) + fmt.Sprintf("return %s\n", body)
 	case "IfStatement":
-		return fmt.Sprintf("if %s {\n%s\n}\n", line.(codeparser.LineBlock).Words["Condition"], CreateBody(line.(codeparser.LineBlock).Lines, className))
+		return strings.Repeat(" ", indentation) + fmt.Sprintf("if %s {\n%s\n}\n", line.(codeparser.LineBlock).Words["Condition"], CreateBody(line.(codeparser.LineBlock).Lines, className, indentation + 2))
 	case "ElseLoop":
-		return fmt.Sprintf(" else {\n%s\n}\n", CreateBody(line.(codeparser.LineBlock).Lines, className))
+		return strings.Repeat(" ", indentation) + fmt.Sprintf(" else {\n%s\n}\n", CreateBody(line.(codeparser.LineBlock).Lines, className, indentation + 2))
 	case "ForLoop":
-		return fmt.Sprintf("for %s; %s; %s {\n%s\n}\n", line.(codeparser.LineBlock).Words["Initializer"], line.(codeparser.LineBlock).Words["Conditional"], line.(codeparser.LineBlock).Words["Incrementer"], CreateBody(line.(codeparser.LineBlock).Lines, className))
+		return strings.Repeat(" ", indentation) + fmt.Sprintf("for %s; %s; %s {\n%s\n}\n", line.(codeparser.LineBlock).Words["Initializer"], line.(codeparser.LineBlock).Words["Conditional"], line.(codeparser.LineBlock).Words["Incrementer"], CreateBody(line.(codeparser.LineBlock).Lines, className, indentation + 2))
 	case "ThrowException":
 		var body string
 		for _, line := range line.(codeparser.LineType).Words["Expression"].([]codeparser.LineType) {
-			body += CreateLine(line, className)
+			body += CreateLine(line, className, indentation + 2)
 		}
-		return fmt.Sprintf("panic(%s)\n", body)
+		return strings.Repeat(" ", indentation) + fmt.Sprintf("panic(%s)\n", body)
 	case "LocalVariableOrExpression":
-		return fmt.Sprintf("%s\n", line.(codeparser.LineType).Words["Expression"])
+		return strings.Repeat(" ", indentation) + fmt.Sprintf("%s\n", line.(codeparser.LineType).Words["Expression"])
 	case "RemoteVariableOrExpression":
 		if line.(codeparser.LineType).Words["RemotePackage"] == "this" {
-			return fmt.Sprintf("%s.%s\n", AsShorthand(className), line.(codeparser.LineType).Words["Expression"])
+			return strings.Repeat(" ", indentation) + fmt.Sprintf("%s.%s\n", AsShorthand(className), line.(codeparser.LineType).Words["Expression"])
 		}
-		return fmt.Sprintf("%s.%s\n", line.(codeparser.LineType).Words["RemotePackage"], line.(codeparser.LineType).Words["Expression"])
+		return strings.Repeat(" ", indentation) + fmt.Sprintf("%s.%s\n", line.(codeparser.LineType).Words["RemotePackage"], line.(codeparser.LineType).Words["Expression"])
 	default:
 		panic("Unknown line type: " + line.GetName())
 	}
