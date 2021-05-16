@@ -7,6 +7,8 @@ import (
 	"gitlab.nicholasnovak.io/snapdragon/java2go/parsetools"
 )
 
+var currentReturn string
+
 // Expressions evaluate to a value, statements do not
 
 func ParseContent(sourceData string) []LineTyper {
@@ -67,22 +69,57 @@ func ParseContent(sourceData string) []LineTyper {
 
 func ParseLine(sourceString string) LineType {
 	if equalsIndex := parsetools.FindNextIndexOfCharWithSkip(sourceString, '=', `'"{(`); equalsIndex != -1 { // An equals means an expression
-		switch parsetools.CountRuneWithSkip(strings.Trim(sourceString[:equalsIndex], " \n"), ' ', "<") {
-		case 0:
+		// The character before the equals, detects things like "+=" and "*=", the compound assignment operators
+		// https://www.geeksforgeeks.org/compound-assignment-operators-java/
+		switch sourceString[equalsIndex - 1] {
+		case '^', '+', '-', '*', '/', '%', '&', '|':
 			return LineType{
-				Name: "AssignVariable",
+				Name: "CompoundAssignment",
 				Words: map[string]interface{}{
-					"VariableName": strings.Trim(sourceString[:equalsIndex], " \n"),
+					"Operator": string(sourceString[equalsIndex - 1]),
+					"VariableName": strings.Trim(sourceString[:equalsIndex - 1], " \n"), // Just strip one character earlier
 					"Expression": ParseExpression(strings.Trim(sourceString[equalsIndex+1:], " \n")),
 				},
 			}
-		case 1:
+		}
+		switch sourceString[equalsIndex - 2:equalsIndex] { // Three-character compound assignment operators
+		case ">>", "<<":
+			return LineType{
+				Name: "CompoundAssignment",
+				Words: map[string]interface{}{
+					"Operator": string(sourceString[equalsIndex - 2:equalsIndex]),
+					"VariableName": strings.Trim(sourceString[:equalsIndex - 2], " \n"), // Just strip two characters earlier
+					"Expression": ParseExpression(strings.Trim(sourceString[equalsIndex+1:], " \n")),
+				},
+			}
+		}
+		if sourceString[equalsIndex - 3:equalsIndex] == ">>>" { // Compound right-shift filled 0 assignment operator
+			return LineType{
+				Name: "CompoundAssignment",
+				Words: map[string]interface{}{
+					"Operator": ">>>",
+					"VariableName": strings.Trim(sourceString[:equalsIndex - 3], " \n"), // Just strip three characters earlier
+					"Expression": ParseExpression(strings.Trim(sourceString[equalsIndex+1:], " \n")),
+				},
+			}
+		}
+		switch parsetools.CountRuneWithSkip(strings.Trim(sourceString[:equalsIndex], " \n"), ' ', "<") { // Counts the space between the type of variable and variable name (ex: int value)
+		case 0: // 0 spaces means that there are no spaces, and the variable is just being re-assigned
+			return LineType{
+				Name: "AssignVariable",
+				Words: map[string]interface{}{
+					"VariableName": ParseExpression(strings.Trim(sourceString[:equalsIndex], " \n")),
+					"Expression": ParseExpression(strings.Trim(sourceString[equalsIndex+1:], " \n")),
+				},
+			}
+		case 1: // 1 space means that the variable is being declared and set to a value
 			spaceIndex := parsetools.FindNextIndexOfCharWithSkip(sourceString, ' ', "<") // Skips generic types
+			currentReturn = strings.Trim(sourceString[:spaceIndex], " \n") // Global variable
 			return LineType{
 				Name: "CreateAndAssignVariable",
 				Words: map[string]interface{}{
-					"VariableName": strings.Trim(sourceString[spaceIndex + 1:equalsIndex], " \n"),
-					"VariableType": strings.Trim(sourceString[:spaceIndex], " \n"),
+					"VariableName": ParseExpression(strings.Trim(sourceString[spaceIndex + 1:equalsIndex], " \n")),
+					"VariableType": currentReturn,
 					"Expression": ParseExpression(strings.Trim(sourceString[equalsIndex + 1:], " \n")),
 				},
 			}
@@ -109,7 +146,7 @@ func ParseLine(sourceString string) LineType {
 		return LineType{
 			Name: "ThrowException",
 			Words: map[string]interface{}{
-				"Expression": ParseExpression(sourceString[len(words[0]) + 1:]), // Re-parse the line
+				"Expression": ParseLine(sourceString[len(words[0]) + 1:]), // Re-parse the line
 			},
 		}
 	}
@@ -131,6 +168,18 @@ func ParseVariableAndType(source string) (variableType, variableName string) {
 // Assumes that the input has already been stripped
 func ParseExpression(source string) []LineType {
 	words := []LineType{}
+
+	if source[0] == '{' { // Means implicitly filling an array
+		return []LineType{
+			LineType{
+				Name: "ImplicitArrayAssignment",
+				Words: map[string]interface{}{
+					"ArrayType": currentReturn, // Gets the current return type from a global, becuse I didn't think the best way for that would be passing it in as a parameter
+					"Elements": ParseImplicitArray(source),
+				},
+			},
+		}
+	}
 
 	// Start going through the characters
 	ci := 0
@@ -166,12 +215,21 @@ func ParseExpression(source string) []LineType {
 					},
 				})
 				ci = len(source) // Should just break out
+				lastWord = ci
 			}
-
 		}
 	}
 
-	if len(words) == 0 {
+	if lastWord != len(source) { // If there is still one more expression left
+		words = append(words, LineType{
+			Name: "LocalVariableOrExpression",
+			Words: map[string]interface{}{
+				"Expression": source[lastWord:],
+			},
+		})
+	}
+
+	if len(words) == 0 { // If no word has been detected
 		return []LineType{
 			LineType{
 				Name: "LocalVariableOrExpression",
@@ -202,7 +260,7 @@ func ParseControlFlow(controlBlockname, parameters, source string) LineTyper {
 		return LineBlock{
 			Name: "IfStatement",
 			Words: map[string]interface{}{
-				"Condition": parameters,
+				"Condition": ParseExpression(parameters),
 			},
 			Lines: ParseContent(strings.Trim(source, " \n")),
 		}
@@ -222,9 +280,9 @@ func ParseStatements(source string) map[string]interface{} {
 		cond := strings.Trim(source[semicolons[0] + 1:semicolons[1]], " \n")
 		incr := strings.Trim(source[semicolons[1] + 1:], " \n")
 		return map[string]interface{}{
-			"Initializer": init,
-			"Conditional": cond,
-			"Incrementer": incr,
+			"Initializer": ParseLine(init),
+			"Conditional": ParseExpression(cond),
+			"Incrementer": ParseLine(incr),
 		}
 	} else { // An else block here just so that I can use the colonInd variable
 		// For-each loop
@@ -234,4 +292,22 @@ func ParseStatements(source string) map[string]interface{} {
 			"Iterable": strings.Trim(source[colonInd + 1:], " \n"),
 		}
 	}
+}
+
+func ParseImplicitArray(source string) []LineType {
+	modified := source[1:len(source) - 1] // Cut out the opening and closing brace
+	elementSeparators := parsetools.FindAllIndexesOfChar(modified, ',')
+
+	arrayElements := []LineType{}
+
+	carrier := 0
+	for _, sep := range elementSeparators {
+		arrayElements = append(arrayElements, ParseExpression(strings.Trim(modified[carrier:sep], " "))[0])
+		carrier = sep + 1 // Skip the comma
+	}
+	if carrier != len(modified) {
+		arrayElements = append(arrayElements, ParseExpression(strings.Trim(modified[carrier:], " "))[0])
+	}
+
+	return arrayElements
 }

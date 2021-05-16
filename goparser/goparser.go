@@ -129,7 +129,7 @@ func CreateMethod(className string, methodSource parsing.ParsedMethod) string {
 	}
 
 	if methodSource.ReturnType == "constructor" {
-		result += fmt.Sprintf(") *%s {\n%sresult := new(%s)\n%s\n%sreturn result\n}", className, strings.Repeat(" ", indentNum), className, CreateBody(methodSource.Body, className, 2), strings.Repeat(" ", indentNum))
+		result += fmt.Sprintf(") *%s {\n%s%s := new(%s)\n%s\n%sreturn %s\n}", className, strings.Repeat(" ", indentNum), AsShorthand(className), className, CreateBody(methodSource.Body, className, 2), strings.Repeat(" ", indentNum), AsShorthand(className))
 		return result
 	}
 	result += fmt.Sprintf(") %v {\n%s\n}", ReplaceWord(methodSource.ReturnType), CreateBody(methodSource.Body, className, 2))
@@ -140,54 +140,119 @@ func CreateMethod(className string, methodSource parsing.ParsedMethod) string {
 func CreateBody(body []codeparser.LineTyper, className string, indentation int) string {
 	var result string
 	for _, line := range body {
-		// fmt.Printf("Going through line of type: %s\n", line.GetName())
-		result += CreateLine(line, className, indentation)
+		fmt.Printf("Going through line of type: %s\n", line.GetName())
+		result += CreateLine(line, className, indentation, true)
 	}
 	return result
 }
 
-func CreateLine(line codeparser.LineTyper, className string, indentation int) string {
+func CreateLine(line codeparser.LineTyper, className string, indentation int, indent bool) string {
+	var result string
+	if indent {
+		result += "\n"
+	}
+	// result += fmt.Sprintf("//%s\n", line.GetName())
 	switch line.GetName() {
 	case "GenericLine":
-		return strings.Repeat(" ", indentation) + fmt.Sprintf("%s\n", line.(codeparser.LineType).Words["Statement"])
+		result += strings.Repeat(" ", indentation) + fmt.Sprintf("%s", line.(codeparser.LineType).Words["Statement"])
 	case "CreateAndAssignVariable":
 		var body string
 		for _, line := range line.(codeparser.LineType).Words["Expression"].([]codeparser.LineType) {
-			body += CreateLine(line, className, indentation + 2)
+			body += CreateLine(line, className, 0, false)
 		}
-		return strings.Repeat(" ", indentation) + fmt.Sprintf("var %s %s = %s\n", line.(codeparser.LineType).Words["VariableName"], line.(codeparser.LineType).Words["VariableType"], body)
+		// Commented-out block is for variables to be declared explicitly
+		// result += strings.Repeat(" ", indentation) + fmt.Sprintf(
+		// 	"var %s %s = %s",
+		// 	line.(codeparser.LineType).Words["VariableName"],
+		// 	JavaToGoArray(ReplaceWord(line.(codeparser.LineType).Words["VariableType"].(string))),
+		// 	body,
+		// )
+		result += strings.Repeat(" ", indentation) + fmt.Sprintf(
+			"%s := %s",
+			CreateLine(line.(codeparser.LineType).Words["VariableName"].([]codeparser.LineType)[0], className, 0, false),
+			body,
+		)
 	case "AssignVariable":
 		var body string
 		for _, line := range line.(codeparser.LineType).Words["Expression"].([]codeparser.LineType) {
-			body += CreateLine(line, className, indentation + 2)
+			body += ReplaceWord(CreateLine(line, className, 0, false))
 		}
-		return strings.Repeat(" ", indentation) + fmt.Sprintf("%s = %s\n", line.(codeparser.LineType).Words["VariableName"], body)
+		result += strings.Repeat(" ", indentation) + fmt.Sprintf(
+			"%s = %s",
+			CreateLine(line.(codeparser.LineType).Words["VariableName"].([]codeparser.LineType)[0], className, 0, false),
+			body,
+		)
+	case "CompoundAssignment":
+		var body string
+		for _, line := range line.(codeparser.LineType).Words["Expression"].([]codeparser.LineType) {
+			body += ReplaceWord(CreateLine(line, className, 0, false))
+		}
+		result += strings.Repeat(" ", indentation) + fmt.Sprintf(
+			"%s %s= %s",
+			line.(codeparser.LineType).Words["VariableName"],
+			line.(codeparser.LineType).Words["Operator"],
+			body,
+		)
 	case "ReturnStatement":
 		var body string
 		for _, line := range line.(codeparser.LineType).Words["Expression"].([]codeparser.LineType) {
-			body += CreateLine(line, className, indentation + 2)
+			body += CreateLine(line, className, 0, false)
 		}
-		return strings.Repeat(" ", indentation) + fmt.Sprintf("return %s\n", body)
+		result += strings.Repeat(" ", indentation) + fmt.Sprintf("return %s", body)
 	case "IfStatement":
-		return strings.Repeat(" ", indentation) + fmt.Sprintf("if %s {\n%s\n}\n", line.(codeparser.LineBlock).Words["Condition"], CreateBody(line.(codeparser.LineBlock).Lines, className, indentation + 2))
+		var body string
+		for _, line := range line.(codeparser.LineBlock).Words["Condition"].([]codeparser.LineType) {
+			body += CreateLine(line, className, 0, false) + " "
+		}
+		result += strings.Repeat(" ", indentation) + fmt.Sprintf(
+			"if %s {%s\n%s}",
+			body,
+			CreateBody(line.(codeparser.LineBlock).Lines, className, indentation + 2),
+			strings.Repeat(" ", indentation),
+		)
 	case "ElseLoop":
-		return strings.Repeat(" ", indentation) + fmt.Sprintf(" else {\n%s\n}\n", CreateBody(line.(codeparser.LineBlock).Lines, className, indentation + 2))
+		// This is an equals only, to cut out the newline
+		result = fmt.Sprintf(" else {%s\n%s}\n", CreateBody(line.(codeparser.LineBlock).Lines, className, indentation + 2), strings.Repeat(" ", indentation))
 	case "ForLoop":
-		return strings.Repeat(" ", indentation) + fmt.Sprintf("for %s; %s; %s {\n%s\n}\n", line.(codeparser.LineBlock).Words["Initializer"], line.(codeparser.LineBlock).Words["Conditional"], line.(codeparser.LineBlock).Words["Incrementer"], CreateBody(line.(codeparser.LineBlock).Lines, className, indentation + 2))
+		var body string
+		for _, line := range line.(codeparser.LineBlock).Words["Conditional"].([]codeparser.LineType) {
+			body += CreateLine(line, className, 0, false) + " "
+		}
+		result += strings.Repeat(" ", indentation) + fmt.Sprintf(
+			"for %s; %s; %s {%s\n%s}",
+			CreateLine(line.(codeparser.LineBlock).Words["Initializer"].(codeparser.LineTyper), className, 0, false),
+			body,
+			CreateLine(line.(codeparser.LineBlock).Words["Incrementer"].(codeparser.LineTyper), className, 0, false),
+			CreateBody(line.(codeparser.LineBlock).Lines, className, indentation + 2),
+			strings.Repeat(" ", indentation),
+		)
 	case "ThrowException":
 		var body string
 		for _, line := range line.(codeparser.LineType).Words["Expression"].([]codeparser.LineType) {
-			body += CreateLine(line, className, indentation + 2)
+			body += CreateLine(line, className, 0, false)
 		}
-		return strings.Repeat(" ", indentation) + fmt.Sprintf("panic(%s)\n", body)
+		result += strings.Repeat(" ", indentation) + fmt.Sprintf("panic(%s)\n", body)
+	case "ImplicitArrayAssignment":
+		var body string
+		for li, expressionLine := range line.(codeparser.LineType).Words["Elements"].([]codeparser.LineType) {
+			body += CreateLine(expressionLine, className, 0, false)
+			if li != len(line.(codeparser.LineType).Words["Elements"].([]codeparser.LineType)) - 1 { // For the commas, don't add one to the last element
+				body += ", "
+			}
+		}
+		result += strings.Repeat(" ", indentation) + fmt.Sprintf("%s{%s}", JavaToGoArray(ReplaceWord(line.(codeparser.LineType).Words["ArrayType"].(string))), body)
+	// The expression types, don't have a newline associated with them
 	case "LocalVariableOrExpression":
-		return strings.Repeat(" ", indentation) + fmt.Sprintf("%s\n", line.(codeparser.LineType).Words["Expression"])
+		result += strings.Repeat(" ", indentation) + fmt.Sprintf("%s", ReplaceWord(line.(codeparser.LineType).Words["Expression"].(string)))
 	case "RemoteVariableOrExpression":
 		if line.(codeparser.LineType).Words["RemotePackage"] == "this" {
-			return strings.Repeat(" ", indentation) + fmt.Sprintf("%s.%s\n", AsShorthand(className), line.(codeparser.LineType).Words["Expression"])
+			result += strings.Repeat(" ", indentation) + fmt.Sprintf("%s.%s", AsShorthand(className), line.(codeparser.LineType).Words["Expression"])
+		} else {
+			result += strings.Repeat(" ", indentation) + fmt.Sprintf("%s.%s", line.(codeparser.LineType).Words["RemotePackage"], line.(codeparser.LineType).Words["Expression"])
 		}
-		return strings.Repeat(" ", indentation) + fmt.Sprintf("%s.%s\n", line.(codeparser.LineType).Words["RemotePackage"], line.(codeparser.LineType).Words["Expression"])
 	default:
 		panic("Unknown line type: " + line.GetName())
 	}
+
+	return result
 }
