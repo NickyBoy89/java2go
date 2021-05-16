@@ -154,7 +154,11 @@ func CreateLine(line codeparser.LineTyper, className string, indentation int, in
 	// result += fmt.Sprintf("//%s\n", line.GetName())
 	switch line.GetName() {
 	case "GenericLine":
-		result += strings.Repeat(" ", indentation) + fmt.Sprintf("%s", line.(codeparser.LineType).Words["Statement"])
+		var body string
+		for _, line := range line.(codeparser.LineType).Words["Statement"].([]codeparser.LineType) {
+			body += CreateLine(line, className, 0, false)
+		}
+		result += strings.Repeat(" ", indentation) + fmt.Sprintf("%s", body)
 	case "CreateAndAssignVariable":
 		var body string
 		for _, line := range line.(codeparser.LineType).Words["Expression"].([]codeparser.LineType) {
@@ -193,6 +197,19 @@ func CreateLine(line codeparser.LineTyper, className string, indentation int, in
 			line.(codeparser.LineType).Words["Operator"],
 			body,
 		)
+	case "FunctionCall":
+		var body string
+		for li, expressionLine := range line.(codeparser.LineType).Words["Parameters"].([]codeparser.LineType) {
+			body += CreateLine(expressionLine, className, 0, false)
+			if li != len(line.(codeparser.LineType).Words["Parameters"].([]codeparser.LineType)) - 1 { // For the commas, don't add one to the last element
+				body += ", "
+			}
+		}
+		result += strings.Repeat(" ", indentation) + fmt.Sprintf(
+			"%s(%s)",
+			line.(codeparser.LineType).Words["FunctionName"],
+			body,
+		)
 	case "ReturnStatement":
 		var body string
 		for _, line := range line.(codeparser.LineType).Words["Expression"].([]codeparser.LineType) {
@@ -226,12 +243,10 @@ func CreateLine(line codeparser.LineTyper, className string, indentation int, in
 			CreateBody(line.(codeparser.LineBlock).Lines, className, indentation + 2),
 			strings.Repeat(" ", indentation),
 		)
+	case "NewConstructor":
+		result += strings.Repeat(" ", indentation) + fmt.Sprintf("New%s", CreateLine(line.(codeparser.LineType).Words["Expression"].(codeparser.LineType), className, 0, false))
 	case "ThrowException":
-		var body string
-		for _, line := range line.(codeparser.LineType).Words["Expression"].([]codeparser.LineType) {
-			body += CreateLine(line, className, 0, false)
-		}
-		result += strings.Repeat(" ", indentation) + fmt.Sprintf("panic(%s)\n", body)
+		result += strings.Repeat(" ", indentation) + fmt.Sprintf("panic(%s)\n", CreateLine(line.(codeparser.LineType).Words["Expression"].(codeparser.LineType), className, 0, false))
 	case "ImplicitArrayAssignment":
 		var body string
 		for li, expressionLine := range line.(codeparser.LineType).Words["Elements"].([]codeparser.LineType) {

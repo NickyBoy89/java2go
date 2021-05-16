@@ -139,7 +139,7 @@ func ParseLine(sourceString string) LineType {
 		return LineType{
 			Name: "NewConstructor",
 			Words: map[string]interface{}{
-				"Expression": ParseExpression(sourceString[len(words[0]) + 1:]),
+				"Expression": ParseExpression(sourceString[len(words[0]) + 1:])[0],
 			},
 		}
 	case "throw":
@@ -154,7 +154,7 @@ func ParseLine(sourceString string) LineType {
 	return LineType{
 		Name: "GenericLine",
 		Words: map[string]interface{}{
-			"Statement": sourceString,
+			"Statement": ParseExpression(sourceString),
 		},
 	}
 }
@@ -175,7 +175,7 @@ func ParseExpression(source string) []LineType {
 				Name: "ImplicitArrayAssignment",
 				Words: map[string]interface{}{
 					"ArrayType": currentReturn, // Gets the current return type from a global, becuse I didn't think the best way for that would be passing it in as a parameter
-					"Elements": ParseImplicitArray(source),
+					"Elements": ParseCommaSeparatedValues(source[1:len(source) - 1]),
 				},
 			},
 		}
@@ -217,6 +217,15 @@ func ParseExpression(source string) []LineType {
 				ci = len(source) // Should just break out
 				lastWord = ci
 			}
+		case '(': // Function call
+			closingParenths := parsetools.IndexOfMatchingParenths(source, ci)
+			words = append(words, LineType{
+				Name: "FunctionCall",
+				Words: map[string]interface{}{
+					"FunctionName": strings.Trim(source[lastWord:ci], " "),
+					"Parameters": ParseCommaSeparatedValues(source[ci + 1:closingParenths]),
+				},
+			})
 		}
 	}
 
@@ -294,19 +303,18 @@ func ParseStatements(source string) map[string]interface{} {
 	}
 }
 
-func ParseImplicitArray(source string) []LineType {
-	modified := source[1:len(source) - 1] // Cut out the opening and closing brace
-	elementSeparators := parsetools.FindAllIndexesOfChar(modified, ',')
+func ParseCommaSeparatedValues(source string) []LineType {
+	elementSeparators := parsetools.FindAllIndexesOfChar(source, ',')
 
 	arrayElements := []LineType{}
 
 	carrier := 0
 	for _, sep := range elementSeparators {
-		arrayElements = append(arrayElements, ParseExpression(strings.Trim(modified[carrier:sep], " "))[0])
+		arrayElements = append(arrayElements, ParseExpression(strings.Trim(source[carrier:sep], " "))[0])
 		carrier = sep + 1 // Skip the comma
 	}
-	if carrier != len(modified) {
-		arrayElements = append(arrayElements, ParseExpression(strings.Trim(modified[carrier:], " "))[0])
+	if carrier != len(source) { // If there is still one more element not found yet
+		arrayElements = append(arrayElements, ParseExpression(strings.Trim(source[carrier:], " "))[0])
 	}
 
 	return arrayElements
