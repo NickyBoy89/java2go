@@ -53,6 +53,11 @@ func ParseClass(source parsing.ParsedClass) string {
 		generated += "\n\n" // Add some spacing in between the methods
 	}
 
+	// Parse the nested classes
+	for _, nested := range source.NestedClasses {
+		generated += ParseFile(nested, false)
+	}
+
 	return generated
 }
 
@@ -151,7 +156,7 @@ func CreateLine(line codeparser.LineTyper, className string, indentation int, in
 	if indent {
 		result += "\n"
 	}
-	// result += fmt.Sprintf("//%s\n", line.GetName())
+	result += fmt.Sprintf("//%s\n", line.GetName())
 	switch line.GetName() {
 	case "GenericLine":
 		var body string

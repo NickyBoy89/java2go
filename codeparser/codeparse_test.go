@@ -160,10 +160,71 @@ func TestNewConstructor(t *testing.T) {
 				Name: "NewConstructor",
 				Words: map[string]interface{}{
 					"Expression": LineType{
-						Name: "RemoteVariableOrExpression",
+						Name: "FunctionCall",
 						Words: map[string]interface{}{
-							"Expression": "size()",
-							"RemotePackage": "list",
+							"FunctionName": "AssertionError",
+							"Parameters": []LineType{
+								LineType{
+									Name: "RemoteVariableOrExpression",
+									Words: map[string]interface{}{
+										"Expression": "size()",
+										"RemotePackage": "list",
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	parsedTest, err := json.MarshalIndent(ParseLine(test), "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	parsedResult, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if string(parsedTest) != string(parsedResult) {
+		diff := diffmatchpatch.New()
+		t.Log(diff.DiffPrettyText(diff.DiffMain(string(parsedTest), string(parsedResult), false)))
+    t.Error("Result and Original did not match")
+	}
+}
+
+func TestNewSimpleObject(t *testing.T) {
+	test := "this.head = new Node(element)"
+	result := LineType{
+		Name: "AssignVariable",
+		Words: map[string]interface{}{
+			"VariableName": []LineType{
+				LineType{
+					Name: "RemoteVariableOrExpression",
+					Words: map[string]interface{}{
+						"Expression": "head",
+						"RemotePackage": "this",
+					},
+				},
+			},
+			"Expression": LineType{
+				Name: "NewConstructor",
+				Words: map[string]interface{}{
+					"Expression": LineType{
+						Name: "FunctionCall",
+						Words: map[string]interface{}{
+							"FunctionName": "Node",
+							"Parameters": []LineType{
+								LineType{
+									Name: "LocalVariableOrExpression",
+									Words: map[string]interface{}{
+										"Expression": "element",
+									},
+								},
+							},
 						},
 					},
 				},

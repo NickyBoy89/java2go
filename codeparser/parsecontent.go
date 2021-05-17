@@ -109,7 +109,7 @@ func ParseLine(sourceString string) LineType {
 				Name: "AssignVariable",
 				Words: map[string]interface{}{
 					"VariableName": ParseExpression(strings.Trim(sourceString[:equalsIndex], " \n")),
-					"Expression": ParseExpression(strings.Trim(sourceString[equalsIndex+1:], " \n")),
+					"Expression": []LineType{ParseLine(strings.Trim(sourceString[equalsIndex+1:], " \n"))},
 				},
 			}
 		case 1: // 1 space means that the variable is being declared and set to a value
@@ -126,7 +126,7 @@ func ParseLine(sourceString string) LineType {
 
 		}
 	}
-	words := strings.Split(sourceString, " ")
+	words := parsetools.DiscardBlankStrings(strings.Split(sourceString, " "))
 	switch words[0] {
 	case "return": // The return keyword for a line
 		return LineType{
