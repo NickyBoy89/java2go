@@ -1,7 +1,7 @@
 package codeparser
 
 import (
-	"fmt"
+	// "fmt"
 	"strings"
 
 	"gitlab.nicholasnovak.io/snapdragon/java2go/parsetools"
@@ -190,7 +190,7 @@ func ParseExpression(source string) []LineType {
 			words = append(words, LineType{
 				Name: "LocalVariableOrExpression",
 				Words: map[string]interface{}{
-					"Expression": source[lastWord:ci],
+					"Expression": strings.Trim(source[lastWord:ci], " "),
 				},
 			})
 			lastWord = ci + 1
@@ -229,9 +229,8 @@ func ParseExpression(source string) []LineType {
 			ci = closingParenths + 1
 			lastWord = ci
 		// Start getting into the literals (ex: "yes" is a string literal)
-		case '"':
-			fmt.Println(source[ci:])
-			closingQuotes := parsetools.FindNextIndexOfChar(source[ci + 1:], '"') + ci + 1
+		case '"': // String literal
+			closingQuotes := parsetools.FindNextIndexOfCharWithSkip(source[ci + 1:], '"', ``) + ci + 1
 			words = append(words, LineType{
 				Name: "StringLiteral",
 				Words: map[string]interface{}{
@@ -239,6 +238,16 @@ func ParseExpression(source string) []LineType {
 				},
 			})
 			ci = closingQuotes + 1
+			lastWord = ci
+		case '\'': // Rune literal
+			closingSingQuotes := strings.IndexRune(source[ci + 1:], '\'') + ci + 1
+			words = append(words, LineType{
+				Name: "RuneLiteral",
+				Words: map[string]interface{}{
+					"Rune": source[ci + 1:closingSingQuotes],
+				},
+			})
+			ci = closingSingQuotes + 1
 			lastWord = ci
 		}
 	}
@@ -317,19 +326,18 @@ func ParseStatements(source string) map[string]interface{} {
 	}
 }
 
-func ParseCommaSeparatedValues(source string) []LineType {
-	fmt.Println(source)
+func ParseCommaSeparatedValues(source string) [][]LineType {
 	elementSeparators := parsetools.FindAllIndexesOfChar(source, ',')
 
-	arrayElements := []LineType{}
+	arrayElements := [][]LineType{}
 
 	carrier := 0
 	for _, sep := range elementSeparators {
-		arrayElements = append(arrayElements, ParseExpression(strings.Trim(source[carrier:sep], " "))[0])
+		arrayElements = append(arrayElements, ParseExpression(strings.Trim(source[carrier:sep], " ")))
 		carrier = sep + 1 // Skip the comma
 	}
 	if carrier != len(source) { // If there is still one more element not found yet
-		arrayElements = append(arrayElements, ParseExpression(strings.Trim(source[carrier:], " "))[0])
+		arrayElements = append(arrayElements, ParseExpression(strings.Trim(source[carrier:], " ")))
 	}
 
 	return arrayElements

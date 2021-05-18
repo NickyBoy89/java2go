@@ -210,18 +210,20 @@ func TestNewSimpleObject(t *testing.T) {
 					},
 				},
 			},
-			"Expression": LineType{
-				Name: "NewConstructor",
-				Words: map[string]interface{}{
-					"Expression": LineType{
-						Name: "FunctionCall",
-						Words: map[string]interface{}{
-							"FunctionName": "Node",
-							"Parameters": []LineType{
-								LineType{
-									Name: "LocalVariableOrExpression",
-									Words: map[string]interface{}{
-										"Expression": "element",
+			"Expression": []LineType{
+				LineType{
+					Name: "NewConstructor",
+					Words: map[string]interface{}{
+						"Expression": LineType{
+							Name: "FunctionCall",
+							Words: map[string]interface{}{
+								"FunctionName": "Node",
+								"Parameters": []LineType{
+									LineType{
+										Name: "LocalVariableOrExpression",
+										Words: map[string]interface{}{
+											"Expression": "element",
+										},
 									},
 								},
 							},
@@ -261,7 +263,52 @@ func TestExpressionInFunctionCalls(t *testing.T) {
 						Name: "FunctionCall",
 						Words: map[string]interface{}{
 							"FunctionName": "AssertionError",
-							"Parameters": []LineType{},
+							"Parameters": []LineType{
+								LineType{
+									Name: "StringLiteral",
+									Words: map[string]interface{}{
+										"String": "\"Expected list of length \"",
+									},
+								},
+								LineType{
+									Name: "LocalVariableOrExpression",
+									Words: map[string]interface{}{
+										"Expression": "+",
+									},
+								},
+								LineType{
+									Name: "RemoteVariableOrExpression",
+									Words: map[string]interface{}{
+										"Expression": "length",
+										"RemotePackage": "answer",
+									},
+								},
+								LineType{
+									Name: "LocalVariableOrExpression",
+									Words: map[string]interface{}{
+										"Expression": "+",
+									},
+								},
+								LineType{
+									Name: "StringLiteral",
+									Words: map[string]interface{}{
+										"String": "\" but got \"",
+									},
+								},
+								LineType{
+									Name: "LocalVariableOrExpression",
+									Words: map[string]interface{}{
+										"Expression": "+",
+									},
+								},
+								LineType{
+									Name: "RemoteVariableOrExpression",
+									Words: map[string]interface{}{
+										"Expression": "size()",
+										"RemotePackage": "list",
+									},
+								},
+							},
 						},
 					},
 				},
@@ -288,7 +335,98 @@ func TestExpressionInFunctionCalls(t *testing.T) {
 
 func TestAppendExpression(t *testing.T) {
 	test := `"Expected list of length " + answer.length + " but got " + list.size()`
-	result := []LineType{}
+	result := []LineType{
+		LineType{
+			Name: "StringLiteral",
+			Words: map[string]interface{}{
+				"String": "\"Expected list of length \"",
+			},
+		},
+		LineType{
+			Name: "LocalVariableOrExpression",
+			Words: map[string]interface{}{
+				"Expression": "+",
+			},
+		},
+		LineType{
+			Name: "RemoteVariableOrExpression",
+			Words: map[string]interface{}{
+				"Expression": "length",
+				"RemotePackage": "answer",
+			},
+		},
+		LineType{
+			Name: "LocalVariableOrExpression",
+			Words: map[string]interface{}{
+				"Expression": "+",
+			},
+		},
+		LineType{
+			Name: "StringLiteral",
+			Words: map[string]interface{}{
+				"String": "\" but got \"",
+			},
+		},
+		LineType{
+			Name: "LocalVariableOrExpression",
+			Words: map[string]interface{}{
+				"Expression": "+",
+			},
+		},
+		LineType{
+			Name: "RemoteVariableOrExpression",
+			Words: map[string]interface{}{
+				"Expression": "size()",
+				"RemotePackage": "list",
+			},
+		},
+	}
+
+	parsedTest, err := json.MarshalIndent(ParseExpression(test), "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	parsedResult, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if string(parsedTest) != string(parsedResult) {
+		diff := diffmatchpatch.New()
+		t.Log(diff.DiffPrettyText(diff.DiffMain(string(parsedTest), string(parsedResult), false)))
+    t.Error("Result and Original did not match")
+	}
+}
+
+func TestParseCharExpression(t *testing.T) {
+	test := "char first = 'A'"
+	result := []LineType{
+		LineType{
+			Name: "LocalVariableOrExpression",
+			Words: map[string]interface{}{
+				"Expression": "char",
+			},
+		},
+		LineType{
+			Name: "LocalVariableOrExpression",
+			Words: map[string]interface{}{
+				"Expression": "first",
+			},
+		},
+		LineType{
+			Name: "LocalVariableOrExpression",
+			Words: map[string]interface{}{
+				"Expression": "=",
+			},
+		},
+		LineType{
+			Name: "RuneLiteral",
+			Words: map[string]interface{}{
+				"Rune": "A",
+			},
+		},
+	}
 
 	parsedTest, err := json.MarshalIndent(ParseExpression(test), "", "  ")
 	if err != nil {

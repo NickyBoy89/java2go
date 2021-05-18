@@ -164,6 +164,8 @@ func CreateLine(line codeparser.LineTyper, className string, indentation int, in
 			body += CreateLine(line, className, 0, false)
 		}
 		result += strings.Repeat(" ", indentation) + fmt.Sprintf("%s", body)
+	case "StringLiteral":
+		result += strings.Repeat(" ", indentation) + fmt.Sprintf("%s", line.(codeparser.LineType).Words["String"])
 	case "CreateAndAssignVariable":
 		var body string
 		for _, line := range line.(codeparser.LineType).Words["Expression"].([]codeparser.LineType) {
@@ -204,9 +206,11 @@ func CreateLine(line codeparser.LineTyper, className string, indentation int, in
 		)
 	case "FunctionCall":
 		var body string
-		for li, expressionLine := range line.(codeparser.LineType).Words["Parameters"].([]codeparser.LineType) {
-			body += CreateLine(expressionLine, className, 0, false)
-			if li != len(line.(codeparser.LineType).Words["Parameters"].([]codeparser.LineType)) - 1 { // For the commas, don't add one to the last element
+		for li, expressionLine := range line.(codeparser.LineType).Words["Parameters"].([][]codeparser.LineType) {
+			for _, expLine := range expressionLine {
+				body += CreateLine(expLine, className, 0, false)
+			}
+			if li != len(line.(codeparser.LineType).Words["Parameters"].([][]codeparser.LineType)) - 1 { // For the commas, don't add one to the last element
 				body += ", "
 			}
 		}
@@ -254,9 +258,11 @@ func CreateLine(line codeparser.LineTyper, className string, indentation int, in
 		result += strings.Repeat(" ", indentation) + fmt.Sprintf("panic(%s)\n", CreateLine(line.(codeparser.LineType).Words["Expression"].(codeparser.LineType), className, 0, false))
 	case "ImplicitArrayAssignment":
 		var body string
-		for li, expressionLine := range line.(codeparser.LineType).Words["Elements"].([]codeparser.LineType) {
-			body += CreateLine(expressionLine, className, 0, false)
-			if li != len(line.(codeparser.LineType).Words["Elements"].([]codeparser.LineType)) - 1 { // For the commas, don't add one to the last element
+		for li, expressionLine := range line.(codeparser.LineType).Words["Elements"].([][]codeparser.LineType) {
+			for _, expLine := range expressionLine {
+				body += CreateLine(expLine, className, 0, false)
+			}
+			if li != len(line.(codeparser.LineType).Words["Elements"].([][]codeparser.LineType)) - 1 { // For the commas, don't add one to the last element
 				body += ", "
 			}
 		}
