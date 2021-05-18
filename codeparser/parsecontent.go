@@ -1,7 +1,7 @@
 package codeparser
 
 import (
-	// "fmt"
+	"fmt"
 	"strings"
 
 	"gitlab.nicholasnovak.io/snapdragon/java2go/parsetools"
@@ -226,6 +226,20 @@ func ParseExpression(source string) []LineType {
 					"Parameters": ParseCommaSeparatedValues(source[ci + 1:closingParenths]),
 				},
 			})
+			ci = closingParenths + 1
+			lastWord = ci
+		// Start getting into the literals (ex: "yes" is a string literal)
+		case '"':
+			fmt.Println(source[ci:])
+			closingQuotes := parsetools.FindNextIndexOfChar(source[ci + 1:], '"') + ci + 1
+			words = append(words, LineType{
+				Name: "StringLiteral",
+				Words: map[string]interface{}{
+					"String": source[ci:closingQuotes + 1],
+				},
+			})
+			ci = closingQuotes + 1
+			lastWord = ci
 		}
 	}
 
@@ -304,6 +318,7 @@ func ParseStatements(source string) map[string]interface{} {
 }
 
 func ParseCommaSeparatedValues(source string) []LineType {
+	fmt.Println(source)
 	elementSeparators := parsetools.FindAllIndexesOfChar(source, ',')
 
 	arrayElements := []LineType{}

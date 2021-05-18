@@ -18,7 +18,7 @@ func ParseFile(sourceFile parsing.ParsedClasses, newClass bool) string {
 	if newClass {
 		generated += fmt.Sprintf("package main\n\n")
 	}
-	fmt.Println(sourceFile.GetType())
+	fmt.Printf("Generated %s\n", sourceFile.GetType())
 	switch sourceFile.GetType() {
 	case "class":
 		generated += ParseClass(sourceFile.(parsing.ParsedClass)) // Parse the class into one struct
@@ -145,7 +145,7 @@ func CreateMethod(className string, methodSource parsing.ParsedMethod) string {
 func CreateBody(body []codeparser.LineTyper, className string, indentation int) string {
 	var result string
 	for _, line := range body {
-		fmt.Printf("Going through line of type: %s\n", line.GetName())
+		// fmt.Printf("Going through line of type: %s\n", line.GetName())
 		result += CreateLine(line, className, indentation, true)
 	}
 	return result
@@ -156,7 +156,7 @@ func CreateLine(line codeparser.LineTyper, className string, indentation int, in
 	if indent {
 		result += "\n"
 	}
-	result += fmt.Sprintf("//%s\n", line.GetName())
+	// result += fmt.Sprintf("//%s\n", line.GetName())
 	switch line.GetName() {
 	case "GenericLine":
 		var body string

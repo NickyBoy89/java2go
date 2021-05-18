@@ -248,3 +248,61 @@ func TestNewSimpleObject(t *testing.T) {
     t.Error("Result and Original did not match")
 	}
 }
+
+func TestExpressionInFunctionCalls(t *testing.T) {
+	test := `throw new AssertionError("Expected list of length " + answer.length + " but got " + list.size())`
+	result := LineType{
+		Name: "ThrowException",
+		Words: map[string]interface{}{
+			"Expression": LineType{
+				Name: "NewConstructor",
+				Words: map[string]interface{}{
+					"Expression": LineType{
+						Name: "FunctionCall",
+						Words: map[string]interface{}{
+							"FunctionName": "AssertionError",
+							"Parameters": []LineType{},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	parsedTest, err := json.MarshalIndent(ParseLine(test), "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	parsedResult, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if string(parsedTest) != string(parsedResult) {
+		diff := diffmatchpatch.New()
+		t.Log(diff.DiffPrettyText(diff.DiffMain(string(parsedTest), string(parsedResult), false)))
+    t.Error("Result and Original did not match")
+	}
+}
+
+func TestAppendExpression(t *testing.T) {
+	test := `"Expected list of length " + answer.length + " but got " + list.size()`
+	result := []LineType{}
+
+	parsedTest, err := json.MarshalIndent(ParseExpression(test), "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	parsedResult, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if string(parsedTest) != string(parsedResult) {
+		diff := diffmatchpatch.New()
+		t.Log(diff.DiffPrettyText(diff.DiffMain(string(parsedTest), string(parsedResult), false)))
+    t.Error("Result and Original did not match")
+	}
+}
