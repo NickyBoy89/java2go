@@ -10,6 +10,7 @@ type ParsedClasses interface {
   // Returns the type of the parsed class structure
   // Ex: "class" for a class, "interface" for an interface
   GetType() string
+  MethodNames() []string
 }
 
 // Represents a Java class
@@ -28,6 +29,19 @@ func (c ParsedClass) GetType() string {
   return "class"
 }
 
+func (c ParsedClass) MethodNames() []string {
+  names := []string{}
+  // Get the names of all the methods in the class
+  for _, method := range c.Methods {
+    names = append(names, method.Name)
+  }
+  // Get the names of all the methods in the nested classes
+  for _, nested := range c.NestedClasses {
+    names = append(names, nested.MethodNames()...)
+  }
+  return names
+}
+
 // Represents a Java interface
 type ParsedInterface struct {
   Name string
@@ -40,6 +54,19 @@ type ParsedInterface struct {
 
 func (i ParsedInterface) GetType() string {
   return "interface"
+}
+
+func (i ParsedInterface) MethodNames() []string {
+  names := []string{}
+  // Get the names of all the methods in the class
+  for _, method := range i.Methods {
+    names = append(names, method.Name)
+  }
+  // Get the names of all the methods in the nested classes
+  for _, nested := range i.NestedClasses {
+    names = append(names, nested.MethodNames()...)
+  }
+  return names
 }
 
 // Represents a Java Enum
@@ -56,6 +83,19 @@ type ParsedEnum struct {
 
 func (e ParsedEnum) GetType() string {
   return "enum"
+}
+
+func (e ParsedEnum) MethodNames() []string {
+  names := []string{}
+  // Get the names of all the methods in the class
+  for _, method := range e.Methods {
+    names = append(names, method.Name)
+  }
+  // Get the names of all the methods in the nested classes
+  for _, nested := range e.NestedClasses {
+    names = append(names, nested.MethodNames()...)
+  }
+  return names
 }
 
 type EnumField struct {

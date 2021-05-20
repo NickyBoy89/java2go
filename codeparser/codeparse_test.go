@@ -102,29 +102,37 @@ func TestImplicitArrayCreation(t *testing.T) {
 					Name: "ImplicitArrayAssignment",
 					Words: map[string]interface{}{
 						"ArrayType": "int[]",
-						"Elements": []LineType{
-							LineType{
-								Name: "LocalVariableOrExpression",
-								Words: map[string]interface{}{
-									"Expression": "1",
+						"Elements": [][]LineType{
+							[]LineType{
+								LineType{
+									Name: "LocalVariableOrExpression",
+									Words: map[string]interface{}{
+										"Expression": "1",
+									},
 								},
 							},
-							LineType{
-								Name: "LocalVariableOrExpression",
-								Words: map[string]interface{}{
-									"Expression": "2",
+							[]LineType{
+								LineType{
+									Name: "LocalVariableOrExpression",
+									Words: map[string]interface{}{
+										"Expression": "2",
+									},
 								},
 							},
-							LineType{
-								Name: "LocalVariableOrExpression",
-								Words: map[string]interface{}{
-									"Expression": "3",
+							[]LineType{
+								LineType{
+									Name: "LocalVariableOrExpression",
+									Words: map[string]interface{}{
+										"Expression": "3",
+									},
 								},
 							},
-							LineType{
-								Name: "LocalVariableOrExpression",
-								Words: map[string]interface{}{
-									"Expression": "4",
+							[]LineType{
+								LineType{
+									Name: "LocalVariableOrExpression",
+									Words: map[string]interface{}{
+										"Expression": "4",
+									},
 								},
 							},
 						},
@@ -163,12 +171,14 @@ func TestNewConstructor(t *testing.T) {
 						Name: "FunctionCall",
 						Words: map[string]interface{}{
 							"FunctionName": "AssertionError",
-							"Parameters": []LineType{
-								LineType{
-									Name: "RemoteVariableOrExpression",
-									Words: map[string]interface{}{
-										"Expression": "size()",
-										"RemotePackage": "list",
+							"Parameters": [][]LineType{
+								[]LineType{
+									LineType{
+										Name: "RemoteVariableOrExpression",
+										Words: map[string]interface{}{
+											"Expression": "size()",
+											"RemotePackage": "list",
+										},
 									},
 								},
 							},
@@ -218,11 +228,13 @@ func TestNewSimpleObject(t *testing.T) {
 							Name: "FunctionCall",
 							Words: map[string]interface{}{
 								"FunctionName": "Node",
-								"Parameters": []LineType{
-									LineType{
-										Name: "LocalVariableOrExpression",
-										Words: map[string]interface{}{
-											"Expression": "element",
+								"Parameters": [][]LineType{
+									[]LineType{
+										LineType{
+											Name: "LocalVariableOrExpression",
+											Words: map[string]interface{}{
+												"Expression": "element",
+											},
 										},
 									},
 								},
@@ -263,49 +275,51 @@ func TestExpressionInFunctionCalls(t *testing.T) {
 						Name: "FunctionCall",
 						Words: map[string]interface{}{
 							"FunctionName": "AssertionError",
-							"Parameters": []LineType{
-								LineType{
-									Name: "StringLiteral",
-									Words: map[string]interface{}{
-										"String": "\"Expected list of length \"",
+							"Parameters": [][]LineType{
+								[]LineType{
+									LineType{
+										Name: "StringLiteral",
+										Words: map[string]interface{}{
+											"String": "\"Expected list of length \"",
+										},
 									},
-								},
-								LineType{
-									Name: "LocalVariableOrExpression",
-									Words: map[string]interface{}{
-										"Expression": "+",
+									LineType{
+										Name: "LocalVariableOrExpression",
+										Words: map[string]interface{}{
+											"Expression": "+",
+										},
 									},
-								},
-								LineType{
-									Name: "RemoteVariableOrExpression",
-									Words: map[string]interface{}{
-										"Expression": "length",
-										"RemotePackage": "answer",
+									LineType{
+										Name: "RemoteVariableOrExpression",
+										Words: map[string]interface{}{
+											"Expression": "length",
+											"RemotePackage": "answer",
+										},
 									},
-								},
-								LineType{
-									Name: "LocalVariableOrExpression",
-									Words: map[string]interface{}{
-										"Expression": "+",
+									LineType{
+										Name: "LocalVariableOrExpression",
+										Words: map[string]interface{}{
+											"Expression": "+",
+										},
 									},
-								},
-								LineType{
-									Name: "StringLiteral",
-									Words: map[string]interface{}{
-										"String": "\" but got \"",
+									LineType{
+										Name: "StringLiteral",
+										Words: map[string]interface{}{
+											"String": "\" but got \"",
+										},
 									},
-								},
-								LineType{
-									Name: "LocalVariableOrExpression",
-									Words: map[string]interface{}{
-										"Expression": "+",
+									LineType{
+										Name: "LocalVariableOrExpression",
+										Words: map[string]interface{}{
+											"Expression": "+",
+										},
 									},
-								},
-								LineType{
-									Name: "RemoteVariableOrExpression",
-									Words: map[string]interface{}{
-										"Expression": "size()",
-										"RemotePackage": "list",
+									LineType{
+										Name: "RemoteVariableOrExpression",
+										Words: map[string]interface{}{
+											"Expression": "size()",
+											"RemotePackage": "list",
+										},
 									},
 								},
 							},

@@ -6,6 +6,10 @@ var (
   NonAccessModifiers = []string{"final", "static", "abstract", "transient", "synchronized", "volatile"}
 )
 
+var (
+  PrimitiveTypes = []string{"byte", "short", "int", "long", "float", "double", "boolean", "char"}
+)
+
 // abstract 	continue 	for 	new 	switch
 // assert*** 	default 	goto* 	package 	synchronized
 // boolean 	do 	if 	private 	this
