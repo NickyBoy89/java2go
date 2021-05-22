@@ -91,18 +91,11 @@ func ParseClass(source parsing.ParsedClass) string {
 func CreateStruct(classContext *ClassContext, fields []parsing.ParsedVariable) string {
 	result := fmt.Sprintf("type %s struct {", classContext.Name)
 	for _, field := range fields { // Struct fields
-		dataType := field.DataType
-		// Treats a capitalized data type of a field as a custom (non-primitive) data type, and makes it into a pointer to that data
-		// This is done because any non-primitive type is always a reference type in java
-		if unicode.IsUpper(rune(field.DataType[0])) {
-			dataType = "*" + dataType
-		}
-
 		// Write out a field (ex: value int)
 		if IsPublic(field.Modifiers) {
-			result += fmt.Sprintf("\n%s%s %s", strings.Repeat(" ", indentNum), ToPublic(field.Name), dataType)
+			result += fmt.Sprintf("\n%s%s %s", strings.Repeat(" ", indentNum), ToPublic(field.Name), ToReferenceType(JavaToGoArray(ReplaceWord(field.DataType))))
 		} else {
-			result += fmt.Sprintf("\n%s%s %s", strings.Repeat(" ", indentNum), field.Name, dataType)
+			result += fmt.Sprintf("\n%s%s %s", strings.Repeat(" ", indentNum), field.Name, ToReferenceType(JavaToGoArray(ReplaceWord(field.DataType))))
 		}
 	}
 	return result + "\n}"
@@ -303,6 +296,17 @@ func CreateLine(line codeparser.LineTyper, classContext *ClassContext, indentati
 		}
 		result += strings.Repeat(" ", indentation) + fmt.Sprintf(
 			"if %s {%s\n%s}",
+			body,
+			CreateBody(line.(codeparser.LineBlock).Lines, classContext, indentation + 2),
+			strings.Repeat(" ", indentation),
+		)
+	case "ElseIfStatement":
+		var body string
+		for _, line := range line.(codeparser.LineBlock).Words["Condition"].([]codeparser.LineType) {
+			body += CreateLine(line, classContext, 0, false) + " "
+		}
+		result += strings.Repeat(" ", indentation) + fmt.Sprintf(
+			"else if %s {%s\n%s}",
 			body,
 			CreateBody(line.(codeparser.LineBlock).Lines, classContext, indentation + 2),
 			strings.Repeat(" ", indentation),

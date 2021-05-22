@@ -8,6 +8,7 @@ import (
 var functionTable = []string{
 	"AssertionError",
 	"Println",
+	"IndexOutOfBoundsException",
 }
 
 var specializedFunctions = map[string]string{

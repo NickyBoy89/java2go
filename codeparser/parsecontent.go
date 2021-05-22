@@ -129,6 +129,14 @@ func ParseLine(sourceString string) LineType {
 	words := parsetools.DiscardBlankStrings(strings.Split(sourceString, " "))
 	switch words[0] {
 	case "return": // The return keyword for a line
+		if len(words) == 1 { // Naked return, no other expressions after
+			return LineType{
+				Name: "ReturnStatement",
+				Words: map[string]interface{}{
+					"Expression": []LineType{},
+				},
+			}
+		}
 		return LineType{
 			Name: "ReturnStatement",
 			Words: map[string]interface{}{
@@ -336,8 +344,16 @@ func ParseControlFlow(controlBlockname, parameters, source string) LineTyper {
 			},
 			Lines: ParseContent(strings.Trim(source, " \n")),
 		}
+	case "else if":
+		return LineBlock{
+			Name: "ElseIfStatement",
+			Words: map[string]interface{}{
+				"Condition": ParseExpression(parameters),
+			},
+			Lines: ParseContent(strings.Trim(source, " \n")),
+		}
 	default:
-		panic("Unrecognized loop type, got " + controlBlockname)
+		panic("Unrecognized loop type, got [" + controlBlockname + "]")
 	}
 }
 

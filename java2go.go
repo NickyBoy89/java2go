@@ -24,7 +24,7 @@ func main() {
   // Cpu profiling
   cpuprofile := flag.String("cpuprofile", "", "write cpu profile to file")
   // Testing options
-  parseJson := flag.String("json", "", "File to parse json from")
+  parseJson := flag.String("json", "", "Parses the specified Java file directly into the intemediary JSON, instead of generated code")
 
   flag.Parse()
 
@@ -44,7 +44,17 @@ func main() {
     }
     generated := goparser.ParseFile(parsing.ParseFile(string(jsonFile)), true)
     fmt.Println(generated)
-    ioutil.WriteFile("test.go", []byte(goparser.ParseFile(parsing.ParseFile(string(jsonFile)), true)), 0777)
+
+    formatted, err := json.MarshalIndent(parsing.ParseFile(string(jsonFile)), "", "  ")
+    if err != nil {
+      log.Fatal(err)
+    }
+
+    ioutil.WriteFile(
+      ChangeFileExtension(*parseJson, ".json"),
+      []byte(formatted),
+      0775,
+    )
     os.Exit(0)
   }
 
@@ -75,17 +85,13 @@ func main() {
 
     fileDirectory := path[:strings.LastIndex(path, "/")]
 
-    if *writeFlag {
-      if *outputDir == "" {
-        outputFile, err := os.OpenFile(ChangeFileExtension(path, ".json"), os.O_CREATE|os.O_WRONLY, 0775)
-        defer outputFile.Close()
-        if err != nil {
-          log.Fatalf("Failed to open output file: %v", err)
-        }
-        _, err = outputFile.Write([]byte(formatted))
-        if err != nil {
-          log.Fatalf("Failed to write output file: %v", err)
-        }
+    if *writeFlag { // If writing is enabled through the -w tag
+      if *outputDir == "" { // If outputDir flag is empty (default), place files in the default location
+        ioutil.WriteFile(
+          ChangeFileExtension(path, ".go"), // Change the output file to a .json
+          []byte(goparser.ParseFile(parsing.ParseFile(string(contents)), true)), // Pass the parsed json into the goparser
+          0775,
+        )
       } else {
         if _, err := os.Stat(*outputDir + "/" + fileDirectory); os.IsNotExist(err) {
           os.MkdirAll(*outputDir + "/" + fileDirectory, 0775)
