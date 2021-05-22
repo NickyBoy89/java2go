@@ -169,7 +169,36 @@ func ParseVariableAndType(source string) (variableType, variableName string) {
 func ParseExpression(source string) []LineType {
 	words := []LineType{}
 
-	if source[0] == '{' { // Means implicitly filling an array
+	firstSpace := parsetools.FindNextIndexOfCharWithSkip(source, ' ', `'"{(`)
+	if firstSpace != -1 {
+		switch source[:firstSpace] {
+		case "new":
+			// Array constructor
+			if openingBracket := strings.IndexRune(source[firstSpace:], '[') + firstSpace; openingBracket - firstSpace != -1 { // "new" is only constructing an array, and does not create a generator function
+				closingBracket := strings.IndexRune(source[openingBracket:], ']') + openingBracket
+				return []LineType{
+					LineType{
+						Name: "ConstructArray",
+						Words: map[string]interface{}{
+							"ArrayType": strings.Trim(source[firstSpace:openingBracket], " "),
+							"InitialSize": source[openingBracket + 1:closingBracket],
+						},
+					},
+				}
+			}
+			return []LineType{
+				LineType{
+					Name: "NewConstructor",
+					Words: map[string]interface{}{
+						"Expression": ParseExpression(strings.Trim(source[firstSpace:], " "))[0],
+					},
+				},
+			}
+		}
+	}
+
+	switch source[0] {
+	case '{':  // Means implicitly filling an array
 		return []LineType{
 			LineType{
 				Name: "ImplicitArrayAssignment",
@@ -201,7 +230,7 @@ func ParseExpression(source string) []LineType {
 					Name: "RemoteVariableOrExpression",
 					Words: map[string]interface{}{
 						"RemotePackage": source[lastWord:ci],
-						"Expression": source[ci + 1:endSpace],
+						"Expression": ParseExpression(source[ci + 1:endSpace]),
 					},
 				})
 				ci = endSpace + 1
@@ -211,7 +240,7 @@ func ParseExpression(source string) []LineType {
 					Name: "RemoteVariableOrExpression",
 					Words: map[string]interface{}{
 						"RemotePackage": source[lastWord:ci],
-						"Expression": source[ci + 1:],
+						"Expression": ParseExpression(source[ci + 1:]),
 					},
 				})
 				ci = len(source) // Should just break out
@@ -227,6 +256,17 @@ func ParseExpression(source string) []LineType {
 				},
 			})
 			ci = closingParenths + 1
+			lastWord = ci
+		case '[': // Access a specific element of an array
+			closingBrace := strings.IndexRune(source[ci:], ']') + ci
+			words = append(words, LineType{
+				Name: "AccessArrayElement",
+				Words: map[string]interface{}{
+					"ArrayName": strings.Trim(source[lastWord:ci], " "),
+					"Index": source[ci + 1:closingBrace],
+				},
+			})
+			ci = closingBrace + 1
 			lastWord = ci
 		// Start getting into the literals (ex: "yes" is a string literal)
 		case '"': // String literal

@@ -4,6 +4,8 @@ import (
 	"testing"
 	"encoding/json"
 
+	"github.com/sergi/go-diff/diffmatchpatch"
+
 	"gitlab.nicholasnovak.io/snapdragon/java2go/codeparser"
 )
 
@@ -65,8 +67,10 @@ func SingleTestTemplate(testVar, testResult string, ts *testing.T) {
 		ts.Fatal(err)
 	}
 
-	if string(parsed) != testResult {
-		ts.Errorf("Original: [%s] and parsed: [%s] were not the same", testResult, string(parsed))
+	if string(parsed) != string(testResult) {
+		diff := diffmatchpatch.New()
+    ts.Log(diff.DiffPrettyText(diff.DiffMain(string(parsed), string(testResult), false)))
+    ts.Error("Result and Original did not match")
 	}
 }
 
@@ -80,11 +84,15 @@ func DoubleTestTemplate(testVar, testVar2, testResult string, ts *testing.T) {
 		ts.Fatal(err)
 	}
 
-	if string(parsed) != testResult {
-		ts.Errorf("Original: [%s] and parsed: [%s] were not the same", testResult, string(parsed))
+	if string(parsed) != string(testResult) {
+		diff := diffmatchpatch.New()
+    ts.Log(diff.DiffPrettyText(diff.DiffMain(string(parsed), string(testResult), false)))
+    ts.Error("Result and Original did not match")
 	}
 
-	if string(parsed2) != testResult {
-		ts.Errorf("Original: [%s] and parsed: [%s] were not the same", testResult, string(parsed2))
+	if string(parsed2) != string(testResult) {
+		diff := diffmatchpatch.New()
+    ts.Log(diff.DiffPrettyText(diff.DiffMain(string(parsed2), string(testResult), false)))
+    ts.Error("Result and Original did not match")
 	}
 }

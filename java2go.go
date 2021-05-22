@@ -19,7 +19,7 @@ import (
 
 func main() {
   outputDir := flag.String("o", "", "Directory to put the parsed files into, defaults to the same directory that the files appear in")
-  dryRun := flag.Bool("dry-run", false, "Don't create the parsed files (check if parsing succeeds)")
+  writeFlag := flag.Bool("w", false, "Create files directly instead of just writing to stdout")
   verbose := flag.Bool("v", false, "Additional debug info")
   // Cpu profiling
   cpuprofile := flag.String("cpuprofile", "", "write cpu profile to file")
@@ -75,7 +75,7 @@ func main() {
 
     fileDirectory := path[:strings.LastIndex(path, "/")]
 
-    if !*dryRun {
+    if *writeFlag {
       if *outputDir == "" {
         outputFile, err := os.OpenFile(ChangeFileExtension(path, ".json"), os.O_CREATE|os.O_WRONLY, 0775)
         defer outputFile.Close()

@@ -2,15 +2,17 @@ package parsing
 
 import (
   "fmt"
+  "unicode"
 
   "gitlab.nicholasnovak.io/snapdragon/java2go/codeparser"
+  "gitlab.nicholasnovak.io/snapdragon/java2go/parsetools"
 )
 
 type ParsedClasses interface {
   // Returns the type of the parsed class structure
   // Ex: "class" for a class, "interface" for an interface
   GetType() string
-  MethodNames() []string
+  MethodContext() map[string][]string
 }
 
 // Represents a Java class
@@ -29,17 +31,23 @@ func (c ParsedClass) GetType() string {
   return "class"
 }
 
-func (c ParsedClass) MethodNames() []string {
-  names := []string{}
+func (c ParsedClass) MethodContext() map[string][]string {
+  methods := make(map[string][]string)
   // Get the names of all the methods in the class
   for _, method := range c.Methods {
-    names = append(names, method.Name)
+    if IsPublic(method.Modifiers) {
+      methods[ToPublic(method.Name)] = method.ParameterTypes()
+    } else {
+      methods[ToPrivate(method.Name)] = method.ParameterTypes()
+    }
   }
   // Get the names of all the methods in the nested classes
   for _, nested := range c.NestedClasses {
-    names = append(names, nested.MethodNames()...)
+    for nestedMethodName, nestedMethodParams := range nested.MethodContext() {
+      methods[nestedMethodName] = nestedMethodParams
+    }
   }
-  return names
+  return methods
 }
 
 // Represents a Java interface
@@ -56,17 +64,19 @@ func (i ParsedInterface) GetType() string {
   return "interface"
 }
 
-func (i ParsedInterface) MethodNames() []string {
-  names := []string{}
+func (i ParsedInterface) MethodContext() map[string][]string {
+  methods := make(map[string][]string)
   // Get the names of all the methods in the class
   for _, method := range i.Methods {
-    names = append(names, method.Name)
+    methods[method.Name] = method.ParameterTypes()
   }
   // Get the names of all the methods in the nested classes
   for _, nested := range i.NestedClasses {
-    names = append(names, nested.MethodNames()...)
+    for nestedMethodName, nestedMethodParams := range nested.MethodContext() {
+      methods[nestedMethodName] = nestedMethodParams
+    }
   }
-  return names
+  return methods
 }
 
 // Represents a Java Enum
@@ -85,17 +95,19 @@ func (e ParsedEnum) GetType() string {
   return "enum"
 }
 
-func (e ParsedEnum) MethodNames() []string {
-  names := []string{}
+func (e ParsedEnum) MethodContext() map[string][]string {
+  methods := make(map[string][]string)
   // Get the names of all the methods in the class
   for _, method := range e.Methods {
-    names = append(names, method.Name)
+    methods[method.Name] = method.ParameterTypes()
   }
   // Get the names of all the methods in the nested classes
   for _, nested := range e.NestedClasses {
-    names = append(names, nested.MethodNames()...)
+    for nestedMethodName, nestedMethodParams := range nested.MethodContext() {
+      methods[nestedMethodName] = nestedMethodParams
+    }
   }
-  return names
+  return methods
 }
 
 type EnumField struct {
@@ -126,4 +138,28 @@ type ParsedMethod struct {
   Parameters []ParsedVariable
   ReturnType string
   Body []codeparser.LineTyper
+}
+
+func (pm ParsedMethod) ParameterTypes() []string {
+  names := []string{}
+  for _, param := range pm.Parameters {
+    names = append(names, param.DataType)
+  }
+  return names
+}
+
+func ToPublic(name string) string {
+	return string(unicode.ToUpper(rune(name[0]))) + name[1:]
+}
+
+func ToPrivate(name string) string {
+	return string(unicode.ToLower(rune(name[0]))) + name[1:]
+}
+
+// Tests if an object is public, given its modifiers
+func IsPublic(modifiers []string) bool {
+	if parsetools.Contains("public", modifiers) || parsetools.Contains("protected", modifiers) {
+		return true
+	}
+	return false
 }

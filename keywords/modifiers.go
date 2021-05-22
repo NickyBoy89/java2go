@@ -7,7 +7,7 @@ var (
 )
 
 var (
-  PrimitiveTypes = []string{"byte", "short", "int", "long", "float", "double", "boolean", "char"}
+  PrimitiveTypes = []string{"byte", "short", "int", "long", "float", "double", "boolean", "char", "error"} // Error is just a workaround
 )
 
 // abstract 	continue 	for 	new 	switch

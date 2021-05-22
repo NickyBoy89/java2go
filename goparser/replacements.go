@@ -2,7 +2,18 @@ package goparser
 
 import (
 	"strings"
+	"gitlab.nicholasnovak.io/snapdragon/java2go/keywords"
 )
+
+var functionTable = []string{
+	"AssertionError",
+	"Println",
+}
+
+var specializedFunctions = map[string]string{
+	"System.out.Println": "fmt.Println",
+	"System.out.Printf": "fmt.Printf",
+}
 
 var replacementTable = map[string]string{
 	"void": "",
@@ -40,4 +51,14 @@ func JavaToGoArray(arr string) string {
 		return arr[openingBracket:closingBracket + 1] + ReplaceWord(arr[:openingBracket])
 	}
 	return arr
+}
+
+// Note, assumes that the object passed in is in the go array format
+func ToReferenceType(in string) string {
+	for _, primitive := range keywords.PrimitiveTypes {
+		if primitive == in[strings.IndexRune(in, ']') + 1:] { // If the type is an object type
+			return in
+		}
+	}
+	return "*" + in
 }

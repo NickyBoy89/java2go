@@ -12,11 +12,19 @@ import (
 
 const indentNum = 2
 
+// A list of in-scope variables, for type-checking reasons
+var inScopeVariables = make(map[string]string)
+
+func ClearInScopeVariables() {
+	inScopeVariables = make(map[string]string)
+}
+
 // NewClass is set to true if the class is a nested class
 func ParseFile(sourceFile parsing.ParsedClasses, newClass bool) string {
 	var generated string
 	if newClass {
 		generated += fmt.Sprintf("package main\n\n")
+		generated += "func NewAssertionError(err string) error {\n  return errors.New(err)\n}\n\n"
 	}
 	fmt.Printf("Generated %s\n", sourceFile.GetType())
 	switch sourceFile.GetType() {
@@ -29,6 +37,12 @@ func ParseFile(sourceFile parsing.ParsedClasses, newClass bool) string {
 	default:
 		panic("Unknown class type: " + sourceFile.GetType())
 	}
+
+	// Replace generated methods
+	for found, newFunc := range specializedFunctions {
+		generated = strings.ReplaceAll(generated, found, newFunc)
+	}
+
 	return generated
 }
 
@@ -40,8 +54,11 @@ func ParseClass(source parsing.ParsedClass) string {
 	classContext := new(ClassContext)
 	// Set the name of the class context
 	classContext.Name = ToPublic(source.Name)
-	// Extract the method names from the class itself
-	classContext.Methods = source.MethodNames()
+	// Extract the method names from the class itself, before it has been parsed
+	classContext.Methods = source.MethodContext()
+
+	// Register a NewAssertionError for error-handling
+	classContext.Methods["AssertionError"] = []string{"string"}
 
 	// If the line below is commented out, then every struct will be declared as public
 
@@ -116,45 +133,48 @@ func AsShorthand(name string) string {
 // For a static method (standalone class) pass in an empty class name
 func CreateMethod(classContext *ClassContext, methodSource parsing.ParsedMethod) string {
 	var result string
-	if classContext.Name == "" { // Class name is blank, the method is just a plain function
-		if IsPublic(methodSource.Modifiers) {
-			result += fmt.Sprintf("func %s(", ToPublic(methodSource.Name))
-			classContext.Methods = append(classContext.Methods, ToPublic(methodSource.Name))
-		} else {
-			result += fmt.Sprintf("func %s(", ToPrivate(methodSource.Name))
-			classContext.Methods = append(classContext.Methods, ToPrivate(methodSource.Name))
+	if parsetools.Contains("static", methodSource.Modifiers) { // Method is static, so not associated with any class
+		// Special methods, ex: main, init
+		switch methodSource.Name {
+		case "main":
+			result += fmt.Sprintf("func %s(", methodSource.Name)
+		default:
+			if IsPublic(methodSource.Modifiers) {
+				result += fmt.Sprintf("func %s(", ToPublic(methodSource.Name))
+			} else {
+				result += fmt.Sprintf("func %s(", ToPrivate(methodSource.Name))
+			}
 		}
 	} else if methodSource.ReturnType == "constructor" { // Constructor methods just get handled as generator functions
 		// if IsPublic(methodSource.Modifiers) {
 			result += fmt.Sprintf("func New%s(", classContext.Name) // If public, the constructor function is public as well
-			classContext.Methods = append(classContext.Methods, "New" + classContext.Name)
 		// } else {
 			// result += fmt.Sprintf("func new%s(", classContext.Name) // Private constructor
 		// }
 	} else {
 		if IsPublic(methodSource.Modifiers) {
 			result += fmt.Sprintf(
-				"func (%s %s) %s(",
+				"func (%s *%s) %s(",
 				AsShorthand(classContext.Name),
 				classContext.Name,
 				ToPublic(methodSource.Name),
 			)
-			classContext.Methods = append(classContext.Methods, ToPublic(methodSource.Name))
 		} else {
 			result += fmt.Sprintf(
-				"func (%s %s) %s(",
+				"func (%s *%s) %s(",
 				AsShorthand(classContext.Name),
 				classContext.Name,
 				ToPrivate(methodSource.Name),
 			)
-			classContext.Methods = append(classContext.Methods, ToPrivate(methodSource.Name))
 		}
 	}
 
-	for pi, param := range methodSource.Parameters { // Parameters
-		result += param.Name + " " + JavaToGoArray(param.DataType)
-		if pi < len(methodSource.Parameters) - 1 {
-			result += ", "
+	if methodSource.Name != "main" {
+		for pi, param := range methodSource.Parameters { // Parameters
+			result += param.Name + " " + ToReferenceType(JavaToGoArray(param.DataType))
+			if pi < len(methodSource.Parameters) - 1 {
+				result += ", "
+			}
 		}
 	}
 
@@ -172,6 +192,7 @@ func CreateMethod(classContext *ClassContext, methodSource parsing.ParsedMethod)
 		return result
 	}
 	result += fmt.Sprintf(") %v {\n%s\n}", ReplaceWord(methodSource.ReturnType), CreateBody(methodSource.Body, classContext, 2))
+	ClearInScopeVariables()
 	return result
 }
 
@@ -217,6 +238,7 @@ func CreateLine(line codeparser.LineTyper, classContext *ClassContext, indentati
 			CreateLine(line.(codeparser.LineType).Words["VariableName"].([]codeparser.LineType)[0], classContext, 0, false),
 			body,
 		)
+		inScopeVariables[line.(codeparser.LineType).Words["VariableName"].([]codeparser.LineType)[0].Words["Expression"].(string)] = JavaToGoArray(ReplaceWord(line.(codeparser.LineType).Words["VariableType"].(string)))
 	case "AssignVariable":
 		var body string
 		for _, line := range line.(codeparser.LineType).Words["Expression"].([]codeparser.LineType) {
@@ -239,6 +261,16 @@ func CreateLine(line codeparser.LineTyper, classContext *ClassContext, indentati
 			body,
 		)
 	case "FunctionCall":
+		functionName := line.(codeparser.LineType).Words["FunctionName"].(string)
+		if classContext.ContainsMethod(ToPrivate(functionName)) {
+			functionName = ToPrivate(functionName)
+		} else if classContext.ContainsMethod(ToPublic(functionName)) {
+			functionName = ToPublic(functionName)
+		} else {
+			panic("Unknown non-package function " + functionName + "")
+		}
+
+		// Populate the parameters of the function
 		var body string
 		for li, expressionLine := range line.(codeparser.LineType).Words["Parameters"].([][]codeparser.LineType) {
 			for _, expLine := range expressionLine {
@@ -248,19 +280,16 @@ func CreateLine(line codeparser.LineTyper, classContext *ClassContext, indentati
 				body += ", "
 			}
 		}
-		functionName := line.(codeparser.LineType).Words["FunctionName"].(string)
-		if classContext.ContainsMethod(ToPublic(functionName)) {
-			functionName = ToPublic(functionName)
-		} else if classContext.ContainsMethod(ToPrivate(functionName)) {
-			functionName = ToPrivate(functionName)
-		} else {
-			panic("I have no context for what the function " + functionName + " means")
-		}
+
 		result += strings.Repeat(" ", indentation) + fmt.Sprintf(
 			"%s(%s)",
 			functionName,
 			body,
 		)
+	case "ConstructArray":
+		result += strings.Repeat(" ", indentation) + fmt.Sprintf("make([]%s, %s)", line.(codeparser.LineType).Words["ArrayType"], line.(codeparser.LineType).Words["InitialSize"])
+	case "AccessArrayElement":
+		result += strings.Repeat(" ", indentation) + fmt.Sprintf("%s[%s]", line.(codeparser.LineType).Words["ArrayName"], line.(codeparser.LineType).Words["Index"])
 	case "ReturnStatement":
 		var body string
 		for _, line := range line.(codeparser.LineType).Words["Expression"].([]codeparser.LineType) {
@@ -313,15 +342,37 @@ func CreateLine(line codeparser.LineTyper, classContext *ClassContext, indentati
 	case "LocalVariableOrExpression":
 		result += strings.Repeat(" ", indentation) + fmt.Sprintf("%s", ReplaceWord(line.(codeparser.LineType).Words["Expression"].(string)))
 	case "RemoteVariableOrExpression":
-		if line.(codeparser.LineType).Words["RemotePackage"] == "this" {
-			result += strings.Repeat(" ", indentation) + fmt.Sprintf("%s.%s", AsShorthand(classContext.Name), line.(codeparser.LineType).Words["Expression"])
-		} else {
-			switch line.(codeparser.LineType).Words["Expression"].(string) {
-			case "length": // Getting the "length" field of a variable will instead call the len() go builtin function
-				result += strings.Repeat(" ", indentation) + fmt.Sprintf("len(%s)", line.(codeparser.LineType).Words["RemotePackage"])
-			default:
-				result += strings.Repeat(" ", indentation) + fmt.Sprintf("%s.%s", line.(codeparser.LineType).Words["RemotePackage"], line.(codeparser.LineType).Words["Expression"])
-			}
+		packageName := line.(codeparser.LineType).Words["RemotePackage"]
+
+		// The expression field will only ever contain one entry (ex: value in this.value)
+		// Let's just assert that
+		if len(line.(codeparser.LineType).Words["Expression"].([]codeparser.LineType)) != 1 {
+			panic("Remote expression does not have one expression, this should not be the case")
+		}
+
+		expression := CreateLine(line.(codeparser.LineType).Words["Expression"].([]codeparser.LineType)[0], classContext, 0, false)
+
+		switch packageName {
+		case "this": // If package name is reserved word "this", then treat it as referring to the struct method's shorthand
+			packageName = AsShorthand(classContext.Name)
+		case classContext.Name: // If the package name is the current package
+			result += strings.Repeat(" ", indentation) + fmt.Sprintf("%s", expression)
+			expression = ""
+		}
+
+		switch expression {
+		case "":
+		case "length": // Getting the "length" field of a variable will instead call the len() go builtin function
+			result += strings.Repeat(" ", indentation) + fmt.Sprintf(
+				"len(%s)",
+				packageName,
+			)
+		default:
+			result += strings.Repeat(" ", indentation) + fmt.Sprintf(
+				"%s.%s",
+				packageName,
+				expression,
+			)
 		}
 	default:
 		panic("Unknown line type: " + line.GetName())
