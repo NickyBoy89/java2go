@@ -43,10 +43,19 @@ func ReplaceWord(word string) string {
 	return word
 }
 
+func FormatVariable(in string) string {
+	return ToReferenceType(JavaToGoArray(ReplaceWord(in)))
+}
+
 // Since java's syntax for an array is something like: int[], and go's is like []int
 // we just switch around the brackets
 func JavaToGoArray(arr string) string {
 	if strings.ContainsRune(arr, '[') {
+		// Already in go format
+		if arr[0] == '[' {
+			return arr
+		}
+
 		openingBracket := strings.IndexRune(arr, '[')
 		closingBracket := strings.IndexRune(arr, ']')
 		return arr[openingBracket:closingBracket + 1] + ReplaceWord(arr[:openingBracket])
@@ -60,6 +69,10 @@ func ToReferenceType(in string) string {
 		if primitive == in[strings.IndexRune(in, ']') + 1:] { // If the type is an object type
 			return in
 		}
+	}
+
+	if lastBrace := strings.LastIndex(in, "]"); lastBrace != -1 { // Different asterisk placement for array types
+		return in[:lastBrace + 1] + "*" + in[lastBrace + 1:]
 	}
 	return "*" + in
 }

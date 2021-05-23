@@ -31,9 +31,9 @@ func ParseFile(sourceFile parsing.ParsedClasses, newClass bool) string {
 	case "class":
 		generated += ParseClass(sourceFile.(parsing.ParsedClass)) // Parse the class into one struct
 	case "interface":
-		panic("Parsing interface not implemented")
+		generated += ParseInterface(sourceFile.(parsing.ParsedInterface))
 	case "enum":
-		panic("Parsing enum not implemented")
+		generated += ParseEnum(sourceFile.(parsing.ParsedEnum))
 	default:
 		panic("Unknown class type: " + sourceFile.GetType())
 	}
@@ -88,16 +88,128 @@ func ParseClass(source parsing.ParsedClass) string {
 	return generated
 }
 
+func ParseEnum(source parsing.ParsedEnum) string {
+	var generated string
+
+	classContext := new(ClassContext)
+	classContext.Name = ToPublic(source.Name)
+	classContext.Methods = source.MethodContext()
+
+	classContext.Methods["AssertionError"] = []string{"string"}
+
+	// Parse the enum fields
+	var parsedEnums []string
+	for _, field := range source.EnumFields {
+		parsedEnums = append(parsedEnums, CreateEnumField(field, classContext))
+	}
+
+	if !parsetools.Contains("static", source.Modifiers) {
+		generated += CreateStruct(classContext, source.ClassVariables)
+	}
+	generated += "\n\n"
+
+	// Every enum in java has an inplicit method "values", which returns an array of all the enum's fields
+	valuesMethod := parsing.ParsedMethod{
+		// Name is classname + Values (ex: CompassValues)
+		Name: classContext.Name + "Values",
+		Modifiers: []string{"public", "static"},
+		Parameters: []parsing.ParsedVariable{},
+		// Returns an array of that type of object
+		ReturnType: "[]" + ToReferenceType(ReplaceWord(classContext.Name)),
+		Body: []codeparser.LineTyper{
+			codeparser.LineType{
+				Name: "ReturnStatement",
+				Words: map[string]interface{}{
+					"Expression": []codeparser.LineType{
+						codeparser.LineType{
+							Name: "ImplicitArrayAssignment",
+							Words: map[string]interface{}{
+								"ArrayType": "[]" + classContext.Name,
+								"Elements": EnumFieldsToLineType(source.EnumFields, classContext),
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	generated += CreateMethod(classContext, valuesMethod) + "\n\n"
+	classContext.Methods[classContext.Name + "Values"] = []string{}
+
+
+	// Populate the generated enums into a var block
+	generated += CreateVarBlock(parsedEnums)
+
+	generated += "\n"
+
+	for _, method := range source.Methods {
+		generated += CreateMethod(classContext, method)
+		generated += "\n\n" // Add some spacing in between the methods
+	}
+
+	return generated
+}
+
+func ParseInterface(source parsing.ParsedInterface) string {
+	var generated string
+
+	// Create a context for the class, so that the methods have some frame of reference
+	classContext := new(ClassContext)
+	// Set the name of the class context
+	classContext.Name = ToPublic(source.Name)
+	// Extract the method names from the class itself, before it has been parsed
+	classContext.Methods = source.MethodContext()
+
+	// Register a NewAssertionError for error-handling
+	classContext.Methods["AssertionError"] = []string{"string"}
+
+	// If the line below is commented out, then every struct will be declared as public
+
+	// if !IsPublic(source.Modifiers) {
+	// 	classContext.Name = ToPrivate(source.Name)
+	// }
+
+	generated += CreateInterface(classContext, source.Methods)
+
+	generated += "\n\n" // Add some spacing after the initial struct
+
+	// Parse the nested classes
+	for _, nested := range source.NestedClasses {
+		generated += ParseFile(nested, false)
+	}
+
+	return generated
+}
+
 func CreateStruct(classContext *ClassContext, fields []parsing.ParsedVariable) string {
 	result := fmt.Sprintf("type %s struct {", classContext.Name)
 	for _, field := range fields { // Struct fields
 		// Write out a field (ex: value int)
 		if IsPublic(field.Modifiers) {
-			result += fmt.Sprintf("\n%s%s %s", strings.Repeat(" ", indentNum), ToPublic(field.Name), ToReferenceType(JavaToGoArray(ReplaceWord(field.DataType))))
+			result += fmt.Sprintf("\n%s%s %s", strings.Repeat(" ", indentNum), ToPublic(field.Name), FormatVariable(field.DataType))
 		} else {
-			result += fmt.Sprintf("\n%s%s %s", strings.Repeat(" ", indentNum), field.Name, ToReferenceType(JavaToGoArray(ReplaceWord(field.DataType))))
+			result += fmt.Sprintf("\n%s%s %s", strings.Repeat(" ", indentNum), ToPrivate(field.Name), FormatVariable(field.DataType))
 		}
 	}
+	return result + "\n}"
+}
+
+func CreateInterface(classContext *ClassContext, methods []parsing.ParsedMethod) string {
+	result := fmt.Sprintf("type %s interface {", classContext.Name)
+		for _, method := range methods {
+			var methodParams string // Yes, allocating this outside of the loop would make this slightly faster
+			for pi, param := range method.Parameters {
+				methodParams += FormatVariable(param.DataType)
+				if pi != len(method.Parameters) - 1 {
+					methodParams += ", "
+				}
+			}
+			if IsPublic(method.Modifiers) {
+				result += fmt.Sprintf("\n%s%s(%s) %s", strings.Repeat(" ", indentNum), ToPublic(method.Name), methodParams, FormatVariable(method.ReturnType))
+			} else {
+				result += fmt.Sprintf("\n%s%s(%s) %s", strings.Repeat(" ", indentNum), ToPrivate(method.Name), methodParams, FormatVariable(method.ReturnType))
+			}
+		}
 	return result + "\n}"
 }
 
@@ -255,6 +367,11 @@ func CreateLine(line codeparser.LineTyper, classContext *ClassContext, indentati
 		)
 	case "FunctionCall":
 		functionName := line.(codeparser.LineType).Words["FunctionName"].(string)
+		// Special case in enums, the "values" method returns all of the enum's fields
+		if functionName == "values" {
+			functionName = classContext.Name + "Values"
+		}
+
 		if classContext.ContainsMethod(ToPrivate(functionName)) {
 			functionName = ToPrivate(functionName)
 		} else if classContext.ContainsMethod(ToPublic(functionName)) {
@@ -327,6 +444,18 @@ func CreateLine(line codeparser.LineTyper, classContext *ClassContext, indentati
 			CreateBody(line.(codeparser.LineBlock).Lines, classContext, indentation + 2),
 			strings.Repeat(" ", indentation),
 		)
+	case "EnhancedForLoop":
+		var body string
+		for _, line := range line.(codeparser.LineBlock).Words["Iterable"].([]codeparser.LineType) {
+			body += CreateLine(line, classContext, 0, false) + " "
+		}
+		result += strings.Repeat(" ", indentation) + fmt.Sprintf(
+			"for _, %s := range %s {%s\n%s}",
+			line.(codeparser.LineBlock).Words["DeclarationName"],
+			body,
+			CreateBody(line.(codeparser.LineBlock).Lines, classContext, indentation + 2),
+			strings.Repeat(" ", indentation),
+		)
 	case "NewConstructor":
 		result += strings.Repeat(" ", indentation) + fmt.Sprintf("New%s", CreateLine(line.(codeparser.LineType).Words["Expression"].(codeparser.LineType), classContext, 0, false))
 	case "ThrowException":
@@ -341,7 +470,7 @@ func CreateLine(line codeparser.LineTyper, classContext *ClassContext, indentati
 				body += ", "
 			}
 		}
-		result += strings.Repeat(" ", indentation) + fmt.Sprintf("%s{%s}", JavaToGoArray(ReplaceWord(line.(codeparser.LineType).Words["ArrayType"].(string))), body)
+		result += strings.Repeat(" ", indentation) + fmt.Sprintf("%s{%s}", ToReferenceType(JavaToGoArray(ReplaceWord(line.(codeparser.LineType).Words["ArrayType"].(string)))), body)
 	// The expression types, don't have a newline associated with them
 	case "LocalVariableOrExpression":
 		result += strings.Repeat(" ", indentation) + fmt.Sprintf("%s", ReplaceWord(line.(codeparser.LineType).Words["Expression"].(string)))
@@ -383,4 +512,45 @@ func CreateLine(line codeparser.LineTyper, classContext *ClassContext, indentati
 	}
 
 	return result
+}
+
+func CreateVarBlock(vars []string) string {
+	generated := "var (\n"
+
+	for _, inputVar := range vars {
+		generated += fmt.Sprintf("  %s\n", inputVar)
+	}
+
+	generated += "\n)\n"
+
+	return generated
+}
+
+func CreateEnumField(field parsing.EnumField, ctx *ClassContext) string {
+	var fieldParams string
+	for pi, fieldParam := range field.Parameters {
+		// Assumes that the only thing in the parameters that we care about are their names
+		fieldParams += fmt.Sprintf("%s", fieldParam.Name)
+		if pi != len(field.Parameters) - 1 {
+			fieldParams += ", "
+		}
+	}
+	// Parses the fields as classname_fieldname, ex: Compass_NORTH = NewCompass()
+	return fmt.Sprintf("%s_%s = New%s(%s)", ctx.Name, field.Name, ctx.Name, fieldParams)
+}
+
+func EnumFieldsToLineType(enumFields []parsing.EnumField, ctx *ClassContext) [][]codeparser.LineType {
+	outputLines := [][]codeparser.LineType{}
+	for _, field := range enumFields {
+		outputLines = append(outputLines, []codeparser.LineType{
+			codeparser.LineType{
+				Name: "LocalVariableOrExpression",
+				Words: map[string]interface{}{
+					"Expression": ctx.Name + "_" + field.Name,
+				},
+			},
+		})
+	}
+
+	return outputLines
 }

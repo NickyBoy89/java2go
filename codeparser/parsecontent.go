@@ -325,8 +325,20 @@ func ParseExpression(source string) []LineType {
 
 func ParseControlFlow(controlBlockname, parameters, source string) LineTyper {
 	switch controlBlockname {
-	case "for": // For loop, can be a normal for loop, or a for-each loop
-		statement := ParseStatements(parameters)
+	case "for": // For loop, can be a normal for loop, or a for-each loop (enhanced for loop)
+		if colonInd := strings.IndexRune(parameters, ':'); colonInd != -1 { // An enhanced for loop will have a colon in it
+			declarationWords := parsetools.DiscardBlankStrings(strings.Split(parameters[:colonInd], " "))
+			return LineBlock{
+				Name: "EnhancedForLoop",
+				Words: map[string]interface{}{
+					"DeclarationType": declarationWords[0],
+					"DeclarationName": declarationWords[1],
+					"Iterable": ParseExpression(strings.Trim(parameters[colonInd + 1:], " ")),
+				},
+				Lines: ParseContent(strings.Trim(source, " \n")),
+			}
+		}
+		statement := ParseForLoopStatements(parameters)
 		return LineBlock{
 			Name: "ForLoop",
 			Words: map[string]interface{}{
@@ -358,7 +370,7 @@ func ParseControlFlow(controlBlockname, parameters, source string) LineTyper {
 }
 
 // Parses out the statements in a for loop (Initializer, Conditional, Incrementer)
-func ParseStatements(source string) map[string]interface{} {
+func ParseForLoopStatements(source string) map[string]interface{} {
 	if colonInd := parsetools.FindNextIndexOfCharWithSkip(source, ':', `"'{(`); colonInd == -1 { // No colon found, not a for-each loop
 		semicolons := parsetools.FindAllIndexesOfChar(source, ';')
 		if len(semicolons) != 2 { // Should just be 2 semicolons

@@ -2,6 +2,7 @@ package main
 
 import (
   "os"
+  "os/exec"
   "path/filepath"
   "io/fs"
   "io/ioutil"
@@ -21,6 +22,7 @@ func main() {
   outputDir := flag.String("o", "", "Directory to put the parsed files into, defaults to the same directory that the files appear in")
   writeFlag := flag.Bool("w", false, "Create files directly instead of just writing to stdout")
   verbose := flag.Bool("v", false, "Additional debug info")
+  skipImports := flag.Bool("skip-imports", false, "Skip the process of automatically setting the imports of the generated files with goimports")
   // Cpu profiling
   cpuprofile := flag.String("cpuprofile", "", "write cpu profile to file")
   // Testing options
@@ -96,7 +98,7 @@ func main() {
         if _, err := os.Stat(*outputDir + "/" + fileDirectory); os.IsNotExist(err) {
           os.MkdirAll(*outputDir + "/" + fileDirectory, 0775)
         }
-        outputFile, err := os.OpenFile(*outputDir + "/" + ChangeFileExtension(path, ".json"), os.O_WRONLY|os.O_CREATE, 0775)
+        outputFile, err := os.OpenFile(*outputDir + "/" + ChangeFileExtension(path, ".go"), os.O_WRONLY|os.O_CREATE, 0775)
         defer outputFile.Close()
         if err != nil {
           log.Fatalf("Failed to open output file: %v", err)
@@ -104,6 +106,26 @@ func main() {
         _, err = outputFile.Write([]byte(formatted))
         if err != nil {
           log.Fatalf("Failed to write output file: %v", err)
+        }
+      }
+
+      if !*skipImports {
+        // Run goimports to automatically generate imports
+        goImport := exec.Command("goimports", "-w", ChangeFileExtension(path, ".go"))
+        out, err := goImport.Output()
+        if err != nil {
+          if err.Error() == "exit status 2" { // Exit status 2 usually means that the generated file is not valid go code
+            if *verbose {
+              log.Warn("Error automatically generating imports, exit status 2")
+              log.Warn("This can mean that goimports is malfunctioning, but usually just means that the generated code is not completely valid")
+            } else {
+              log.Warn("Invalid go code generated, exit status 2")
+            }
+          } else {
+            log.Error("Automatically generating imports on generated files failed with the following error")
+            log.Error("Please fix the error below to continue, or disable automatic import generation with the --skip-imports flag")
+            log.Fatal(out, err)
+          }
         }
       }
 

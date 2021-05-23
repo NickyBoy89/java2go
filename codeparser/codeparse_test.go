@@ -597,3 +597,92 @@ func TestConstructArray(t *testing.T) {
     t.Error("Result and Original did not match")
 	}
 }
+
+func TestParseEnhancedForLoop(t *testing.T) {
+	test := `for (Compass c : Compass.values()) {
+    System.out.println(c);
+  }`
+	result := []LineTyper{
+		LineBlock{
+			Name: "EnhancedForLoop",
+			Words: map[string]interface{}{
+				"DeclarationType": "Compass",
+				"DeclarationName": "c",
+				"Iterable": []LineType{
+					LineType{
+						Name: "RemoteVariableOrExpression",
+						Words: map[string]interface{}{
+							"Expression": []LineType{
+								LineType{
+									Name: "FunctionCall",
+									Words: map[string]interface{}{
+										"FunctionName": "values",
+										"Parameters": []LineType{},
+									},
+								},
+							},
+							"RemotePackage": "Compass",
+						},
+					},
+				},
+			},
+			Lines: []LineTyper{
+				LineType{
+					Name: "GenericLine",
+					Words: map[string]interface{}{
+						"Statement": []LineType{
+							LineType{
+								Name: "RemoteVariableOrExpression",
+								Words: map[string]interface{}{
+									"Expression": []LineType{
+										LineType{
+											Name: "RemoteVariableOrExpression",
+											Words: map[string]interface{}{
+												"Expression": []LineType{
+													LineType{
+														Name: "FunctionCall",
+														Words: map[string]interface{}{
+															"FunctionName": "println",
+															"Parameters": [][]LineType{
+																[]LineType{
+																	LineType{
+																		Name: "LocalVariableOrExpression",
+																		Words: map[string]interface{}{
+																			"Expression": "c",
+																		},
+																	},
+																},
+															},
+														},
+													},
+												},
+												"RemotePackage": "out",
+											},
+										},
+									},
+									"RemotePackage": "System",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	parsedTest, err := json.MarshalIndent(ParseContent(test), "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	parsedResult, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if string(parsedTest) != string(parsedResult) {
+		diff := diffmatchpatch.New()
+		t.Log(diff.DiffPrettyText(diff.DiffMain(string(parsedTest), string(parsedResult), false)))
+    t.Error("Result and Original did not match")
+	}
+}

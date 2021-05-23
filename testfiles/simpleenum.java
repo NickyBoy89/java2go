@@ -4,6 +4,8 @@ enum Compass {
 	EAST,
 	WEST;
 
+	public Compass() {}
+
 	public static String hello() {
 		return "Hello World";
 	}
