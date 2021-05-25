@@ -686,3 +686,96 @@ func TestParseEnhancedForLoop(t *testing.T) {
     t.Error("Result and Original did not match")
 	}
 }
+
+func TestParseUnholyJava(t *testing.T) {
+	test := "GLFWVidMode gLFWVidMode = l == 0L ? null : GLFW.glfwGetVideoMode(l)"
+	result := LineType{
+		Name: "CreateAndAssignVariable",
+		Words: map[string]interface{}{
+			"VariableName": []LineType{
+				LineType{
+					Name: "LocalVariableOrExpression",
+					Words: map[string]interface{}{
+						"Expression": "gLFWVidMode",
+					},
+				},
+			},
+			"VariableType": "GLFWVidMode",
+			"Expression": []LineType{
+				LineType{
+					Name: "LocalVariableOrExpression",
+					Words: map[string]interface{}{
+						"Expression": "l",
+					},
+				},
+				LineType{
+					Name: "ComparisonOperator",
+					Words: map[string]interface{}{
+						"Operator": "==",
+					},
+				},
+				LineType{
+					Name: "LocalVariableOrExpression",
+					Words: map[string]interface{}{
+						"Expression": "0L",
+					},
+				},
+				LineType{
+					Name: "TernaryOperator",
+					Words: map[string]interface{}{
+						"TrueExpression": []LineType{
+							LineType{
+								Name: "LocalVariableOrExpression",
+								Words: map[string]interface{}{
+									"Expression": "null",
+								},
+							},
+						},
+						"FalseExpression": []LineType{
+							LineType{
+								Name: "RemoteVariableOrExpression",
+								Words: map[string]interface{}{
+									"RemotePackage": "GLFW",
+									"Expression": []LineType{
+										LineType{
+											Name: "FunctionCall",
+											Words: map[string]interface{}{
+												"FunctionName": "glfwGetVideoMode",
+												"Parameters": [][]LineType{
+													[]LineType{
+														LineType{
+															Name: "LocalVariableOrExpression",
+															Words: map[string]interface{}{
+																"Expression": "l",
+															},
+														},
+													},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	parsedTest, err := json.MarshalIndent(ParseLine(test), "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	parsedResult, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if string(parsedTest) != string(parsedResult) {
+		diff := diffmatchpatch.New()
+		t.Log(diff.DiffPrettyText(diff.DiffMain(string(parsedTest), string(parsedResult), false)))
+    t.Error("Result and Original did not match")
+	}
+}

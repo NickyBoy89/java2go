@@ -27,6 +27,27 @@ func ParseContent(sourceData string) []LineTyper {
 			contentLines = append(contentLines, ParseLine(sourceData[lastLine:semicolon]))
 			ci = semicolon + 1
 			lastLine = ci
+		case ':':
+			if caseInd := strings.Index(sourceData[lastLine:ci], "case"); caseInd != -1 {
+				// If there is still another case left
+				if nextCase := strings.Index(sourceData[ci:], "case"); nextCase != -1 {
+					contentLines = append(contentLines, ParseControlFlow(
+						"case",
+						strings.Trim(sourceData[lastLine + caseInd + len("case"):ci], " "),
+						strings.Trim(sourceData[ci + 1:nextCase + ci], " "),
+					))
+					ci = nextCase + ci
+					lastLine = ci
+				} else {
+					contentLines = append(contentLines, ParseControlFlow(
+						"case",
+						strings.Trim(sourceData[lastLine + caseInd + len("case"):ci], " "),
+						strings.Trim(sourceData[ci + 1:], " "),
+					))
+					ci = len(sourceData)
+					lastLine = ci
+				}
+			}
 		case '(': // Some type of control flow mechanism (Ex: if, while, etc...) or a function call that does not assign anything
 			closingParenths := parsetools.IndexOfMatchingParenths(sourceData, ci)
 
@@ -45,8 +66,12 @@ func ParseContent(sourceData string) []LineTyper {
 			case ';': // Called function that does not assign anything, semicolon after the closing
 				ci = ind - 1 // Keep the semicolon so that the expression will be parsed as normal
 				continue // Should just get parsed out as an expression
-			default:
-				panic("Inline method detected found char: [" + string(nextChar) + "]")
+			// case '=': // Set function equal to something
+			// 	continue
+			// case '.': // Stringed methods (ex: this.values().secondMethod())
+			// 	continue
+			// default:
+			// 	panic("Inline method detected found char: [" + string(nextChar) + "]")
 			}
 		case '{': // Certains other types of control flow (ex: do-while loop)
 			lastBrace := parsetools.IndexOfMatchingBrace(sourceData, ci)
@@ -59,8 +84,24 @@ func ParseContent(sourceData string) []LineTyper {
 				})
 				ci = lastBrace + 1
 				lastLine = ci
+			case "try":
+				contentLines = append(contentLines, LineBlock{
+					Name: "TryBlock",
+					Words: make(map[string]interface{}),
+					Lines: ParseContent(sourceData[ci + 1:lastBrace]),
+				})
+				ci = lastBrace + 1
+				lastLine = ci
+			case "finally": // Finally block always executes when the try block finishes
+				contentLines = append(contentLines, LineBlock{
+					Name: "FinallyBlock",
+					Words: make(map[string]interface{}),
+					Lines: ParseContent(sourceData[ci + 1:lastBrace]),
+				})
+				ci = lastBrace + 1
+				lastLine = ci
 			default:
-				panic("Other type of control flow detected, got [" + sourceData[strings.LastIndex(sourceData[lastLine:ci - 1], " "):ci] + "]")
+				panic("Other type of control flow detected, got [" + strings.Trim(sourceData[lastLine:ci], " \n") + "]")
 			}
 		}
 	}
@@ -71,36 +112,38 @@ func ParseLine(sourceString string) LineType {
 	if equalsIndex := parsetools.FindNextIndexOfCharWithSkip(sourceString, '=', `'"{(`); equalsIndex != -1 { // An equals means an expression
 		// The character before the equals, detects things like "+=" and "*=", the compound assignment operators
 		// https://www.geeksforgeeks.org/compound-assignment-operators-java/
-		switch sourceString[equalsIndex - 1] {
-		case '^', '+', '-', '*', '/', '%', '&', '|':
-			return LineType{
-				Name: "CompoundAssignment",
-				Words: map[string]interface{}{
-					"Operator": string(sourceString[equalsIndex - 1]),
-					"VariableName": strings.Trim(sourceString[:equalsIndex - 1], " \n"), // Just strip one character earlier
-					"Expression": ParseExpression(strings.Trim(sourceString[equalsIndex+1:], " \n")),
-				},
+		if equalsIndex - 3 >= 0 {
+			switch sourceString[equalsIndex - 1] {
+			case '^', '+', '-', '*', '/', '%', '&', '|':
+				return LineType{
+					Name: "CompoundAssignment",
+					Words: map[string]interface{}{
+						"Operator": string(sourceString[equalsIndex - 1]),
+						"VariableName": strings.Trim(sourceString[:equalsIndex - 1], " \n"), // Just strip one character earlier
+						"Expression": ParseExpression(strings.Trim(sourceString[equalsIndex+1:], " \n")),
+					},
+				}
 			}
-		}
-		switch sourceString[equalsIndex - 2:equalsIndex] { // Three-character compound assignment operators
-		case ">>", "<<":
-			return LineType{
-				Name: "CompoundAssignment",
-				Words: map[string]interface{}{
-					"Operator": string(sourceString[equalsIndex - 2:equalsIndex]),
-					"VariableName": strings.Trim(sourceString[:equalsIndex - 2], " \n"), // Just strip two characters earlier
-					"Expression": ParseExpression(strings.Trim(sourceString[equalsIndex+1:], " \n")),
-				},
+			switch sourceString[equalsIndex - 2:equalsIndex] { // Three-character compound assignment operators
+			case ">>", "<<":
+				return LineType{
+					Name: "CompoundAssignment",
+					Words: map[string]interface{}{
+						"Operator": string(sourceString[equalsIndex - 2:equalsIndex]),
+						"VariableName": strings.Trim(sourceString[:equalsIndex - 2], " \n"), // Just strip two characters earlier
+						"Expression": ParseExpression(strings.Trim(sourceString[equalsIndex+1:], " \n")),
+					},
+				}
 			}
-		}
-		if sourceString[equalsIndex - 3:equalsIndex] == ">>>" { // Compound right-shift filled 0 assignment operator
-			return LineType{
-				Name: "CompoundAssignment",
-				Words: map[string]interface{}{
-					"Operator": ">>>",
-					"VariableName": strings.Trim(sourceString[:equalsIndex - 3], " \n"), // Just strip three characters earlier
-					"Expression": ParseExpression(strings.Trim(sourceString[equalsIndex+1:], " \n")),
-				},
+			if sourceString[equalsIndex - 3:equalsIndex] == ">>>" { // Compound right-shift filled 0 assignment operator
+				return LineType{
+					Name: "CompoundAssignment",
+					Words: map[string]interface{}{
+						"Operator": ">>>",
+						"VariableName": strings.Trim(sourceString[:equalsIndex - 3], " \n"), // Just strip three characters earlier
+						"Expression": ParseExpression(strings.Trim(sourceString[equalsIndex+1:], " \n")),
+					},
+				}
 			}
 		}
 		switch parsetools.CountRuneWithSkip(strings.Trim(sourceString[:equalsIndex], " \n"), ' ', "<") { // Counts the space between the type of variable and variable name (ex: int value)
@@ -175,6 +218,7 @@ func ParseVariableAndType(source string) (variableType, variableName string) {
 
 // Assumes that the input has already been stripped
 func ParseExpression(source string) []LineType {
+	// fmt.Printf("Expression: %s\n", source)
 	words := []LineType{}
 
 	firstSpace := parsetools.FindNextIndexOfCharWithSkip(source, ' ', `'"{(`)
@@ -233,15 +277,14 @@ func ParseExpression(source string) []LineType {
 			lastWord = ci + 1
 		case '.': // A dot signals another package, should not interfere with the declaration of a float also, because the package should always come before
 			if spaceInd := parsetools.FindNextIndexOfCharWithSkip(source[ci:], ' ', `"'{(`); spaceInd != -1 { // If a space exists (not the last expression)
-				endSpace := strings.IndexRune(source[ci:], ' ') + ci
 				words = append(words, LineType{
 					Name: "RemoteVariableOrExpression",
 					Words: map[string]interface{}{
 						"RemotePackage": source[lastWord:ci],
-						"Expression": ParseExpression(source[ci + 1:endSpace]),
+						"Expression": ParseExpression(source[ci + 1:spaceInd + ci]),
 					},
 				})
-				ci = endSpace + 1
+				ci += spaceInd + 1
 				lastWord = ci
 			} else { // The last expression in the expression
 				words = append(words, LineType{
@@ -275,6 +318,29 @@ func ParseExpression(source string) []LineType {
 				},
 			})
 			ci = closingBrace + 1
+			lastWord = ci
+		case '=':
+			switch source[ci + 1] {
+			case '=':
+				words = append(words, LineType{
+					Name: "ComparisonOperator",
+					Words: map[string]interface{}{
+						"Operator": "==",
+					},
+				})
+				ci += 2
+				lastWord = ci
+			}
+		case '?': // If there is a bare question mark in the expression, then there likely is a ternary operator
+			colonInd := parsetools.FindNextIndexOfCharWithSkip(source[ci:], ':', `'"{(`) + ci
+			words = append(words, LineType{
+				Name: "TernaryOperator",
+				Words: map[string]interface{}{
+					"TrueExpression": ParseExpression(strings.Trim(source[ci + 1:colonInd], " ")),
+					"FalseExpression": ParseExpression(strings.Trim(source[colonInd + 1:], " ")),
+				},
+			})
+			ci = len(source)
 			lastWord = ci
 		// Start getting into the literals (ex: "yes" is a string literal)
 		case '"': // String literal
@@ -363,6 +429,38 @@ func ParseControlFlow(controlBlockname, parameters, source string) LineTyper {
 				"Condition": ParseExpression(parameters),
 			},
 			Lines: ParseContent(strings.Trim(source, " \n")),
+		}
+	case "while":
+		return LineBlock{
+			Name: "WhiteStatement",
+			Words: map[string]interface{}{
+				"Condition": ParseExpression(parameters),
+			},
+			Lines: ParseContent(strings.Trim(source, " \n")),
+		}
+	case "catch":
+		return LineBlock{
+			Name: "CatchBlock",
+			Words: map[string]interface{}{
+				"Exception": ParseExpression(parameters),
+			},
+			Lines: ParseContent(strings.Trim(source, " \n")),
+		}
+	case "switch":
+		return LineBlock{
+			Name: "SwitchExpression",
+			Words: map[string]interface{}{
+				"SwitchExpression": ParseExpression(parameters),
+			},
+			Lines: ParseContent(strings.Trim(source, " ")),
+		}
+	case "case":
+		return LineBlock{
+			Name: "SwitchCase",
+			Words: map[string]interface{}{
+				"Case": parameters,
+			},
+			Lines: ParseContent(strings.Trim(source, " ")),
 		}
 	default:
 		panic("Unrecognized loop type, got [" + controlBlockname + "]")

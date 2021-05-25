@@ -51,7 +51,7 @@ func IndexOfMatchingChar(searchString string, openingIndex int, openingChar, clo
       return openingIndex + ci + 1 // Account for skipping the first character in the loop
     }
   }
-  panic(fmt.Errorf("No matching bracket found, the target code probably has unbalanced brackets"))
+  panic(fmt.Errorf("No matching [%s] found, the target code probably has unbalanced brackets", string(closingChar)))
 }
 
 // Finds the index of the next semicolon in the string, skipping over areas in brackets, or single + double quotes
