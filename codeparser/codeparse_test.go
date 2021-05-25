@@ -779,3 +779,51 @@ func TestParseUnholyJava(t *testing.T) {
     t.Error("Result and Original did not match")
 	}
 }
+
+func TestParseTypeAssertion(t *testing.T) {
+	test := "int value = (int)12"
+	result := LineType{
+		Name: "CreateAndAssignVariable",
+		Words: map[string]interface{}{
+			"VariableName": []LineType{
+				LineType{
+					Name: "LocalVariableOrExpression",
+					Words: map[string]interface{}{
+						"Expression": "value",
+					},
+				},
+			},
+			"VariableType": "int",
+			"Expression": []LineType{
+				LineType{
+					Name: "TypeAssertion",
+					Words: map[string]interface{}{
+						"AssertedType": "int",
+					},
+				},
+				LineType{
+					Name: "LocalVariableOrExpression",
+					Words: map[string]interface{}{
+						"Expression": "12",
+					},
+				},
+			},
+		},
+	}
+
+	parsedTest, err := json.MarshalIndent(ParseLine(test), "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	parsedResult, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if string(parsedTest) != string(parsedResult) {
+		diff := diffmatchpatch.New()
+		t.Log(diff.DiffPrettyText(diff.DiffMain(string(parsedTest), string(parsedResult), false)))
+    t.Error("Result and Original did not match")
+	}
+}

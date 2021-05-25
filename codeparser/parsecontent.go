@@ -1,8 +1,9 @@
 package codeparser
 
 import (
-	// "fmt"
+	"fmt"
 	"strings"
+	"unicode"
 
 	"gitlab.nicholasnovak.io/snapdragon/java2go/parsetools"
 )
@@ -322,17 +323,35 @@ func ParseExpression(source string) []LineType {
 				ci = len(source) // Should just break out
 				lastWord = ci
 			}
-		case '(': // Function call
+		case '(': // Function call or type assertion
 			closingParenths := parsetools.IndexOfMatchingParenths(source, ci)
-			words = append(words, LineType{
-				Name: "FunctionCall",
-				Words: map[string]interface{}{
-					"FunctionName": strings.Trim(source[lastWord:ci], " "),
-					"Parameters": ParseCommaSeparatedValues(source[ci + 1:closingParenths]),
-				},
-			})
+
+			// Look at the character before the function
+			//to test whether it is a function or type assertion
+			if ci == 0 || !unicode.IsLetter(rune(source[ci - 1])) {
+				if ci != 0 {
+					fmt.Printf("Found type assertion with character [%s]\n", string(source[ci - 1]))
+				} else {
+					fmt.Println("Found type assertion")
+				}
+				words = append(words, LineType{
+					Name: "TypeAssertion",
+					Words: map[string]interface{}{
+						"AssertedType": strings.Trim(source[ci + 1:closingParenths], " "),
+					},
+				})
+			} else {
+				words = append(words, LineType{
+					Name: "FunctionCall",
+					Words: map[string]interface{}{
+						"FunctionName": strings.Trim(source[lastWord:ci], " "),
+						"Parameters": ParseCommaSeparatedValues(source[ci + 1:closingParenths]),
+					},
+				})
+			}
 			ci = closingParenths + 1
 			lastWord = ci
+
 		case '[': // Access a specific element of an array
 			closingBrace := strings.IndexRune(source[ci:], ']') + ci
 			words = append(words, LineType{
