@@ -12,6 +12,7 @@ var currentReturn string
 // Expressions evaluate to a value, statements do not
 
 func ParseContent(sourceData string) []LineTyper {
+	// fmt.Printf("Content: %s\n", sourceData)
 	contentLines := []LineTyper{}
 
 	lastLine := 0
@@ -27,7 +28,11 @@ func ParseContent(sourceData string) []LineTyper {
 			contentLines = append(contentLines, ParseLine(sourceData[lastLine:semicolon]))
 			ci = semicolon + 1
 			lastLine = ci
-		case ':':
+		case '"': // Skip over string literals
+			closingQuotes := parsetools.FindNextIndexOfCharWithSkip(sourceData[ci + 1:], '=', ``) + ci + 1
+			ci = closingQuotes + 1
+			lastLine = ci
+		case ':': // Switch case or loop label
 			if caseInd := strings.Index(sourceData[lastLine:ci], "case"); caseInd != -1 {
 				// If there is still another case left
 				if nextCase := strings.Index(sourceData[ci:], "case"); nextCase != -1 {
@@ -47,6 +52,14 @@ func ParseContent(sourceData string) []LineTyper {
 					ci = len(sourceData)
 					lastLine = ci
 				}
+			} else { // Loop label
+				contentLines = append(contentLines, LineType{
+					Name: "ControlLabel",
+					Words: map[string]interface{}{
+						"LabelName": strings.Trim(sourceData[lastLine:ci], " "),
+					},
+				})
+				lastLine = ci + 1
 			}
 		case '(': // Some type of control flow mechanism (Ex: if, while, etc...) or a function call that does not assign anything
 			closingParenths := parsetools.IndexOfMatchingParenths(sourceData, ci)
@@ -100,6 +113,17 @@ func ParseContent(sourceData string) []LineTyper {
 				})
 				ci = lastBrace + 1
 				lastLine = ci
+			case "do":
+				contentLines = append(contentLines, LineBlock{
+					Name: "DoBlock",
+					Words: make(map[string]interface{}),
+					Lines: ParseContent(sourceData[ci + 1:lastBrace]),
+				})
+				endingSemicolon := parsetools.FindNextIndexOfCharWithSkip(sourceData[lastBrace:], ';', `'"{(`) + lastBrace
+				// Time for the while expression, becase it doesn't have any lines of its own
+				contentLines = append(contentLines, ParseControlFlow("do-while", sourceData[strings.IndexRune(sourceData[lastBrace:], '('):endingSemicolon], ""))
+				ci = endingSemicolon + 1
+				lastLine = ci
 			default:
 				panic("Other type of control flow detected, got [" + strings.Trim(sourceData[lastLine:ci], " \n") + "]")
 			}
@@ -109,6 +133,7 @@ func ParseContent(sourceData string) []LineTyper {
 }
 
 func ParseLine(sourceString string) LineType {
+	// fmt.Println(sourceString)
 	if equalsIndex := parsetools.FindNextIndexOfCharWithSkip(sourceString, '=', `'"{(`); equalsIndex != -1 { // An equals means an expression
 		// The character before the equals, detects things like "+=" and "*=", the compound assignment operators
 		// https://www.geeksforgeeks.org/compound-assignment-operators-java/
@@ -461,6 +486,13 @@ func ParseControlFlow(controlBlockname, parameters, source string) LineTyper {
 				"Case": parameters,
 			},
 			Lines: ParseContent(strings.Trim(source, " ")),
+		}
+	case "do-while":
+		return LineBlock{
+			Name: "DoWhileStatement",
+			Words: map[string]interface{}{
+				"Statement": ParseExpression(parameters),
+			},
 		}
 	default:
 		panic("Unrecognized loop type, got [" + controlBlockname + "]")
