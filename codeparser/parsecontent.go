@@ -13,7 +13,7 @@ var currentReturn string
 // Expressions evaluate to a value, statements do not
 
 func ParseContent(sourceData string) []LineTyper {
-	// fmt.Printf("Content: %s\n", sourceData)
+	fmt.Printf("Content: %s\n", sourceData)
 	contentLines := []LineTyper{}
 
 	lastLine := 0
@@ -80,6 +80,18 @@ func ParseContent(sourceData string) []LineTyper {
 			case ';': // Called function that does not assign anything, semicolon after the closing
 				ci = ind - 1 // Keep the semicolon so that the expression will be parsed as normal
 				continue // Should just get parsed out as an expression
+			case '-':
+				if sourceData[ind + 1] == '>' { // Found the arrow of a lambda expression (->)
+					openingBrace := parsetools.FindNextIndexOfCharWithSkip(sourceData[ind:], '{', `'"`) + ind
+					closingBrace := parsetools.IndexOfMatchingBrace(sourceData, openingBrace)
+					contentLines = append(contentLines, ParseControlFlow(
+						"lambdaExpression", // Name
+						sourceData[ci + 1:closingParenths], // Parameters
+						sourceData[openingBrace + 1:closingBrace], // Content
+					))
+					ci = closingBrace + 1
+					lastLine = ci
+				}
 			// case '=': // Set function equal to something
 			// 	continue
 			// case '.': // Stringed methods (ex: this.values().secondMethod())
@@ -244,6 +256,9 @@ func ParseVariableAndType(source string) (variableType, variableName string) {
 
 // Assumes that the input has already been stripped
 func ParseExpression(source string) []LineType {
+	if source == "" { // No expression
+		return []LineType{}
+	}
 	// fmt.Printf("Expression: %s\n", source)
 	words := []LineType{}
 
@@ -326,20 +341,32 @@ func ParseExpression(source string) []LineType {
 		case '(': // Function call or type assertion
 			closingParenths := parsetools.IndexOfMatchingParenths(source, ci)
 
+			fmt.Printf("Inside parenths: %s\n", source[ci:closingParenths + 1])
+
 			// Look at the character before the function
 			//to test whether it is a function or type assertion
-			if ci == 0 || !unicode.IsLetter(rune(source[ci - 1])) {
-				if ci != 0 {
-					fmt.Printf("Found type assertion with character [%s]\n", string(source[ci - 1]))
-				} else {
-					fmt.Println("Found type assertion")
+			if ci == 0 || !unicode.IsLetter(rune(source[ci - 1])) && !unicode.IsDigit(rune(source[ci - 1])){ // If function call ends with number or letter
+
+				// Look at the character after the function to determine if it is just a statement in parenthesies
+				var nextChar rune
+				if len(source[closingParenths + 1:]) != 0 { // Bounds-check to see if there is a non-blank character after the parenths statement
+					nextChar, _ = parsetools.FindNextNonBlankChar(source[closingParenths + 1:])
 				}
-				words = append(words, LineType{
-					Name: "TypeAssertion",
-					Words: map[string]interface{}{
-						"AssertedType": strings.Trim(source[ci + 1:closingParenths], " "),
-					},
-				})
+				if unicode.IsLetter(rune(nextChar)) { // Letter after the parenthesies means a type assertion
+					words = append(words, LineType{
+						Name: "TypeAssertion",
+						Words: map[string]interface{}{
+							"AssertedType": strings.Trim(source[ci + 1:closingParenths], " "),
+						},
+					})
+				} else { // Not a type assertion, some other form of operator means that this is a parenthesied statement
+					words = append(words, LineType{
+						Name: "ParenthesiedExpression",
+						Words: map[string]interface{}{
+							"Expression": ParseExpression(strings.Trim(source[ci + 1:closingParenths], " ")),
+						},
+					})
+				}
 			} else {
 				words = append(words, LineType{
 					Name: "FunctionCall",
@@ -512,6 +539,14 @@ func ParseControlFlow(controlBlockname, parameters, source string) LineTyper {
 			Words: map[string]interface{}{
 				"Statement": ParseExpression(parameters),
 			},
+		}
+	case "lambdaExpression":
+		return LineBlock{
+			Name: "LambdaExpression",
+			Words: map[string]interface{}{
+				"Parameters": ParseCommaSeparatedValues(parameters),
+			},
+			Lines: ParseContent(strings.Trim(source, " ")),
 		}
 	default:
 		panic("Unrecognized loop type, got [" + controlBlockname + "]")

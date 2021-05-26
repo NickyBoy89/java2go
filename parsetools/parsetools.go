@@ -19,7 +19,7 @@ func IndexOfMatchingAngles(searchString string, openingBraceIndex int) int {
 
 func IndexOfMatchingChar(searchString string, openingIndex int, openingChar, closingChar rune) int {
   if searchString[openingIndex] != byte(openingChar) {
-    panic(fmt.Errorf("Invalid starting character: %v", searchString[openingIndex]))
+    panic(fmt.Errorf("Invalid starting character: [%s]", string(searchString[openingIndex])))
   }
 
   bodyString := searchString[openingIndex + 1:]
