@@ -36,7 +36,16 @@ func ParseContent(sourceData string) []LineTyper {
 		case ':': // Switch case or loop label
 			if ci < len(sourceData) - 1 {
 				if sourceData[ci + 1] == ':' { // Double colon, specifies content of method
-					panic("Manually specified method")
+					// Method reference stops at the first "non-normal" character that is invalid for a method name
+					nextInvalid := parsetools.IndexOfNextNonNormal(sourceData[ci + 2:]) + ci + 2
+
+					contentLines = append(contentLines, LineType{
+						Name: "MethodReference",
+						Words: map[string]interface{}{
+							"ClassName": sourceData[lastLine:ci],
+							"ReferenceName": sourceData[ci + 2:nextInvalid],
+						},
+					})
 				}
 			}
 			if caseInd := parsetools.IndexWithSkip(sourceData[lastLine:ci], "case", `'"{(`); caseInd != -1 {
@@ -614,7 +623,13 @@ func ParseControlFlow(controlBlockname, parameters, source string) LineTyper {
 			Lines: ParseContent(strings.Trim(source, " ")),
 		}
 	default:
-		panic("Unrecognized loop type, got [" + controlBlockname + "]")
+		return LineBlock{
+			Name: "ImplicitObjectCreation",
+			Words: map[string]interface{}{
+				"MethodLine": ParseLine(controlBlockname),
+			},
+			Lines: ParseContent(strings.Trim(source, " ")),
+		}
 	}
 }
 

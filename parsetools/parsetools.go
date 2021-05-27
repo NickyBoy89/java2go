@@ -3,6 +3,7 @@ package parsetools
 import (
   "strings"
   "fmt"
+  "unicode"
 )
 
 func IndexOfMatchingBrace(searchString string, openingBraceIndex int) int {
@@ -192,6 +193,16 @@ func IndexOfNextNonBlankChar(source string) int {
     }
   }
   panic("No next blank character found")
+}
+
+// "normal" is defined as not a digit or letter
+func IndexOfNextNonNormal(source string) int {
+  for ci, c := range source {
+    if !unicode.IsLetter(c) || !unicode.IsDigit(c) {
+      return ci
+    }
+  }
+  panic("No normal character found")
 }
 
 func ContainsWithSkip(source, target, skiplist string) bool {
