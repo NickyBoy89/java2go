@@ -48,6 +48,8 @@ func ParseContent(sourceData string) []LineTyper {
 					})
 				}
 			}
+			fmt.Printf("Looking for case in: %s\n", sourceData[lastLine:ci])
+			// Test to see if there is a "case" in the string
 			if caseInd := parsetools.IndexWithSkip(sourceData[lastLine:ci], "case", `'"{(`); caseInd != -1 {
 				// If there is still another case left
 				if nextCase := parsetools.IndexWithSkip(sourceData[ci:], "case", `'"{(`); nextCase != -1 {
@@ -88,6 +90,8 @@ func ParseContent(sourceData string) []LineTyper {
 		case '(': // Some type of control flow mechanism (Ex: if, while, etc...) or a function call that does not assign anything
 			closingParenths := parsetools.IndexOfMatchingParenths(sourceData, ci)
 
+			fmt.Printf("Inside parenths: %s\n", sourceData[ci:closingParenths + 1])
+
 			nextChar, ind := parsetools.FindNextNonBlankChar(sourceData[closingParenths + 1:]) // Get the next character after the closing parenths
 			ind += closingParenths + 1 // Account for the index in relation to the entire string
 			switch nextChar {
@@ -116,16 +120,21 @@ func ParseContent(sourceData string) []LineTyper {
 					ci = closingBrace + 1
 					lastLine = ci
 				}
-			// case '=': // Set function equal to something
-			// 	continue
-			// case '.': // Stringed methods (ex: this.values().secondMethod())
-			// 	continue
-			// default:
-			// 	panic("Inline method detected found char: [" + string(nextChar) + "]")
+			default:
+				contentLines = append(contentLines, LineType{
+					Name: "ParenthesiedExpression",
+					Words: map[string]interface{}{
+						"Expression": ParseExpression(sourceData[ci + 1:closingParenths]),
+					},
+				})
+				ci = closingParenths + 1
+				lastLine = ci
 			}
 		case '{': // Certains other types of control flow (ex: do-while loop)
 
 			lastBrace := parsetools.IndexOfMatchingBrace(sourceData, ci)
+
+			fmt.Printf("Found control flow: %s\n", sourceData[lastLine:ci])
 
 			// If the control flow has a bracket in it, treat it as an implicit creation of an array
 			// ex: new int[]{1, 2, 3}
