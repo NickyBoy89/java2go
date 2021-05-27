@@ -827,3 +827,80 @@ func TestParseTypeAssertion(t *testing.T) {
     t.Error("Result and Original did not match")
 	}
 }
+
+func TestParseDoubleNestedArray(t *testing.T) {
+	test := "return new int[][]{{1, 2, 3}}"
+	result := LineType{
+		Name: "ReturnStatement",
+		Words: map[string]interface{}{
+			"Expression": []LineType{
+				LineType{
+					Name: "ConstructArrayWithImplicit",
+					Words: map[string]interface{}{
+						"ArrayType": "int[]",
+						"Elements": []LineType{
+							LineType{
+								Name: "ImplicitArrayAssignment",
+								Words: map[string]interface{}{
+									"ArrayType": "int[]",
+									"Elements": [][]LineType{
+										[]LineType{
+											LineType{
+												Name: "ImplicitArrayAssignment",
+												Words: map[string]interface{}{
+													"ArrayType": "int",
+													"Elements": [][]LineType{
+														[]LineType{
+															LineType{
+																Name: "LocalVariableOrExpression",
+																Words: map[string]interface{}{
+																	"Expression": "1",
+																},
+															},
+														},
+														[]LineType{
+															LineType{
+																Name: "LocalVariableOrExpression",
+																Words: map[string]interface{}{
+																	"Expression": "2",
+																},
+															},
+														},
+														[]LineType{
+															LineType{
+																Name: "LocalVariableOrExpression",
+																Words: map[string]interface{}{
+																	"Expression": "3",
+																},
+															},
+														},
+													},
+												},
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	parsedTest, err := json.MarshalIndent(ParseLine(test), "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	parsedResult, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if string(parsedTest) != string(parsedResult) {
+		diff := diffmatchpatch.New()
+		t.Log(diff.DiffPrettyText(diff.DiffMain(string(parsedTest), string(parsedResult), false)))
+    t.Error("Result and Original did not match")
+	}
+}

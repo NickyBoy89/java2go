@@ -69,10 +69,14 @@ func FindNextIndexOfChar(source string, target rune) int {
 }
 
 func FindAllIndexesOfChar(source string, target rune) []int {
+  return FindAllIndexesOfCharWithSkip(source, target, `"'({`)
+}
+
+func FindAllIndexesOfCharWithSkip(source string, target rune, skiplist string) []int {
   indexes := []int{}
   var ind, cutout int
   for {
-    ind = FindNextIndexOfCharWithSkip(source[cutout:], target, `"'({`)
+    ind = FindNextIndexOfCharWithSkip(source[cutout:], target, skiplist)
     if ind != -1 {
       indexes = append(indexes, ind + cutout)
       cutout += ind + 1
@@ -103,6 +107,26 @@ func FindNextIndexOfCharWithSkip(source string, target rune, skiplist string) in
       return ci
     }
   }
+  return -1
+}
+
+func IndexWithSkip(source, target, skiplist string) int {
+  // Gets all the indexes of the first character of the index
+  for _, charIndex := range FindAllIndexesOfCharWithSkip(source, rune(target[0]), skiplist) {
+    // Out-of-bounds
+    if charIndex + len(target) > len(source) {
+      continue
+    }
+
+    for testInd := range target {
+      if target[testInd] != source[charIndex + testInd] {
+        break
+      } else if testInd == len(target) - 1 { // Just tested the last value, and since the invalid check has failed
+        return charIndex
+      }
+    }
+  }
+
   return -1
 }
 
@@ -168,6 +192,13 @@ func IndexOfNextNonBlankChar(source string) int {
     }
   }
   panic("No next blank character found")
+}
+
+func ContainsWithSkip(source, target, skiplist string) bool {
+  if IndexWithSkip(source, target, skiplist) == -1 {
+    return false
+  }
+  return true
 }
 
 func Contains(str string, searchFields []string) bool {

@@ -30,19 +30,33 @@ func ParseContent(sourceData string) []LineTyper {
 			ci = semicolon + 1
 			lastLine = ci
 		case '"': // Skip over string literals
-			closingQuotes := parsetools.FindNextIndexOfCharWithSkip(sourceData[ci + 1:], '=', ``) + ci + 1
+			closingQuotes := parsetools.FindNextIndexOfCharWithSkip(sourceData[ci + 1:], '"', ``) + ci + 1
 			ci = closingQuotes + 1
 			lastLine = ci
 		case ':': // Switch case or loop label
-			if caseInd := strings.Index(sourceData[lastLine:ci], "case"); caseInd != -1 {
+			if ci < len(sourceData) - 1 {
+				if sourceData[ci + 1] == ':' { // Double colon, specifies content of method
+					panic("Manually specified method")
+				}
+			}
+			if caseInd := parsetools.IndexWithSkip(sourceData[lastLine:ci], "case", `'"{(`); caseInd != -1 {
 				// If there is still another case left
-				if nextCase := strings.Index(sourceData[ci:], "case"); nextCase != -1 {
+				if nextCase := parsetools.IndexWithSkip(sourceData[ci:], "case", `'"{(`); nextCase != -1 {
 					contentLines = append(contentLines, ParseControlFlow(
 						"case",
 						strings.Trim(sourceData[lastLine + caseInd + len("case"):ci], " "),
 						strings.Trim(sourceData[ci + 1:nextCase + ci], " "),
 					))
 					ci = nextCase + ci
+					lastLine = ci
+				// Tests for a "default" case at the end of the case
+				} else if parsetools.ContainsWithSkip(sourceData[ci:], "default", `'"{(`) {
+					contentLines = append(contentLines, ParseControlFlow(
+						"default",
+						"", // Default case has no conditions
+						strings.Trim(sourceData[ci + 1:], " "),
+					))
+					ci = len(sourceData)
 					lastLine = ci
 				} else {
 					contentLines = append(contentLines, ParseControlFlow(
@@ -68,7 +82,8 @@ func ParseContent(sourceData string) []LineTyper {
 			nextChar, ind := parsetools.FindNextNonBlankChar(sourceData[closingParenths + 1:]) // Get the next character after the closing parenths
 			ind += closingParenths + 1 // Account for the index in relation to the entire string
 			switch nextChar {
-			case '{': // The next character should be an opening brace, anything else and it is likely an inline method
+			// The next character should be an opening brace, anything else and it is likely an inline method
+			case '{': // Some type of control flow
 				closingBrace := parsetools.IndexOfMatchingBrace(sourceData, ind)
 				contentLines = append(contentLines, ParseControlFlow(
 					strings.Trim(sourceData[lastLine:ci], " \n"), // The name of the loop (ex: for, if)
@@ -100,7 +115,23 @@ func ParseContent(sourceData string) []LineTyper {
 			// 	panic("Inline method detected found char: [" + string(nextChar) + "]")
 			}
 		case '{': // Certains other types of control flow (ex: do-while loop)
+
 			lastBrace := parsetools.IndexOfMatchingBrace(sourceData, ci)
+
+			// If the control flow has a bracket in it, treat it as an implicit creation of an array
+			// ex: new int[]{1, 2, 3}
+			if strings.ContainsRune(sourceData[lastLine:ci], '[') {
+				continue
+
+			// If the control flow has a parenths in it, treat it as specifying the methods for a class
+			} else if strings.ContainsRune(sourceData[lastLine:ci], '(') {
+				panic("method passed")
+				contentLines = append(contentLines, ParseLine(sourceData[lastLine:lastBrace]))
+				ci = lastBrace + 1
+				lastLine = ci
+				continue
+			}
+
 			switch strings.Trim(sourceData[lastLine:ci], " \n") {
 			case "else":
 				contentLines = append(contentLines, LineBlock{
@@ -147,7 +178,7 @@ func ParseContent(sourceData string) []LineTyper {
 
 func ParseLine(sourceString string) LineType {
 	// fmt.Println(sourceString)
-	if equalsIndex := parsetools.FindNextIndexOfCharWithSkip(sourceString, '=', `'"{(`); equalsIndex != -1 { // An equals means an expression
+	if equalsIndex := parsetools.FindNextIndexOfCharWithSkip(sourceString, '=', `'"{(`); equalsIndex != -1 && equalsIndex - 1 > 0 && sourceString[equalsIndex - 1] != '!' { // An equals means an expression
 		// The character before the equals, detects things like "+=" and "*=", the compound assignment operators
 		// https://www.geeksforgeeks.org/compound-assignment-operators-java/
 		if equalsIndex - 3 >= 0 {
@@ -184,7 +215,8 @@ func ParseLine(sourceString string) LineType {
 				}
 			}
 		}
-		switch parsetools.CountRuneWithSkip(strings.Trim(sourceString[:equalsIndex], " \n"), ' ', "<") { // Counts the space between the type of variable and variable name (ex: int value)
+		// Counts the space between the type of variable and variable name (ex: int value)
+		switch parsetools.CountRuneWithSkip(strings.Trim(sourceString[:equalsIndex], " \n"), ' ', "<") {
 		case 0: // 0 spaces means that there are no spaces, and the variable is just being re-assigned
 			return LineType{
 				Name: "AssignVariable",
@@ -266,19 +298,39 @@ func ParseExpression(source string) []LineType {
 	if firstSpace != -1 {
 		switch source[:firstSpace] {
 		case "new":
-			// Array constructor
-			if openingBracket := strings.IndexRune(source[firstSpace:], '[') + firstSpace; openingBracket - firstSpace != -1 { // "new" is only constructing an array, and does not create a generator function
-				closingBracket := strings.IndexRune(source[openingBracket:], ']') + openingBracket
+
+			// If we are creating an array (new int[]{1, 2, 3} or new int[0]), this doesn't make sense to have a newConstructor for it
+			// So it just outputs a ConstructArray type
+			if openingBracket := strings.IndexRune(source[firstSpace:], '['); openingBracket != -1 {
+				lastOpeningBracket := strings.LastIndex(source[firstSpace:], "[")
+				closingBracket := strings.LastIndex(source[openingBracket:], "]") + openingBracket
+
+				// If there is no implicit array assignment (ex: new int[0])
+				if closingBracket == len(source) - 1 {
+					return []LineType{
+						LineType{
+							Name: "ConstructArray",
+							Words: map[string]interface{}{
+								"ArrayType": strings.Trim(source[firstSpace:firstSpace + openingBracket], " "),
+								"InitialSize": source[firstSpace + openingBracket + 1:closingBracket],
+							},
+						},
+					}
+				}
+
+				// Some implicit array assignment
+				currentReturn = strings.Trim(source[firstSpace:firstSpace + lastOpeningBracket], " ")
 				return []LineType{
 					LineType{
-						Name: "ConstructArray",
+						Name: "ConstructArrayWithImplicit",
 						Words: map[string]interface{}{
-							"ArrayType": strings.Trim(source[firstSpace:openingBracket], " "),
-							"InitialSize": source[openingBracket + 1:closingBracket],
+							"ArrayType": currentReturn,
+							"Elements": ParseExpression(strings.Trim(source[closingBracket + 1:], " ")),
 						},
 					},
 				}
 			}
+
 			return []LineType{
 				LineType{
 					Name: "NewConstructor",
@@ -292,11 +344,18 @@ func ParseExpression(source string) []LineType {
 
 	switch source[0] {
 	case '{':  // Means implicitly filling an array
+
+		// If the array is an array type, then remove one level of array from it
+		tempReturn := currentReturn
+		if strings.ContainsRune(currentReturn, '[') {
+			currentReturn = strings.Replace(currentReturn, "[]", "", 1)
+		}
+
 		return []LineType{
 			LineType{
 				Name: "ImplicitArrayAssignment",
 				Words: map[string]interface{}{
-					"ArrayType": currentReturn, // Gets the current return type from a global, becuse I didn't think the best way for that would be passing it in as a parameter
+					"ArrayType": tempReturn, // Gets the current return type from a global, becuse I didn't think the best way for that would be passing it in as a parameter
 					"Elements": ParseCommaSeparatedValues(source[1:len(source) - 1]),
 				},
 			},
@@ -352,7 +411,7 @@ func ParseExpression(source string) []LineType {
 				if len(source[closingParenths + 1:]) != 0 { // Bounds-check to see if there is a non-blank character after the parenths statement
 					nextChar, _ = parsetools.FindNextNonBlankChar(source[closingParenths + 1:])
 				}
-				if unicode.IsLetter(rune(nextChar)) { // Letter after the parenthesies means a type assertion
+				if unicode.IsLetter(rune(nextChar)) || unicode.IsDigit(rune(nextChar)) { // Letter after the parenthesies means a type assertion
 					words = append(words, LineType{
 						Name: "TypeAssertion",
 						Words: map[string]interface{}{
@@ -531,6 +590,12 @@ func ParseControlFlow(controlBlockname, parameters, source string) LineTyper {
 			Words: map[string]interface{}{
 				"Case": parameters,
 			},
+			Lines: ParseContent(strings.Trim(source, " ")),
+		}
+	case "default": // Default switch statement
+		return LineBlock{
+			Name: "DefaultCase",
+			Words: make(map[string]interface{}),
 			Lines: ParseContent(strings.Trim(source, " ")),
 		}
 	case "do-while":
