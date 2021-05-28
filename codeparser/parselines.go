@@ -50,7 +50,7 @@ func ParseLine(source string) LineTyper {
         Name: "AssignVariable",
         Words: map[string]interface{}{
           "VariableName": ParseExpression(strings.Trim(source[:ci], " \n")),
-          "Expression": []LineType{ParseExpression(strings.Trim(source[ci + 1:], " \n"))},
+          "Expression": ParseExpression(strings.Trim(source[ci + 1:], " \n")),
         },
       }
       case 2: // Assign and create a variable
@@ -59,9 +59,9 @@ func ParseLine(source string) LineTyper {
         return LineType{
           Name: "CreateAndAssignVariable",
           Words: map[string]interface{}{
-            "VariableName": ParseExpression(strings.Trim(source[spaceIndex + 1:equalsIndex], " \n")),
+            "VariableName": ParseExpression(strings.Trim(source[spaceIndex + 1:ci], " \n")),
             "VariableType": currentReturn,
-            "Expression": ParseExpression(strings.Trim(source[equalsIndex + 1:], " \n")),
+            "Expression": ParseExpression(strings.Trim(source[ci + 1:], " \n")),
           },
         }
       }
@@ -70,7 +70,7 @@ func ParseLine(source string) LineTyper {
       if ci + 1 < len(source) {
         if source[ci + 1] == ':' { // Double colon, method reference operator
           // Method stops at non-letter or number
-          nextInvalid := parsetools.IndexOfNextNonNormal(sourceData[ci + 2:]) + ci + 2
+          nextInvalid := parsetools.IndexOfNextNonNormal(source[ci + 2:]) + ci + 2
           currentWords = append(currentWords, LineType{
 						Name: "MethodReference",
 						Words: map[string]interface{}{
