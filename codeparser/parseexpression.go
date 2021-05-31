@@ -13,7 +13,7 @@ func ParseExpression(source string) []LineType {
 	if source == "" { // No expression
 		return []LineType{}
 	}
-	// fmt.Printf("Expression: %s\n", source)
+	fmt.Printf("Expression: [%s]\n", source)
 	words := []LineType{}
 
 	firstSpace := parsetools.FindNextIndexOfCharWithSkip(source, ' ', `'"{(`)
@@ -159,9 +159,9 @@ func ParseExpression(source string) []LineType {
 			}
 			ci = closingParenths + 1
 			lastWord = ci
-
 		case '[': // Access a specific element of an array
-			closingBrace := strings.IndexRune(source[ci:], ']') + ci
+    fmt.Println("Brackets")
+			closingBrace := parsetools.IndexOfMatchingBrackets(source, ci)
 			words = append(words, LineType{
 				Name: "AccessArrayElement",
 				Words: map[string]interface{}{
@@ -169,20 +169,22 @@ func ParseExpression(source string) []LineType {
 					"Index": source[ci + 1:closingBrace],
 				},
 			})
-			ci = closingBrace + 1
-			lastWord = ci
+			ci = closingBrace
+			lastWord = ci + 1
 		case '=':
-			switch source[ci + 1] {
-			case '=':
-				words = append(words, LineType{
-					Name: "ComparisonOperator",
-					Words: map[string]interface{}{
-						"Operator": "==",
-					},
-				})
-				ci += 2
-				lastWord = ci
-			}
+      if len(source) > 1 {
+        switch source[ci + 1] {
+        case '=':
+          words = append(words, LineType{
+            Name: "ComparisonOperator",
+            Words: map[string]interface{}{
+              "Operator": "==",
+            },
+          })
+          ci += 2
+          lastWord = ci
+        }
+      }
 		case '?': // If there is a bare question mark in the expression, then there likely is a ternary operator
 			colonInd := parsetools.FindNextIndexOfCharWithSkip(source[ci:], ':', `'"{(`) + ci
 			words = append(words, LineType{

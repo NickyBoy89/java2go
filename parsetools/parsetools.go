@@ -18,6 +18,10 @@ func IndexOfMatchingAngles(searchString string, openingBraceIndex int) int {
   return IndexOfMatchingChar(searchString, openingBraceIndex, '<', '>')
 }
 
+func IndexOfMatchingBrackets(searchString string, openingBraceIndex int) int {
+  return IndexOfMatchingChar(searchString, openingBraceIndex, '[', ']')
+}
+
 func IndexOfMatchingChar(searchString string, openingIndex int, openingChar, closingChar rune) int {
   if searchString[openingIndex] != byte(openingChar) {
     panic(fmt.Errorf("Invalid starting character: [%s]", string(searchString[openingIndex])))
@@ -102,6 +106,8 @@ func FindNextIndexOfCharWithSkip(source string, target rune, skiplist string) in
       ci = IndexOfMatchingParenths(source, ci)
     } else if char == '<' && strings.ContainsRune(skiplist, '<') {
       ci = IndexOfMatchingAngles(source, ci)
+    } else if char == '[' && strings.ContainsRune(skiplist, '[') {
+      ci = IndexOfMatchingBrackets(source, ci)
     } else if strings.ContainsAny(string(char), skiplist) { // Just find the matching one for all of these
       ci = strings.IndexRune(source[ci + 1:], rune(char)) + ci + 1
     } else if char == byte(target) {
