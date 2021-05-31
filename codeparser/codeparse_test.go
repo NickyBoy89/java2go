@@ -181,28 +181,30 @@ func TestNewConstructor(t *testing.T) {
 	result := LineType{
 		Name: "ThrowException",
 		Words: map[string]interface{}{
-			"Expression": LineType{
-				Name: "NewConstructor",
-				Words: map[string]interface{}{
-					"Expression": LineType{
-						Name: "FunctionCall",
-						Words: map[string]interface{}{
-							"FunctionName": "AssertionError",
-							"Parameters": [][]LineType{
-								[]LineType{
-									LineType{
-										Name: "RemoteVariableOrExpression",
-										Words: map[string]interface{}{
-											"Expression": []LineType{
-												LineType{
-													Name: "FunctionCall",
-													Words: map[string]interface{}{
-														"FunctionName": "size",
-														"Parameters": []LineType{},
+			"Expression": []LineType{
+				LineType{
+					Name: "NewConstructor",
+					Words: map[string]interface{}{
+						"Expression": LineType{
+							Name: "FunctionCall",
+							Words: map[string]interface{}{
+								"FunctionName": "AssertionError",
+								"Parameters": [][]LineType{
+									[]LineType{
+										LineType{
+											Name: "RemoteVariableOrExpression",
+											Words: map[string]interface{}{
+												"Expression": []LineType{
+													LineType{
+														Name: "FunctionCall",
+														Words: map[string]interface{}{
+															"FunctionName": "size",
+															"Parameters": []LineType{},
+														},
 													},
 												},
+												"RemotePackage": "list",
 											},
-											"RemotePackage": "list",
 										},
 									},
 								},
@@ -300,72 +302,74 @@ func TestExpressionInFunctionCalls(t *testing.T) {
 	result := LineType{
 		Name: "ThrowException",
 		Words: map[string]interface{}{
-			"Expression": LineType{
-				Name: "NewConstructor",
-				Words: map[string]interface{}{
-					"Expression": LineType{
-						Name: "FunctionCall",
-						Words: map[string]interface{}{
-							"FunctionName": "AssertionError",
-							"Parameters": [][]LineType{
-								[]LineType{
-									LineType{
-										Name: "StringLiteral",
-										Words: map[string]interface{}{
-											"String": "\"Expected list of length \"",
+			"Expression": []LineType{
+				LineType{
+					Name: "NewConstructor",
+					Words: map[string]interface{}{
+						"Expression": LineType{
+							Name: "FunctionCall",
+							Words: map[string]interface{}{
+								"FunctionName": "AssertionError",
+								"Parameters": [][]LineType{
+									[]LineType{
+										LineType{
+											Name: "StringLiteral",
+											Words: map[string]interface{}{
+												"String": "\"Expected list of length \"",
+											},
 										},
-									},
-									LineType{
-										Name: "LocalVariableOrExpression",
-										Words: map[string]interface{}{
-											"Expression": "+",
+										LineType{
+											Name: "LocalVariableOrExpression",
+											Words: map[string]interface{}{
+												"Expression": "+",
+											},
 										},
-									},
-									LineType{
-										Name: "RemoteVariableOrExpression",
-										Words: map[string]interface{}{
-											"Expression": []LineType{
-												LineType{
-													Name: "LocalVariableOrExpression",
-													Words: map[string]interface{}{
-														"Expression": "length",
+										LineType{
+											Name: "RemoteVariableOrExpression",
+											Words: map[string]interface{}{
+												"Expression": []LineType{
+													LineType{
+														Name: "LocalVariableOrExpression",
+														Words: map[string]interface{}{
+															"Expression": "length",
+														},
 													},
 												},
+												"RemotePackage": "answer",
 											},
-											"RemotePackage": "answer",
 										},
-									},
-									LineType{
-										Name: "LocalVariableOrExpression",
-										Words: map[string]interface{}{
-											"Expression": "+",
+										LineType{
+											Name: "LocalVariableOrExpression",
+											Words: map[string]interface{}{
+												"Expression": "+",
+											},
 										},
-									},
-									LineType{
-										Name: "StringLiteral",
-										Words: map[string]interface{}{
-											"String": "\" but got \"",
+										LineType{
+											Name: "StringLiteral",
+											Words: map[string]interface{}{
+												"String": "\" but got \"",
+											},
 										},
-									},
-									LineType{
-										Name: "LocalVariableOrExpression",
-										Words: map[string]interface{}{
-											"Expression": "+",
+										LineType{
+											Name: "LocalVariableOrExpression",
+											Words: map[string]interface{}{
+												"Expression": "+",
+											},
 										},
-									},
-									LineType{
-										Name: "RemoteVariableOrExpression",
-										Words: map[string]interface{}{
-											"Expression": []LineType{
-												LineType{
-													Name: "FunctionCall",
-													Words: map[string]interface{}{
-														"FunctionName": "size",
-														"Parameters": []LineType{},
+										LineType{
+											Name: "RemoteVariableOrExpression",
+											Words: map[string]interface{}{
+												"Expression": []LineType{
+													LineType{
+														Name: "FunctionCall",
+														Words: map[string]interface{}{
+															"FunctionName": "size",
+															"Parameters": []LineType{},
+														},
 													},
 												},
+												"RemotePackage": "list",
 											},
-											"RemotePackage": "list",
 										},
 									},
 								},
@@ -628,9 +632,9 @@ func TestParseEnhancedForLoop(t *testing.T) {
 			},
 			Lines: []LineTyper{
 				LineType{
-					Name: "GenericLine",
+					Name: "GenericExpression",
 					Words: map[string]interface{}{
-						"Statement": []LineType{
+						"Expression": []LineType{
 							LineType{
 								Name: "RemoteVariableOrExpression",
 								Words: map[string]interface{}{

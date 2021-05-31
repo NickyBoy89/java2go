@@ -27,14 +27,14 @@ func ParseLine(source string) LineTyper {
     		return LineType{
     			Name: "ReturnStatement",
     			Words: map[string]interface{}{
-    				"Expression": ParseExpression(source[lastLine:ci]),
+    				"Expression": ParseExpression(strings.Trim(source[ci:], " ")),
     			},
     		}
     	case "throw":
     		return LineType{
     			Name: "ThrowException",
     			Words: map[string]interface{}{
-    				"Expression": ParseExpression(source[lastLine:ci]),
+    				"Expression": ParseExpression(strings.Trim(source[ci:], " ")),
     			},
     		}
       default:
@@ -42,7 +42,65 @@ func ParseLine(source string) LineTyper {
         currentWords = append(currentWords, ParseExpression(source[lastLine:ci])...)
         lastLine = ci + 1
       }
-    case '=':
+    case '(':
+      closingParenths := parsetools.IndexOfMatchingParenths(source, ci)
+      // Handle the first word before the parenthesies without a space (for() vs for ())
+      if source[lastLine:ci] != "" {
+        currentWords = append(currentWords, ParseExpression(source[lastLine:ci])...)
+      }
+
+      // Assuming that there is some type of control flow
+      if currentWords[len(currentWords) - 1].Name == "LocalVariableOrExpression" && strings.ContainsRune(source[closingParenths:], '{') {
+        // Get the name of the control flow
+
+        startingBrace := strings.IndexRune(source[closingParenths:], '{') + closingParenths
+        closingBrace := parsetools.IndexOfMatchingBrace(source, startingBrace)
+
+        switch currentWords[len(currentWords) - 1].Words["Expression"].(string) {
+        case "for":
+          return ParseControlFlow("for", source[ci + 1:closingParenths], source[startingBrace + 1:closingBrace])
+        case "if":
+          return ParseControlFlow("if", source[ci + 1:closingParenths], source[startingBrace + 1:closingBrace])
+        case "while":
+          return ParseControlFlow("while", source[ci + 1:closingParenths], source[startingBrace + 1:closingBrace])
+        case "catch":
+          return ParseControlFlow("catch", source[ci + 1:closingParenths], "")
+        case "switch":
+          return ParseControlFlow("switch", source[ci + 1:closingParenths], source[startingBrace + 1:closingBrace])
+        default:
+          fmt.Printf("--- Control flow: [%s] ---\n", currentWords[len(currentWords) - 1].Words["Expression"].(string))
+        }
+      }
+
+      // No control flow detected, just a normal method that is parsed as an expression
+      ci = closingParenths
+      lastLine = ci + 1
+    case '{':
+      closingBrace := parsetools.IndexOfMatchingBrace(source, ci)
+      // Handle the first word before the parenthesies without a space (for() vs for ())
+      if source[lastLine:ci] != "" {
+        currentWords = append(currentWords, ParseExpression(source[lastLine:ci])...)
+      }
+
+      // Assuming that there is some type of control flow
+      if currentWords[len(currentWords) - 1].Name == "LocalVariableOrExpression" {
+        switch currentWords[len(currentWords) - 1].Words["Expression"].(string) {
+        case "else":
+          return ParseControlFlow("else", "", source[ci + 1:closingBrace])
+        case "try":
+          return ParseControlFlow("try", "", source[ci + 1:closingBrace])
+        default:
+          panic("Possible unknown control flow: [" + currentWords[len(currentWords) - 1].Words["Expression"].(string) + "]")
+        }
+      }
+    case ':': // Loop label
+      return LineType{
+        Name: "ContentLabel",
+        Words: map[string]interface{}{
+          "LabelName": strings.Trim(source[lastLine:ci], " "),
+        },
+      }
+    case '=': // Any equals operator or a plain equals
       // Filters out compound assignment operator (*=, +=) and such
       if ci > 1 {
         switch source[ci - 1] {
@@ -118,26 +176,64 @@ func ParseLine(source string) LineTyper {
           },
         }
       }
-    case ':': // Switch case or loop label
-      // Test if this element is not at the end of the source
-      if ci + 1 < len(source) {
-        if source[ci + 1] == ':' { // Double colon, method reference operator
-          // Method stops at non-letter or number
-          nextInvalid := parsetools.IndexOfNextNonNormal(source[ci + 2:]) + ci + 2
-          currentWords = append(currentWords, LineType{
-						Name: "MethodReference",
-						Words: map[string]interface{}{
-							"ClassName": source[lastLine:ci],
-							"ReferenceName": source[ci + 2:nextInvalid],
-						},
-					})
-        }
-      }
-
     }
   }
 
-  panic("Unknown line")
+  // If no other line type is specified, then the line is just a plain expression
+  return LineType{
+    Name: "GenericExpression",
+    Words: map[string]interface{}{
+      "Expression": ParseExpression(source),
+    },
+  }
+}
+
+func ParseSwitch(source string) (cases []LineBlock) {
+
+  cases = []LineBlock{}
+
+  lastLine, ci := 0, 0
+  for ; ci < len(source); ci++ {
+    switch rune(source[ci]) {
+      case ':': // Switch case
+        if caseInd := parsetools.IndexWithSkip(source[ci:], "case", `'"{(`); caseInd != -1 {
+          // Additional switch cases
+
+          // Another switch case found, end the current switch case at the next case
+          if nextCase := parsetools.IndexWithSkip(source[ci:], "case", `'"{(`); nextCase != -1 {
+            cases = append(cases, ParseControlFlow(
+              "case",
+              strings.Trim(source[lastLine + caseInd + len("case"):ci], " "),
+              strings.Trim(source[ci + 1:nextCase + ci], " "),
+              ))
+            ci += nextCase
+            lastLine = ci
+
+          // End on a default case
+          } else if parsetools.ContainsWithSkip(source[ci:], "default", `'"{(`) {
+            cases = append(cases, ParseControlFlow(
+              "default",
+              "", // No case on default
+              strings.Trim(source[ci + 1:], " "),
+            ))
+            ci = len(source)
+            lastLine = ci
+
+          // Last switch case
+          } else {
+            cases = append(cases, ParseControlFlow(
+              "case",
+              strings.Trim(source[lastLine + caseInd + len("case"):ci], " "),
+              strings.Trim(source[ci + 1:], " "), // Until the end of the string
+              ))
+            ci += nextCase
+            lastLine = ci
+          }
+        }
+    }
+  }
+
+  return cases
 }
 
 /* func OldParseLine(source string) LineType {
@@ -272,7 +368,7 @@ func ParseVariableAndType(source string) (variableType, variableName string) {
 	return strings.Trim(source[:spaceIndex], " \n"), strings.Trim(source[spaceIndex + 1:], " \n")
 }
 
-func ParseControlFlow(controlBlockname, parameters, source string) LineTyper {
+func ParseControlFlow(controlBlockname, parameters, source string) LineBlock {
 	switch controlBlockname {
 	case "for": // For loop, can be a normal for loop, or a for-each loop (enhanced for loop)
 		if colonInd := strings.IndexRune(parameters, ':'); colonInd != -1 { // An enhanced for loop will have a colon in it
