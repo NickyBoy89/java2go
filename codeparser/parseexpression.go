@@ -3,7 +3,6 @@ package codeparser
 import (
   "strings"
   "unicode"
-  "fmt"
 
   "gitlab.nicholasnovak.io/snapdragon/java2go/parsetools"
 )
@@ -13,83 +12,40 @@ func ParseExpression(source string) []LineType {
 	if source == "" { // No expression
 		return []LineType{}
 	}
-	fmt.Printf("Expression: [%s]\n", source)
 	words := []LineType{}
 
-	firstSpace := parsetools.FindNextIndexOfCharWithSkip(source, ' ', `'"{(`)
-	if firstSpace != -1 {
-		switch source[:firstSpace] {
-		case "new":
-
-			// If we are creating an array (new int[]{1, 2, 3} or new int[0]), this doesn't make sense to have a newConstructor for it
-			// So it just outputs a ConstructArray type
-			if openingBracket := strings.IndexRune(source[firstSpace:], '['); openingBracket != -1 {
-				lastOpeningBracket := strings.LastIndex(source[firstSpace:], "[")
-				closingBracket := strings.LastIndex(source[openingBracket:], "]") + openingBracket
-
-				// If there is no implicit array assignment (ex: new int[0])
-				if closingBracket == len(source) - 1 {
-					return []LineType{
-						LineType{
-							Name: "ConstructArray",
-							Words: map[string]interface{}{
-								"ArrayType": strings.Trim(source[firstSpace:firstSpace + openingBracket], " "),
-								"InitialSize": source[firstSpace + openingBracket + 1:closingBracket],
-							},
-						},
-					}
-				}
-
-				// Some implicit array assignment
-				currentReturn = strings.Trim(source[firstSpace:firstSpace + lastOpeningBracket], " ")
-				return []LineType{
-					LineType{
-						Name: "ConstructArrayWithImplicit",
-						Words: map[string]interface{}{
-							"ArrayType": currentReturn,
-							"Elements": ParseExpression(strings.Trim(source[closingBracket + 1:], " ")),
-						},
-					},
-				}
-			}
-
-			return []LineType{
-				LineType{
-					Name: "NewConstructor",
-					Words: map[string]interface{}{
-						"Expression": ParseExpression(strings.Trim(source[firstSpace:], " "))[0],
-					},
-				},
-			}
-		}
-	}
-
-	switch source[0] {
-	case '{':  // Means implicitly filling an array
-
-		// If the array is an array type, then remove one level of array from it
-		tempReturn := currentReturn
-		if strings.ContainsRune(currentReturn, '[') {
-			currentReturn = strings.Replace(currentReturn, "[]", "", 1)
-		}
-
-		return []LineType{
-			LineType{
-				Name: "ImplicitArrayAssignment",
-				Words: map[string]interface{}{
-					"ArrayType": tempReturn, // Gets the current return type from a global, becuse I didn't think the best way for that would be passing it in as a parameter
-					"Elements": ParseCommaSeparatedValues(source[1:len(source) - 1]),
-				},
-			},
-		}
-	}
-
-	// Start going through the characters
-	ci := 0
-	lastWord := 0
+	lastWord, ci := 0, 0
 	for ; ci < len(source); ci++ {
 		switch rune(source[ci]) {
-		case ' ': // If a divider between expressions is detected (NOTE: '+', '-', '/' are all valid, but I think not needed)
+		case ' ': // Words
+      switch strings.Trim(source[lastWord:ci], " ") {
+      case "new":
+        // If the constructor creates an array, handle that as a custom constructor type
+        // ex: new int[0]
+        if openingBracket := parsetools.FindNextIndexOfCharWithSkip(source[ci:], '[', `"'`) + ci; openingBracket - ci != -1 {
+          closingBracket := parsetools.IndexOfMatchingBrackets(source, openingBracket)
+          bracketContents := ContentOfBrackets(source[ci:closingBracket + 1])
+          return []LineType{
+            LineType{
+              Name: "ConstructArray",
+              Words: map[string]interface{}{
+                "ArrayType": strings.Trim(source[ci:closingBracket], " "),
+                "InitialSize": bracketContents[len(bracketContents) - 1], // Last bracket in bracket contents
+              },
+            },
+          }
+        }
+
+        // New constructor
+        return []LineType{
+          LineType{
+            Name: "NewConstructor",
+            Words: map[string]interface{}{
+              "Expression": ParseExpression(strings.Trim(source[ci:], " "))[0], // Should only return one constructor as a function
+            },
+          },
+        }
+      }
 			words = append(words, LineType{
 				Name: "LocalVariableOrExpression",
 				Words: map[string]interface{}{
@@ -97,8 +53,19 @@ func ParseExpression(source string) []LineType {
 				},
 			})
 			lastWord = ci + 1
-		case '.': // A dot signals another package, should not interfere with the declaration of a float also, because the package should always come before
-			if spaceInd := parsetools.FindNextIndexOfCharWithSkip(source[ci:], ' ', `"'{(`); spaceInd != -1 { // If a space exists (not the last expression)
+    case '{': // Implicit filling of array (ex: new int[] = {1, 2, 3})
+      closingBrace := parsetools.IndexOfMatchingBrace(source, ci)
+      words = append(words, LineType{
+        Name: "ImplicitArrayAssignment",
+        Words: map[string]interface{}{
+          "ArrayType": currentReturn,
+          "Elements": ParseCommaSeparatedValues(source[ci + 1:closingBrace]),
+        },
+      })
+      ci = closingBrace
+      lastWord = ci + 1
+		case '.': // A dot means another package, or aspect of variable (method, class variable)
+			if spaceInd := parsetools.FindNextIndexOfCharWithSkip(source[ci:], ' ', `"'{([`); spaceInd != -1 { // If a space exists (not the last expression)
 				words = append(words, LineType{
 					Name: "RemoteVariableOrExpression",
 					Words: map[string]interface{}{
@@ -119,48 +86,70 @@ func ParseExpression(source string) []LineType {
 				ci = len(source) // Should just break out
 				lastWord = ci
 			}
-		case '(': // Function call or type assertion
+		case '(': // Function call, type assertion, normal parenthesies, lambda parameters
 			closingParenths := parsetools.IndexOfMatchingParenths(source, ci)
 
-			fmt.Printf("Inside parenths: %s\n", source[ci:closingParenths + 1])
+      // Start filtering out what one of these four options the parenthesies is
 
-			// Look at the character before the function
-			//to test whether it is a function or type assertion
-			if ci == 0 || !unicode.IsLetter(rune(source[ci - 1])) && !unicode.IsDigit(rune(source[ci - 1])){ // If function call ends with number or letter
+      // Start with the character before the parenthesies
+      var charBeforeParenthesies rune
+      if ci > 0 { // If the parenthesies is not at the start of the expression
+        charBeforeParenthesies = rune(source[ci - 1])
+      }
+      // Look at the character after the parenthesies
+      var charAfterParenthsInd int
+      var charAfterParenths rune
+      if closingParenths < len(source) - 1 { // If there is a character after the parenthesies
+        charAfterParenths, charAfterParenthsInd = parsetools.FindNextNonBlankChar(source[closingParenths + 1:])
+      }
 
-				// Look at the character after the function to determine if it is just a statement in parenthesies
-				var nextChar rune
-				if len(source[closingParenths + 1:]) != 0 { // Bounds-check to see if there is a non-blank character after the parenths statement
-					nextChar, _ = parsetools.FindNextNonBlankChar(source[closingParenths + 1:])
-				}
-				if unicode.IsLetter(rune(nextChar)) || unicode.IsDigit(rune(nextChar)) { // Letter after the parenthesies means a type assertion
-					words = append(words, LineType{
-						Name: "TypeAssertion",
-						Words: map[string]interface{}{
-							"AssertedType": strings.Trim(source[ci + 1:closingParenths], " "),
-						},
-					})
-				} else { // Not a type assertion, some other form of operator means that this is a parenthesied statement
-					words = append(words, LineType{
-						Name: "ParenthesiedExpression",
-						Words: map[string]interface{}{
-							"Expression": ParseExpression(strings.Trim(source[ci + 1:closingParenths], " ")),
-						},
-					})
-				}
-			} else {
-				words = append(words, LineType{
-					Name: "FunctionCall",
-					Words: map[string]interface{}{
-						"FunctionName": strings.Trim(source[lastWord:ci], " "),
-						"Parameters": ParseCommaSeparatedValues(source[ci + 1:closingParenths]),
-					},
-				})
-			}
-			ci = closingParenths + 1
-			lastWord = ci
+      // A letter or number before will mean a function (ex: method_1234())
+      if charBeforeParenthesies != 0 && unicode.IsLetter(rune(charBeforeParenthesies)) || unicode.IsDigit(rune(charBeforeParenthesies)) {
+        words = append(words, LineType{
+          Name: "FunctionCall",
+          Words: map[string]interface{}{
+            "FunctionName": strings.Trim(source[lastWord:ci], " "),
+            "Parameters": ParseCommaSeparatedValues(source[ci + 1:closingParenths]),
+          },
+        })
+        ci = closingParenths
+        lastWord = ci + 1
+      } else { // Determine between type assertion, parenthesies, and lambda parameters
+        // If the first character after the parenthesies is a normal value, then it is a type assertion (ex: (int)1.0)
+        if charAfterParenths != 0 && unicode.IsLetter(rune(charAfterParenths)) || unicode.IsLetter(rune(charAfterParenths)) {
+          words = append(words, LineType{
+            Name: "TypeAssertion",
+            Words: map[string]interface{}{
+              "AssertedType": strings.Trim(source[ci + 1:closingParenths], " "),
+            },
+          })
+          ci = closingParenths
+          lastWord = ci + 1
+        // Detect a lambda
+        } else if charAfterParenths == '-' && source[charAfterParenthsInd + closingParenths + 2] == '>' {
+          openingBraces := strings.IndexRune(source[closingParenths:], '{') + closingParenths
+          closingBraces := parsetools.IndexOfMatchingBrace(source, openingBraces)
+          words = append(words, LineType{
+            Name: "LambdaExpression",
+            Words: map[string]interface{}{
+              "Parameters": ParseCommaSeparatedValues(strings.Trim(source[ci + 1:closingParenths], " ")),
+              "Lines": ParseContent(strings.Trim(source[openingBraces + 1:closingBraces], " ")),
+            },
+          })
+          ci = closingBraces
+          lastWord = ci + 1
+        } else { // Normal parenthesies
+          words = append(words, LineType{
+            Name: "ParenthesiedExpression",
+            Words: map[string]interface{}{
+              "Expression": ParseExpression(strings.Trim(source[ci + 1:closingParenths], " ")),
+            },
+          })
+          ci = closingParenths
+          lastWord = ci + 1
+        }
+      }
 		case '[': // Access a specific element of an array
-    fmt.Println("Brackets")
 			closingBrace := parsetools.IndexOfMatchingBrackets(source, ci)
 			words = append(words, LineType{
 				Name: "AccessArrayElement",
@@ -187,13 +176,24 @@ func ParseExpression(source string) []LineType {
       }
 		case '?': // If there is a bare question mark in the expression, then there likely is a ternary operator
 			colonInd := parsetools.FindNextIndexOfCharWithSkip(source[ci:], ':', `'"{(`) + ci
-			words = append(words, LineType{
-				Name: "TernaryOperator",
-				Words: map[string]interface{}{
-					"TrueExpression": ParseExpression(strings.Trim(source[ci + 1:colonInd], " ")),
-					"FalseExpression": ParseExpression(strings.Trim(source[colonInd + 1:], " ")),
-				},
-			})
+      // If there is no colon (no ternary false statement)
+      if colonInd - ci == -1 {
+        words = append(words, LineType{
+  				Name: "TernaryOperator",
+  				Words: map[string]interface{}{
+  					"TrueExpression": ParseExpression(strings.Trim(source[ci + 1:], " ")),
+  					"FalseExpression": []LineType{},
+  				},
+  			})
+      } else {
+        words = append(words, LineType{
+          Name: "TernaryOperator",
+          Words: map[string]interface{}{
+            "TrueExpression": ParseExpression(strings.Trim(source[ci + 1:colonInd], " ")),
+            "FalseExpression": ParseExpression(strings.Trim(source[colonInd + 1:], " ")),
+          },
+        })
+      }
 			ci = len(source)
 			lastWord = ci
 		// Start getting into the literals (ex: "yes" is a string literal)

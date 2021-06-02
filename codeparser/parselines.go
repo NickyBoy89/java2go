@@ -2,27 +2,28 @@ package codeparser
 
 import (
   "strings"
-  "fmt"
 
   "gitlab.nicholasnovak.io/snapdragon/java2go/parsetools"
 )
 
 func ParseLine(source string) LineTyper {
-
-  fmt.Printf("Line content: %s\n", source)
-
   currentWords := []LineType{}
 
   lastLine, ci := 0, 0
   for ; ci < len(source); ci++ {
     switch rune(source[ci]) {
     case '<': // Skip over angles
-      closingAngle := parsetools.IndexOfMatchingAngles(source, ci)
-      ci = closingAngle + 1
-      lastLine = ci
-    case '[':
+      // But not if it is a part of a bit-shift
+      switch rune(source[ci + 1]) {
+      case '<', '=':
+      default:
+        closingAngle := parsetools.IndexOfMatchingAngles(source, ci)
+        ci = closingAngle
+        lastLine = ci
+      }
+    case '[': // Skip over brackets
       closingBrace := parsetools.IndexOfMatchingBrackets(source, ci)
-      ci = closingBrace + 1
+      ci = closingBrace
       lastLine = ci
     case ' ': // A word
       switch source[lastLine:ci] {
@@ -42,7 +43,6 @@ func ParseLine(source string) LineTyper {
     			},
     		}
       default:
-        fmt.Printf("Word in front of brackets: [%s]\n", source[lastLine:ci])
         currentWords = append(currentWords, ParseExpression(strings.Trim(source[lastLine:ci], " "))[0])
         lastLine = ci + 1
       }
@@ -50,7 +50,6 @@ func ParseLine(source string) LineTyper {
       closingParenths := parsetools.IndexOfMatchingParenths(source, ci)
       // Handle the first word before the parenthesies without a space (for() vs for ())
       if source[lastLine:ci] != "" {
-        fmt.Printf("Words in front of parenths: %s\n", source[lastLine:ci])
         currentWords = append(currentWords, ParseExpression(source[lastLine:ci])[0])
       }
 
@@ -86,8 +85,10 @@ func ParseLine(source string) LineTyper {
           return ParseControlFlow("catch", source[ci + 1:closingParenths], "")
         case "switch":
           return ParseControlFlow("switch", source[ci + 1:closingParenths], source[startingBrace + 1:closingBrace])
+        case "synchronized":
+          return ParseControlFlow("synchronized", source[ci + 1:closingParenths], source[startingBrace + 1:closingBrace])
         default:
-          fmt.Printf("--- Control flow: [%s] ---\n", currentWords[len(currentWords) - 1].Words["Expression"].(string))
+          // fmt.Printf("--- Control flow: [%s] ---\n", currentWords[len(currentWords) - 1].Words["Expression"].(string))
         }
       }
 
@@ -187,7 +188,7 @@ func ParseLine(source string) LineTyper {
           "Expression": ParseExpression(strings.Trim(source[ci + 1:], " \n")),
         },
       }
-      case 2: // Assign and create a variable
+      default: // Assign and create a variable
         spaceIndex := parsetools.FindNextIndexOfCharWithSkip(source, ' ', "<") // Skips generic types
         currentReturn = strings.Trim(source[:spaceIndex], " \n") // Global variable
         return LineType{
@@ -275,7 +276,7 @@ func ParseVariableAndType(source string) (variableType, variableName string) {
 func ParseControlFlow(controlBlockname, parameters, source string) LineBlock {
 	switch controlBlockname {
 	case "for": // For loop, can be a normal for loop, or a for-each loop (enhanced for loop)
-		if colonInd := strings.IndexRune(parameters, ':'); colonInd != -1 { // An enhanced for loop will have a colon in it
+		if colonInd := parsetools.FindNextIndexOfCharWithSkip(parameters, ':', `"'{(`); colonInd != -1 { // An enhanced for loop will have a colon in it
 			declarationWords := parsetools.DiscardBlankStrings(strings.Split(parameters[:colonInd], " "))
 			return LineBlock{
 				Name: "EnhancedForLoop",
@@ -358,14 +359,14 @@ func ParseControlFlow(controlBlockname, parameters, source string) LineBlock {
 				"Statement": ParseExpression(parameters),
 			},
 		}
-	case "lambdaExpression":
-		return LineBlock{
-			Name: "LambdaExpression",
-			Words: map[string]interface{}{
-				"Parameters": ParseCommaSeparatedValues(parameters),
+  case "synchronized":
+    return LineBlock{
+      Name: "SynchronizedBlock",
+      Words: map[string]interface{}{
+				"Condition": ParseExpression(parameters),
 			},
-			Lines: ParseContent(strings.Trim(source, " ")),
-		}
+			Lines: ParseContent(strings.Trim(source, " \n")),
+    }
 	default:
 		return LineBlock{
 			Name: "ImplicitObjectCreation",
@@ -375,6 +376,19 @@ func ParseControlFlow(controlBlockname, parameters, source string) LineBlock {
 			Lines: ParseContent(strings.Trim(source, " ")),
 		}
 	}
+}
+
+func ContentOfBrackets(source string) []string {
+  contents := []string{}
+
+  for ci, char := range source {
+    if char == '[' {
+      closingBracket := parsetools.IndexOfMatchingBrackets(source, ci)
+      contents = append(contents, source[ci + 1:closingBracket])
+    }
+  }
+
+  return contents
 }
 
 // Parses out the statements in a for loop (Initializer, Conditional, Incrementer)

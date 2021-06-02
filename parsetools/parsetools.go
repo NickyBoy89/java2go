@@ -198,7 +198,7 @@ func IndexOfNextNonBlankChar(source string) int {
       return ci
     }
   }
-  panic("No next blank character found")
+  return -1
 }
 
 // "normal" is defined as not a digit or letter

@@ -2,7 +2,6 @@ package parsing
 
 import (
   "strings"
-  //"fmt"
 
   "gitlab.nicholasnovak.io/snapdragon/java2go/parsetools"
 )
@@ -99,18 +98,34 @@ func ParseClass(sourceString string) ParsedClass {
         lastInterest = ci
       }
     } else if char == '(' {
-      closingParenthsIndex := strings.IndexRune(classBody[ci:], ')') + ci
+      closingParenthsIndex := parsetools.IndexOfMatchingParenths(classBody, ci)
       startingBraceIndex := strings.IndexRune(classBody[closingParenthsIndex:], '{') + closingParenthsIndex
-      if startingBraceIndex - closingParenthsIndex != -1 {
-        // Block-level methods
-        result.Methods = append(result.Methods, ParseMethod(strings.Trim(classBody[lastInterest + 1:parsetools.IndexOfMatchingBrace(classBody, startingBraceIndex)], " \n"), currentAnnotation))
-        ci = parsetools.IndexOfMatchingBrace(classBody, startingBraceIndex) + 1
+
+      // For blank methods, the character after the closing parenths will be a semicolon
+      if classBody[closingParenthsIndex + 1] == ';' {
+        result.Methods = append(result.Methods, ParseMethod(
+          strings.Trim(classBody[lastInterest + 1:closingParenthsIndex + 1], " \n"), // Method name
+          currentAnnotation,
+        ))
+        ci = closingParenthsIndex + 2
       } else {
-        // Inline methods (such as ones on interfaces)
-        result.Methods = append(result.Methods, ParseMethod(strings.Trim(classBody[lastInterest + 1:closingParenthsIndex + 1], " \n"), currentAnnotation))
-        ci = closingParenthsIndex + 1 // Removes the semicolon
+        // Block-level methods
+        if startingBraceIndex - closingParenthsIndex != -1 {
+          result.Methods = append(result.Methods, ParseMethod(
+            strings.Trim(classBody[lastInterest + 1:parsetools.IndexOfMatchingBrace(classBody, startingBraceIndex)], " \n"), // Method name
+            currentAnnotation,
+          ))
+          ci = parsetools.IndexOfMatchingBrace(classBody, startingBraceIndex) + 1
+        } else {
+          // Inline methods (such as ones on interfaces)
+          result.Methods = append(result.Methods, ParseMethod(
+            strings.Trim(classBody[lastInterest + 1:closingParenthsIndex + 1], " \n"),
+            currentAnnotation,
+          ))
+          ci = closingParenthsIndex + 1 // Removes the semicolon
+        }
+        currentAnnotation = ""
       }
-      currentAnnotation = ""
       lastInterest = ci
     }
   }

@@ -172,6 +172,7 @@ func TestImplicitArrayCreation(t *testing.T) {
 	if string(parsedTest) != string(parsedResult) {
 		diff := diffmatchpatch.New()
 		t.Log(diff.DiffPrettyText(diff.DiffMain(string(parsedTest), string(parsedResult), false)))
+		t.Log(string(parsedTest))
     t.Error("Result and Original did not match")
 	}
 }
