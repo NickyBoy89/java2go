@@ -30,6 +30,7 @@ func main() {
 
   flag.Parse()
 
+  // CPU profiling
   if *cpuprofile != "" {
     f, err := os.Create(*cpuprofile)
     if err != nil {
@@ -39,6 +40,7 @@ func main() {
     defer pprof.StopCPUProfile()
   }
 
+  // Json flag
   if *parseJson != "" {
     jsonFile, err := ioutil.ReadFile(*parseJson)
     if err != nil {
@@ -65,81 +67,11 @@ func main() {
   }
 
   walkDirFunc := func(path string, d fs.DirEntry, err error) error {
-    if !strings.ContainsRune(path, '.') || path[strings.LastIndex(path, "."):] != ".java" {
-      if *verbose {
-        log.Debugf("Skipping file %v", path)
-      }
-      return nil // Skips all non-java files
-    }
-    if *verbose {
-      log.Printf("Started parsing file %v", path)
-    }
-
-    contents, err := ioutil.ReadFile(path)
-    if err != nil {
-      return err
-    }
-
-    formatted, err := json.MarshalIndent(parsing.ParseFile(string(contents)), "", "  ")
-    if err != nil {
-      log.Fatal(err)
-    }
-
-    fileDirectory := path[:strings.LastIndex(path, "/")]
-
-    if *writeFlag { // If writing is enabled through the -w tag
-      if *outputDir == "" { // If outputDir flag is empty (default), place files in the default location
-        ioutil.WriteFile(
-          ChangeFileExtension(path, ".go"), // Change the output file to a .json
-          []byte(goparser.ParseFile(parsing.ParseFile(string(contents)), true)), // Pass the parsed json into the goparser
-          0775,
-        )
-      } else {
-        if _, err := os.Stat(*outputDir + "/" + fileDirectory); os.IsNotExist(err) {
-          os.MkdirAll(*outputDir + "/" + fileDirectory, 0775)
-        }
-        outputFile, err := os.OpenFile(*outputDir + "/" + ChangeFileExtension(path, ".go"), os.O_WRONLY|os.O_CREATE, 0775)
-        defer outputFile.Close()
-        if err != nil {
-          log.Fatalf("Failed to open output file: %v", err)
-        }
-        _, err = outputFile.Write([]byte(formatted))
-        if err != nil {
-          log.Fatalf("Failed to write output file: %v", err)
-        }
-      }
-
-      if !*skipImports {
-        // Run goimports to automatically generate imports
-        goImport := exec.Command("goimports", "-w", ChangeFileExtension(path, ".go"))
-        out, err := goImport.Output()
-        if err != nil {
-          if err.Error() == "exit status 2" { // Exit status 2 usually means that the generated file is not valid go code
-            if *verbose {
-              log.Warn("Error automatically generating imports, exit status 2")
-              log.Warn("This can mean that goimports is malfunctioning, but usually just means that the generated code is not completely valid")
-            } else {
-              log.Warn("Invalid go code generated, exit status 2")
-            }
-          } else {
-            log.Error("Automatically generating imports on generated files failed with the following error")
-            log.Error("Please fix the error below to continue, or disable automatic import generation with the --skip-imports flag")
-            log.Fatal(out, err)
-          }
-        }
-      }
-
-    }
-
-    if *verbose {
-      log.Printf("Compiled %v", path)
-    }
-    if err != nil {
-      return err
-    }
+    go ParseFile(path, verbose, writeFlag, skipImports, outputDir)
     return nil
   }
 
+  // Parse each file on a new goroutine
   for _, filePath := range flag.Args() {
     err := filepath.WalkDir(filePath, walkDirFunc)
     if err != nil {
@@ -147,6 +79,82 @@ func main() {
     }
     log.Printf("Parsed file or directory %v", filePath)
   }
+}
+
+func ParseFile(path string, verbose, writeFlag, skipImports *bool, outputDir *string) error {
+  if !strings.ContainsRune(path, '.') || path[strings.LastIndex(path, "."):] != ".java" {
+    if *verbose {
+      log.Debugf("Skipping file %v", path)
+    }
+    return nil // Skips all non-java files
+  }
+  if *verbose {
+    log.Printf("Started parsing file %v", path)
+  }
+
+  contents, err := ioutil.ReadFile(path)
+  if err != nil {
+    return err
+  }
+
+  formatted, err := json.MarshalIndent(parsing.ParseFile(string(contents)), "", "  ")
+  if err != nil {
+    log.Fatal(err)
+  }
+
+  fileDirectory := path[:strings.LastIndex(path, "/")]
+
+  if *writeFlag { // If writing is enabled through the -w tag
+    if *outputDir == "" { // If outputDir flag is empty (default), place files in the default location
+      ioutil.WriteFile(
+        ChangeFileExtension(path, ".go"), // Change the output file to a .json
+        []byte(goparser.ParseFile(parsing.ParseFile(string(contents)), true)), // Pass the parsed json into the goparser
+        0775,
+      )
+    } else {
+      if _, err := os.Stat(*outputDir + "/" + fileDirectory); os.IsNotExist(err) {
+        os.MkdirAll(*outputDir + "/" + fileDirectory, 0775)
+      }
+      outputFile, err := os.OpenFile(*outputDir + "/" + ChangeFileExtension(path, ".go"), os.O_WRONLY|os.O_CREATE, 0775)
+      defer outputFile.Close()
+      if err != nil {
+        log.Fatalf("Failed to open output file: %v", err)
+      }
+      _, err = outputFile.Write([]byte(formatted))
+      if err != nil {
+        log.Fatalf("Failed to write output file: %v", err)
+      }
+    }
+
+    if !*skipImports {
+      // Run goimports to automatically generate imports
+      goImport := exec.Command("goimports", "-w", ChangeFileExtension(path, ".go"))
+      out, err := goImport.Output()
+      if err != nil {
+        if err.Error() == "exit status 2" { // Exit status 2 usually means that the generated file is not valid go code
+          if *verbose {
+            log.Warn("Error automatically generating imports, exit status 2")
+            log.Warn("This can mean that goimports is malfunctioning, but usually just means that the generated code is not completely valid")
+          } else {
+            log.Warn("Invalid go code generated, exit status 2")
+          }
+        } else {
+          log.Error("Automatically generating imports on generated files failed with the following error")
+          log.Error("Please fix the error below to continue, or disable automatic import generation with the --skip-imports flag")
+          log.Fatal(out, err)
+        }
+      }
+    }
+
+  }
+
+  if *verbose {
+    log.Printf("Compiled %v", path)
+  }
+  if err != nil {
+    return err
+  }
+  return nil
 }
 
 func ChangeFileExtension(filePath, to string) string {
