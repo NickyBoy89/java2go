@@ -18,6 +18,8 @@ import (
   "gitlab.nicholasnovak.io/snapdragon/java2go/goparser"
 )
 
+var synchronizedFlag bool
+
 func main() {
   outputDir := flag.String("o", "", "Directory to put the parsed files into, defaults to the same directory that the files appear in")
   writeFlag := flag.Bool("w", false, "Create files directly instead of just writing to stdout")
@@ -27,8 +29,12 @@ func main() {
   cpuprofile := flag.String("cpuprofile", "", "write cpu profile to file")
   // Testing options
   parseJson := flag.String("json", "", "Parses the specified Java file directly into the intemediary JSON, instead of generated code")
+  sync := flag.Bool("sync", false, "Parses the files in-order with no multithreading")
 
   flag.Parse()
+
+  // Synchronization
+  synchronizedFlag = *sync
 
   // CPU profiling
   if *cpuprofile != "" {
@@ -67,7 +73,12 @@ func main() {
   }
 
   walkDirFunc := func(path string, d fs.DirEntry, err error) error {
-    go ParseFile(path, verbose, writeFlag, skipImports, outputDir)
+    // Synchronized global being true means that the files are parsed in-order
+    if !synchronizedFlag {
+      go ParseFile(path, verbose, writeFlag, skipImports, outputDir)
+    } else {
+      ParseFile(path, verbose, writeFlag, skipImports, outputDir)
+    }
     return nil
   }
 
@@ -82,50 +93,47 @@ func main() {
 }
 
 func ParseFile(path string, verbose, writeFlag, skipImports *bool, outputDir *string) error {
+  // Only parse .java files
   if !strings.ContainsRune(path, '.') || path[strings.LastIndex(path, "."):] != ".java" {
     if *verbose {
       log.Debugf("Skipping file %v", path)
     }
-    return nil // Skips all non-java files
+    return nil
   }
+
+  // Verbose
   if *verbose {
     log.Printf("Started parsing file %v", path)
   }
 
+  // Reads contents of java file into memory
   contents, err := ioutil.ReadFile(path)
   if err != nil {
     return err
   }
 
-  formatted, err := json.MarshalIndent(parsing.ParseFile(string(contents)), "", "  ")
-  if err != nil {
-    log.Fatal(err)
-  }
-
+  // Gets the directory of the current file by stripping out the filename from the filepath
   fileDirectory := path[:strings.LastIndex(path, "/")]
 
-  if *writeFlag { // If writing is enabled through the -w tag
-    if *outputDir == "" { // If outputDir flag is empty (default), place files in the default location
-      ioutil.WriteFile(
-        ChangeFileExtension(path, ".go"), // Change the output file to a .json
-        []byte(goparser.ParseFile(parsing.ParseFile(string(contents)), true)), // Pass the parsed json into the goparser
-        0775,
-      )
-    } else {
-      if _, err := os.Stat(*outputDir + "/" + fileDirectory); os.IsNotExist(err) {
-        os.MkdirAll(*outputDir + "/" + fileDirectory, 0775)
-      }
-      outputFile, err := os.OpenFile(*outputDir + "/" + ChangeFileExtension(path, ".go"), os.O_WRONLY|os.O_CREATE, 0775)
-      defer outputFile.Close()
-      if err != nil {
-        log.Fatalf("Failed to open output file: %v", err)
-      }
-      _, err = outputFile.Write([]byte(formatted))
-      if err != nil {
-        log.Fatalf("Failed to write output file: %v", err)
+  // If writing is enabled through the -w tag
+  if *writeFlag {
+    // If outputDir flag is not empty, create a folder (if needed) and alter the output directory
+    if *outputDir != "" {
+      // Add a slash to the output directory to make it a valid directory
+      *outputDir = *outputDir + "/"
+      // If a folder does not exist for the output files, then create one
+      if _, err := os.Stat(*outputDir + fileDirectory); os.IsNotExist(err) {
+        os.MkdirAll(*outputDir + fileDirectory, 0775)
       }
     }
 
+    ioutil.WriteFile(
+      *outputDir + ChangeFileExtension(path, ".go"), // Change the output file to .go
+      []byte(goparser.ParseFile(parsing.ParseFile(string(contents)), true)), // Parse the contents of the file
+      0775,
+    )
+
+    // Auto-import dependencies
     if !*skipImports {
       // Run goimports to automatically generate imports
       goImport := exec.Command("goimports", "-w", ChangeFileExtension(path, ".go"))

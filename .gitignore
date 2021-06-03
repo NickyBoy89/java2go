@@ -1,6 +1,7 @@
 # Files specific to this project
 java2go
 decompiled/
+generated/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

@@ -112,7 +112,7 @@ func ParseLine(source string) LineTyper {
         case "finally":
           return ParseControlFlow("finally", "", source[ci + 1:closingBrace])
         case "do":
-          return ParseControlFlow("do", "", source[ci + 1:closingBrace])
+          return ParseControlFlow("do-while", "", source[ci + 1:closingBrace])
         default:
           panic("Possible unknown control flow: [" + currentWords[len(currentWords) - 1].Words["Expression"].(string) + "]")
         }
@@ -180,6 +180,7 @@ func ParseLine(source string) LineTyper {
 
       // If there is no assignment operator, then it is an equals
       switch len(currentWords) {
+      case '0': // Skip if zero words
       case 1: // One word means assigning a variable
       return LineType{
         Name: "AssignVariable",
@@ -194,7 +195,7 @@ func ParseLine(source string) LineTyper {
         return LineType{
           Name: "CreateAndAssignVariable",
           Words: map[string]interface{}{
-            "VariableName": ParseExpression(strings.Trim(source[spaceIndex + 1:ci], " \n")),
+            "VariableName": currentWords[len(currentWords) - 1],
             "VariableType": currentReturn,
             "Expression": ParseExpression(strings.Trim(source[ci + 1:], " \n")),
           },
@@ -316,7 +317,7 @@ func ParseControlFlow(controlBlockname, parameters, source string) LineBlock {
 		}
 	case "while":
 		return LineBlock{
-			Name: "WhiteStatement",
+			Name: "WhileStatement",
 			Words: map[string]interface{}{
 				"Condition": ParseExpression(parameters),
 			},
@@ -358,6 +359,7 @@ func ParseControlFlow(controlBlockname, parameters, source string) LineBlock {
 			Words: map[string]interface{}{
 				"Statement": ParseExpression(parameters),
 			},
+      Lines: ParseContent(strings.Trim(source, " \n")),
 		}
   case "synchronized":
     return LineBlock{
@@ -367,14 +369,26 @@ func ParseControlFlow(controlBlockname, parameters, source string) LineBlock {
 			},
 			Lines: ParseContent(strings.Trim(source, " \n")),
     }
+  case "else":
+    return LineBlock{
+      Name: "ElseBlock",
+      Words: make(map[string]interface{}),
+			Lines: ParseContent(strings.Trim(source, " \n")),
+    }
+  case "try":
+    return LineBlock{
+      Name: "TryBlock",
+      Words: make(map[string]interface{}),
+			Lines: ParseContent(strings.Trim(source, " \n")),
+    }
+  case "finally":
+    return LineBlock{
+      Name: "FinallyBlock",
+      Words: make(map[string]interface{}),
+      Lines: ParseContent(strings.Trim(source, " \n")),
+    }
 	default:
-		return LineBlock{
-			Name: "ImplicitObjectCreation",
-			Words: map[string]interface{}{
-				"MethodLine": ParseLine(controlBlockname),
-			},
-			Lines: ParseContent(strings.Trim(source, " ")),
-		}
+    panic("Unknown control flow [" + controlBlockname + "]")
 	}
 }
 
