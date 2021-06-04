@@ -235,3 +235,10 @@ func ContainsInt(str int, searchFields []int) bool {
   }
   return false
 }
+
+func EndsWith(source, target string) bool {
+  if len(target) < len(source) && source[len(source) - len(target):] == target { // Bounds-check
+    return true
+  }
+  return false
+}

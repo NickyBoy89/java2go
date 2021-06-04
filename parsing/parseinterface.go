@@ -66,7 +66,7 @@ func ParseInterface(sourceString string) ParsedInterface {
       case "default":
         openingBracket := strings.IndexRune(classBody[lastInterest:], '{') + lastInterest
         closingBracket := parsetools.IndexOfMatchingBrace(classBody, openingBracket)
-        result.Methods = append(result.Methods, ParseMethod(strings.Trim(classBody[lastInterest + 1:closingBracket + 1], " \n"), currentAnnotation))
+        result.DefaultMethods = append(result.DefaultMethods, ParseMethod(strings.Trim(classBody[lastInterest + 1:closingBracket + 1], " \n"), currentAnnotation))
         ci = closingBracket + 1
       case "static":
         openingBracket := strings.IndexRune(classBody[lastInterest:], '{') + lastInterest

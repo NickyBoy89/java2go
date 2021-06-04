@@ -406,6 +406,12 @@ func CreateLine(line codeparser.LineTyper, classContext *ClassContext, indentati
 			functionName = ToPrivate(functionName)
 		} else if classContext.ContainsMethod(ToPublic(functionName)) {
 			functionName = ToPublic(functionName)
+		// Pretty much every call to an exception in Java ends with the word "Exception"
+		} else if parsetools.EndsWith(functionName, "Exception") {
+			panic("Calling exception " + functionName)
+		// Assumes errors are capitalized and end with the word "Error"
+		} else if parsetools.EndsWith(functionName, "Error") && unicode.IsUpper(rune(functionName[0])) {
+			panic("Calling error " + functionName)
 		} else {
 			// panic("Unknown non-package function " + functionName + "")
 		}

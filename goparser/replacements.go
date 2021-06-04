@@ -71,8 +71,14 @@ func ToReferenceType(in string) string {
 		}
 	}
 
-	if lastBrace := strings.LastIndex(in, "]"); lastBrace != -1 { // Different asterisk placement for array types
+	// Different asterisk placement for array types
+	if lastBrace := strings.LastIndex(in, "]"); lastBrace != -1 {
 		return in[:lastBrace + 1] + "*" + in[lastBrace + 1:]
+	}
+
+	// Void types return nothing
+	if in == "" {
+		return in
 	}
 	return "*" + in
 }
