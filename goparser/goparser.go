@@ -12,22 +12,19 @@ import (
 
 const indentNum = 2
 
-// A list of in-scope variables, for type-checking reasons
-var inScopeVariables = make(map[string]string)
+// Stores a list of generated errors for each package
+var currentErrors = make(map[string][]string)
 
-// For do-while loops, where the location of the "while" condition occurs after the "do" block
-var lastWhileCondition codeparser.LineTyper
+// Stores a list of strings to generate to the current file
+var toGenerate []string
 
-func ClearInScopeVariables() {
-	inScopeVariables = make(map[string]string)
-}
+var lastDoWhile codeparser.LineTyper
 
 // NewClass is set to true if the class is a nested class
 func ParseFile(sourceFile parsing.ParsedClasses, newClass bool, filename string) string {
 	var generated string
 	if newClass {
 		generated += fmt.Sprintf("package %s\n\n", filename)
-		generated += "func NewAssertionError(err string) error {\n  return errors.New(err)\n}\n\n"
 	}
 	switch sourceFile.GetType() {
 	case "class":
@@ -58,9 +55,7 @@ func ParseClass(source parsing.ParsedClass, filename string) string {
 	classContext.Name = ToPublic(source.Name)
 	// Extract the method names from the class itself, before it has been parsed
 	classContext.Methods = source.MethodContext()
-
-	// Register a NewAssertionError for error-handling
-	classContext.Methods["AssertionError"] = []string{"string"}
+	classContext.Package = filename
 
 	// If the line below is commented out, then every struct will be declared as public
 
@@ -95,6 +90,12 @@ func ParseClass(source parsing.ParsedClass, filename string) string {
 		generated += "\n\n" // Add some spacing in between the methods
 	}
 
+	// If there are any things to generate, do them now
+	for _, genStr := range toGenerate {
+		generated += "\n" + genStr + "\n"
+	}
+	toGenerate = []string{}
+
 	// Parse the nested classes
 	for _, nested := range source.NestedClasses {
 		generated += ParseFile(nested, false, filename)
@@ -109,8 +110,7 @@ func ParseEnum(source parsing.ParsedEnum, filename string) string {
 	classContext := new(ClassContext)
 	classContext.Name = ToPublic(source.Name)
 	classContext.Methods = source.MethodContext()
-
-	classContext.Methods["AssertionError"] = []string{"string"}
+	classContext.Package = filename
 
 	// Parse the enum fields
 	var parsedEnums []string
@@ -160,6 +160,11 @@ func ParseEnum(source parsing.ParsedEnum, filename string) string {
 	generated += CreateMethod(classContext, valuesMethod) + "\n\n"
 	classContext.Methods[classContext.Name + "Values"] = []string{}
 
+	// If there are any things to generate, do them now
+	for _, genStr := range toGenerate {
+		generated += "\n" + genStr + "\n"
+	}
+	toGenerate = []string{}
 
 	// Populate the generated enums into a var block
 	generated += CreateVarBlock(parsedEnums)
@@ -188,9 +193,7 @@ func ParseInterface(source parsing.ParsedInterface, filename string) string {
 	classContext.Name = ToPublic(source.Name)
 	// Extract the method names from the class itself, before it has been parsed
 	classContext.Methods = source.MethodContext()
-
-	// Register a NewAssertionError for error-handling
-	classContext.Methods["AssertionError"] = []string{"string"}
+	classContext.Package = filename
 
 	// If the line below is commented out, then every struct will be declared as public
 
@@ -213,6 +216,10 @@ func ParseInterface(source parsing.ParsedInterface, filename string) string {
 func CreateStruct(classContext *ClassContext, fields []parsing.ParsedVariable) string {
 	result := fmt.Sprintf("type %s struct {", classContext.Name)
 	for _, field := range fields { // Struct fields
+		// Generate the field's annotation as a comment
+		if field.Annotation != "" {
+			result += fmt.Sprintf("\n%s//%s", strings.Repeat(" ", indentNum), field.Annotation)
+		}
 		// Write out a field (ex: value int)
 		if IsPublic(field.Modifiers) {
 			result += fmt.Sprintf("\n%s%s %s", strings.Repeat(" ", indentNum), ToPublic(field.Name), FormatVariable(field.DataType))
@@ -267,6 +274,12 @@ func AsShorthand(name string) string {
 // For a static method (standalone class) pass in an empty class name
 func CreateMethod(classContext *ClassContext, methodSource parsing.ParsedMethod) string {
 	var result string
+
+	// Generate the method's annotation as a comment
+	if methodSource.Annotation != "" {
+		result += "//" + methodSource.Annotation + "\n"
+	}
+
 	if parsetools.Contains("static", methodSource.Modifiers) { // Method is static, so not associated with any class
 		// Special methods, ex: main, init
 		switch methodSource.Name {
@@ -305,7 +318,7 @@ func CreateMethod(classContext *ClassContext, methodSource parsing.ParsedMethod)
 
 	if methodSource.Name != "main" {
 		for pi, param := range methodSource.Parameters { // Parameters
-			result += param.Name + " " + ToReferenceType(JavaToGoArray(param.DataType))
+			result += param.Name + " " + FormatVariable(param.DataType)
 			if pi < len(methodSource.Parameters) - 1 {
 				result += ", "
 			}
@@ -326,7 +339,6 @@ func CreateMethod(classContext *ClassContext, methodSource parsing.ParsedMethod)
 		return result
 	}
 	result += fmt.Sprintf(") %v {\n%s\n}", ReplaceWord(methodSource.ReturnType), CreateBody(methodSource.Body, classContext, 2))
-	ClearInScopeVariables()
 	return result
 }
 
@@ -352,6 +364,7 @@ func CreateLine(line codeparser.LineTyper, classContext *ClassContext, indentati
 	if indent {
 		result += "\n"
 	}
+
 	// result += fmt.Sprintf("//%s\n", line.GetName())
 	switch line.GetName() {
 	case "StringLiteral":
@@ -373,7 +386,6 @@ func CreateLine(line codeparser.LineTyper, classContext *ClassContext, indentati
 			CreateLine(line.(codeparser.LineType).Words["VariableName"].(codeparser.LineType), classContext, 0, false),
 			body,
 		)
-		// inScopeVariables[line.(codeparser.LineType).Words["VariableName"].([]codeparser.LineType)[0].Words["Expression"].(string)] = JavaToGoArray(ReplaceWord(line.(codeparser.LineType).Words["VariableType"].(string)))
 	case "AssignVariable":
 		var body string
 		for _, line := range line.(codeparser.LineType).Words["Expression"].([]codeparser.LineType) {
@@ -402,20 +414,6 @@ func CreateLine(line codeparser.LineTyper, classContext *ClassContext, indentati
 			functionName = classContext.Name + "Values"
 		}
 
-		if classContext.ContainsMethod(ToPrivate(functionName)) {
-			functionName = ToPrivate(functionName)
-		} else if classContext.ContainsMethod(ToPublic(functionName)) {
-			functionName = ToPublic(functionName)
-		// Pretty much every call to an exception in Java ends with the word "Exception"
-		} else if parsetools.EndsWith(functionName, "Exception") {
-			panic("Calling exception " + functionName)
-		// Assumes errors are capitalized and end with the word "Error"
-		} else if parsetools.EndsWith(functionName, "Error") && unicode.IsUpper(rune(functionName[0])) {
-			panic("Calling error " + functionName)
-		} else {
-			// panic("Unknown non-package function " + functionName + "")
-		}
-
 		// Populate the parameters of the function
 		var body string
 		for li, expressionLine := range line.(codeparser.LineType).Words["Parameters"].([][]codeparser.LineType) {
@@ -427,11 +425,41 @@ func CreateLine(line codeparser.LineTyper, classContext *ClassContext, indentati
 			}
 		}
 
-		result += strings.Repeat(" ", indentation) + fmt.Sprintf(
-			"%s(%s)",
-			functionName,
-			body,
-		)
+		if classContext.ContainsMethod(ToPrivate(functionName)) {
+			functionName = ToPrivate(functionName)
+		} else if classContext.ContainsMethod(ToPublic(functionName)) {
+			functionName = ToPublic(functionName)
+		// Pretty much every call to an exception in Java ends with the word "Exception"
+		} else {
+			// panic("Unknown non-package function " + functionName + "")
+		}
+
+		// Handle Exceptions and Errors
+		if parsetools.EndsWith(functionName, "Exception") {
+			// If there is no other exception of the same name in the current package, generate it
+			if !parsetools.Contains(functionName, currentErrors[classContext.Package]) {
+				currentErrors[classContext.Package] = append(currentErrors[classContext.Package], functionName)
+				toGenerate = append(toGenerate, CreateError(functionName, body))
+			}
+		// Assumes errors are capitalized and end with the word "Error"
+		} else if parsetools.EndsWith(functionName, "Error") && unicode.IsUpper(rune(functionName[0])) {
+			// If there is no other error of the same name in the current package, generate it
+			if !parsetools.Contains(functionName, currentErrors[classContext.Package]) {
+				currentErrors[classContext.Package] = append(currentErrors[classContext.Package], functionName)
+				toGenerate = append(toGenerate, CreateError(functionName, body))
+			}
+		}
+
+		// Check if the function is an Error or Exception
+		if parsetools.Contains(functionName, currentErrors[classContext.Package]) {
+			result += functionName
+		} else {
+			result += strings.Repeat(" ", indentation) + fmt.Sprintf(
+				"%s(%s)",
+				functionName,
+				body,
+			)
+		}
 	case "ConstructArray":
 		result += strings.Repeat(" ", indentation) + fmt.Sprintf("make([]%s, %s)", line.(codeparser.LineType).Words["ArrayType"], line.(codeparser.LineType).Words["InitialSize"])
 	case "AccessArrayElement":
@@ -599,16 +627,22 @@ func CreateLine(line codeparser.LineTyper, classContext *ClassContext, indentati
 			strings.Repeat(" ", indentation),
 		)
 	case "DoWhileCondition": // The while condition for a do-while, comes after the do block
-		lastWhileCondition = line // Global
-	case "DoWhileStatement":
+		var body string
+		for _, line := range line.(codeparser.LineBlock).Words["Condition"].([]codeparser.LineType) {
+			body += CreateLine(line, classContext, 0, false) + " "
+		}
 		result += strings.Repeat(" ", indentation) + fmt.Sprintf(
-			"for {%s\n%s\n%sif %s {\nbreak\n%s}}",
-			CreateBody(line.(codeparser.LineBlock).Lines, classContext, indentation + 2),
+			"for {%s\n%s\n%sif %s {\n%sbreak\n%s}}",
+			CreateBody(lastDoWhile.(codeparser.LineBlock).Lines, classContext, indentation + 2),
 			strings.Repeat(" ", indentation),
 			strings.Repeat(" ", indentation),
-			lastWhileCondition,
+			body,
+			strings.Repeat(" ", indentation + 2),
 			strings.Repeat(" ", indentation),
 		)
+		lastDoWhile = nil
+	case "DoWhileStatement":
+		lastDoWhile = line
 	case "TypeAssertion":
 		result += fmt.Sprintf("(%s)", line.(codeparser.LineType).Words["AssertedType"])
 	case "SwitchExpression":
@@ -634,7 +668,7 @@ func CreateLine(line codeparser.LineTyper, classContext *ClassContext, indentati
 	case "ContentLabel":
 		result += strings.Repeat(" ", indentation) + fmt.Sprintf("%s:", line.(codeparser.LineType).Words["LabelName"])
 	default:
-		panic("Unknown line type: " + line.GetName())
+		panic("Unknown line type: [" + line.GetName() + "]")
 	}
 
 	return result
@@ -679,4 +713,8 @@ func EnumFieldsToLineType(enumFields []parsing.EnumField, ctx *ClassContext) [][
 	}
 
 	return outputLines
+}
+
+func CreateError(name, content string) string {
+	return fmt.Sprintf("var %s = errors.New(\"%s: \" + %s)", name, name, content)
 }

@@ -2,6 +2,7 @@ package goparser
 
 type ClassContext struct {
 	Name string
+	Package string
 	Methods map[string][]string
 	ClassVariables []string
 }

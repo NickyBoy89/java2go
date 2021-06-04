@@ -14,6 +14,7 @@ var functionTable = []string{
 var specializedFunctions = map[string]string{
 	"System.out.Println": "fmt.Println",
 	"System.out.Printf": "fmt.Printf",
+	"String.format": "fmt.Sprintf",
 }
 
 var replacementTable = map[string]string{
@@ -65,7 +66,15 @@ func JavaToGoArray(arr string) string {
 
 // Note, assumes that the object passed in is in the go array format
 func ToReferenceType(in string) string {
+	// Java primitives
 	for _, primitive := range keywords.PrimitiveTypes {
+		if primitive == in[strings.IndexRune(in, ']') + 1:] { // If the type is an object type
+			return in
+		}
+	}
+
+	// Go primitives
+	for _, primitive := range replacementTable {
 		if primitive == in[strings.IndexRune(in, ']') + 1:] { // If the type is an object type
 			return in
 		}
