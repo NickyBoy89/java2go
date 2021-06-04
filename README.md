@@ -23,8 +23,18 @@ It does this in three intermediary steps:
 
 ### Command-line args:
 
-* `-v` verbose mode: every file being parsed is displayed
+* `-v` Verbose mode: every file being parsed is displayed
 
-* `--dry-run` the files are parsed, but not written to disk
+* `-w` Writes files directly, instead of checking if they can be parsed successfully
 
-* `-o` output dir: specify a custom directory, by default, all the files will be placed alongside their original java files with the same directory structure
+* `-o` Output dir: specify a custom directory that the files will be parsed into. By default, the files are put in the same folders as the inputs
+
+* `--skip-imports` Skips the process of automatically adding imports for the generated files with goimports
+
+#### Testing Args
+
+* `--json` Parses the code and outputs the intemediary json format that the tool uses internally
+
+* `--cpuprofile` The file path for a CPU profile to be written to during profiling
+
+* `--sync` Disables multithreaded parsing of the files, and parses them sequentially
