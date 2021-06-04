@@ -24,7 +24,7 @@ type ParsedClass struct {
   ClassVariables []ParsedVariable
   Methods []ParsedMethod
   NestedClasses []ParsedClasses
-  StaticBlocks []string
+  StaticBlocks [][]codeparser.LineTyper
 }
 
 func (c ParsedClass) GetType() string {
@@ -88,7 +88,7 @@ type ParsedEnum struct {
   Methods []ParsedMethod
   EnumFields []EnumField
   NestedClasses []ParsedClasses
-  StaticBlocks []string
+  StaticBlocks [][]codeparser.LineTyper
 }
 
 func (e ParsedEnum) GetType() string {
@@ -101,6 +101,7 @@ func (e ParsedEnum) MethodContext() map[string][]string {
   for _, method := range e.Methods {
     methods[method.Name] = method.ParameterTypes()
   }
+
   // Get the names of all the methods in the nested classes
   for _, nested := range e.NestedClasses {
     for nestedMethodName, nestedMethodParams := range nested.MethodContext() {

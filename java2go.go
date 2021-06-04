@@ -52,7 +52,7 @@ func main() {
     if err != nil {
       log.Fatal(err)
     }
-    generated := goparser.ParseFile(parsing.ParseFile(string(jsonFile)), true)
+    generated := goparser.ParseFile(parsing.ParseFile(string(jsonFile)), true, "main")
     fmt.Println(generated)
 
     formatted, err := json.MarshalIndent(parsing.ParseFile(string(jsonFile)), "", "  ")
@@ -112,8 +112,12 @@ func ParseFile(path string, verbose, writeFlag, skipImports *bool, outputDir *st
     return err
   }
 
-  // Gets the directory of the current file by stripping out the filename from the filepath
-  fileDirectory := path[:strings.LastIndex(path, "/")]
+  // Gets the current path of directories to the file
+  lastSlashInd := strings.LastIndex(path, "/")
+  filePath := path[:lastSlashInd]
+
+  // Gets the current relative directory that the file is in
+  fileDirectory := path[strings.LastIndex(path[:lastSlashInd], "/") + 1:lastSlashInd]
 
   // If writing is enabled through the -w tag
   if *writeFlag {
@@ -122,14 +126,14 @@ func ParseFile(path string, verbose, writeFlag, skipImports *bool, outputDir *st
       // Add a slash to the output directory to make it a valid directory
       *outputDir = *outputDir + "/"
       // If a folder does not exist for the output files, then create one
-      if _, err := os.Stat(*outputDir + fileDirectory); os.IsNotExist(err) {
-        os.MkdirAll(*outputDir + fileDirectory, 0775)
+      if _, err := os.Stat(*outputDir + filePath); os.IsNotExist(err) {
+        os.MkdirAll(*outputDir + filePath, 0775)
       }
     }
 
     ioutil.WriteFile(
       *outputDir + ChangeFileExtension(path, ".go"), // Change the output file to .go
-      []byte(goparser.ParseFile(parsing.ParseFile(string(contents)), true)), // Parse the contents of the file
+      []byte(goparser.ParseFile(parsing.ParseFile(string(contents)), true, fileDirectory)), // Parse the contents of the file
       0775,
     )
 

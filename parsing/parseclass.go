@@ -4,6 +4,7 @@ import (
   "strings"
 
   "gitlab.nicholasnovak.io/snapdragon/java2go/parsetools"
+  "gitlab.nicholasnovak.io/snapdragon/java2go/codeparser"
 )
 
 func ParseClass(sourceString string) ParsedClass {
@@ -39,7 +40,7 @@ func ParseClass(sourceString string) ParsedClass {
   result.Modifiers = words[:len(words) - 2]
   result.ClassVariables = []ParsedVariable{}
   result.NestedClasses = []ParsedClasses{}
-  result.StaticBlocks = []string{}
+  result.StaticBlocks = [][]codeparser.LineTyper{}
 
   classBody := sourceString[bodyDivider + 1:parsetools.IndexOfMatchingBrace(sourceString, bodyDivider)]
 
@@ -81,7 +82,10 @@ func ParseClass(sourceString string) ParsedClass {
       lastInterest = ci + 1
     } else if char == '{' {
       if strings.Trim(classBody[lastInterest:ci], " \n") == "static" { // Handle static block
-        result.StaticBlocks = append(result.StaticBlocks, strings.Trim(classBody[strings.IndexRune(classBody[lastInterest:], '{') + lastInterest + 1:parsetools.IndexOfMatchingBrace(classBody, ci)], " \n"))
+        result.StaticBlocks = append(
+          result.StaticBlocks,
+          codeparser.ParseContent(parsetools.RemoveIndentation(strings.Trim(classBody[strings.IndexRune(classBody[lastInterest:], '{') + lastInterest + 1:parsetools.IndexOfMatchingBrace(classBody, ci)], " \n"))),
+        )
         ci = parsetools.IndexOfMatchingBrace(classBody, ci) + 1// Cut out the remaining brace
         lastInterest = ci
       } else if strings.Contains(classBody[lastInterest:ci], "class") { // Nested class

@@ -7,6 +7,7 @@ import (
 )
 
 func ParseLine(source string) LineTyper {
+  source = strings.Trim(source, " \n")
   currentWords := []LineType{}
 
   lastLine, ci := 0, 0
@@ -43,8 +44,11 @@ func ParseLine(source string) LineTyper {
     			},
     		}
       default:
-        currentWords = append(currentWords, ParseExpression(strings.Trim(source[lastLine:ci], " "))[0])
-        lastLine = ci + 1
+        curWord := ParseExpression(strings.Trim(source[lastLine:ci], " "))
+        if len(curWord) > 0 {
+          currentWords = append(currentWords, curWord[0])
+          lastLine = ci + 1
+        }
       }
     case '(':
       closingParenths := parsetools.IndexOfMatchingParenths(source, ci)
@@ -80,6 +84,10 @@ func ParseLine(source string) LineTyper {
           }
           return ParseControlFlow("if", source[ci + 1:closingParenths], source[startingBrace + 1:closingBrace])
         case "while":
+          // If the while is part of a do-while loop, then there won't be a closing brace
+          if closingBrace == -1 {
+            return ParseControlFlow("doWhileCondition", source[ci + 1:closingParenths], "")
+          }
           return ParseControlFlow("while", source[ci + 1:closingParenths], source[startingBrace + 1:closingBrace])
         case "catch":
           return ParseControlFlow("catch", source[ci + 1:closingParenths], "")
@@ -356,9 +364,7 @@ func ParseControlFlow(controlBlockname, parameters, source string) LineBlock {
 	case "do-while":
 		return LineBlock{
 			Name: "DoWhileStatement",
-			Words: map[string]interface{}{
-				"Statement": ParseExpression(parameters),
-			},
+			Words: make(map[string]interface{}),
       Lines: ParseContent(strings.Trim(source, " \n")),
 		}
   case "synchronized":
@@ -386,6 +392,13 @@ func ParseControlFlow(controlBlockname, parameters, source string) LineBlock {
       Name: "FinallyBlock",
       Words: make(map[string]interface{}),
       Lines: ParseContent(strings.Trim(source, " \n")),
+    }
+  case "doWhileCondition":
+    return LineBlock{
+      Name: "DoWhileCondition",
+      Words: map[string]interface{}{
+        "Condition": ParseExpression(parameters),
+      },
     }
 	default:
     panic("Unknown control flow [" + controlBlockname + "]")

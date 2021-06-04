@@ -15,25 +15,27 @@ const indentNum = 2
 // A list of in-scope variables, for type-checking reasons
 var inScopeVariables = make(map[string]string)
 
+// For do-while loops, where the location of the "while" condition occurs after the "do" block
+var lastWhileCondition codeparser.LineTyper
+
 func ClearInScopeVariables() {
 	inScopeVariables = make(map[string]string)
 }
 
 // NewClass is set to true if the class is a nested class
-func ParseFile(sourceFile parsing.ParsedClasses, newClass bool) string {
+func ParseFile(sourceFile parsing.ParsedClasses, newClass bool, filename string) string {
 	var generated string
 	if newClass {
-		generated += fmt.Sprintf("package main\n\n")
+		generated += fmt.Sprintf("package %s\n\n", filename)
 		generated += "func NewAssertionError(err string) error {\n  return errors.New(err)\n}\n\n"
 	}
-	fmt.Printf("Generated %s\n", sourceFile.GetType())
 	switch sourceFile.GetType() {
 	case "class":
-		generated += ParseClass(sourceFile.(parsing.ParsedClass)) // Parse the class into one struct
+		generated += ParseClass(sourceFile.(parsing.ParsedClass), filename) // Parse the class into one struct
 	case "interface":
-		generated += ParseInterface(sourceFile.(parsing.ParsedInterface))
+		generated += ParseInterface(sourceFile.(parsing.ParsedInterface), filename)
 	case "enum":
-		generated += ParseEnum(sourceFile.(parsing.ParsedEnum))
+		generated += ParseEnum(sourceFile.(parsing.ParsedEnum), filename)
 	default:
 		panic("Unknown class type: " + sourceFile.GetType())
 	}
@@ -47,7 +49,7 @@ func ParseFile(sourceFile parsing.ParsedClasses, newClass bool) string {
 }
 
 // Parse a given class
-func ParseClass(source parsing.ParsedClass) string {
+func ParseClass(source parsing.ParsedClass, filename string) string {
 	var generated string
 
 	// Create a context for the class, so that the methods have some frame of reference
@@ -66,6 +68,19 @@ func ParseClass(source parsing.ParsedClass) string {
 	// 	classContext.Name = ToPrivate(source.Name)
 	// }
 
+
+	// Add the implements as a comment
+	generated += fmt.Sprintf("//%v\n", source.Implements)
+
+	// Add the extends as a comment
+	generated += fmt.Sprintf("//%v\n", source.Extends)
+
+	// If the class has any static blocks, then generated them
+	for _, staticBlock := range source.StaticBlocks {
+		generated += CreateStaticBlock(staticBlock, classContext, 0)
+		generated += "\n\n"
+	}
+
 	// Parse the class itself as a struct
 	// If the class is static, don't generate a struct for it
 	if !parsetools.Contains("static", source.Modifiers) {
@@ -82,13 +97,13 @@ func ParseClass(source parsing.ParsedClass) string {
 
 	// Parse the nested classes
 	for _, nested := range source.NestedClasses {
-		generated += ParseFile(nested, false)
+		generated += ParseFile(nested, false, filename)
 	}
 
 	return generated
 }
 
-func ParseEnum(source parsing.ParsedEnum) string {
+func ParseEnum(source parsing.ParsedEnum, filename string) string {
 	var generated string
 
 	classContext := new(ClassContext)
@@ -102,6 +117,15 @@ func ParseEnum(source parsing.ParsedEnum) string {
 	for _, field := range source.EnumFields {
 		parsedEnums = append(parsedEnums, CreateEnumField(field, classContext))
 	}
+
+	// Add the implements as a comment
+	generated += fmt.Sprintf("//%v\n", source.Implements)
+
+  // If the class has any static blocks, then generated them
+  for _, staticBlock := range source.StaticBlocks {
+    generated += CreateStaticBlock(staticBlock, classContext, 0)
+    generated += "\n\n"
+  }
 
 	if !parsetools.Contains("static", source.Modifiers) {
 		generated += CreateStruct(classContext, source.ClassVariables)
@@ -147,10 +171,15 @@ func ParseEnum(source parsing.ParsedEnum) string {
 		generated += "\n\n" // Add some spacing in between the methods
 	}
 
+	// Parse the nested classes
+	for _, nested := range source.NestedClasses {
+		generated += ParseFile(nested, false, filename)
+	}
+
 	return generated
 }
 
-func ParseInterface(source parsing.ParsedInterface) string {
+func ParseInterface(source parsing.ParsedInterface, filename string) string {
 	var generated string
 
 	// Create a context for the class, so that the methods have some frame of reference
@@ -175,7 +204,7 @@ func ParseInterface(source parsing.ParsedInterface) string {
 
 	// Parse the nested classes
 	for _, nested := range source.NestedClasses {
-		generated += ParseFile(nested, false)
+		generated += ParseFile(nested, false, filename)
 	}
 
 	return generated
@@ -299,6 +328,13 @@ func CreateMethod(classContext *ClassContext, methodSource parsing.ParsedMethod)
 	result += fmt.Sprintf(") %v {\n%s\n}", ReplaceWord(methodSource.ReturnType), CreateBody(methodSource.Body, classContext, 2))
 	ClearInScopeVariables()
 	return result
+}
+
+func CreateStaticBlock(lines []codeparser.LineTyper, classContext *ClassContext, indentation int) string {
+	block := fmt.Sprintf("func init() {\n")
+	block += CreateBody(lines, classContext, indentation + 2)
+	block += fmt.Sprintf("\n%s}", strings.Repeat(" ", indentation))
+	return block
 }
 
 // Parses the lines of the body
@@ -556,17 +592,15 @@ func CreateLine(line codeparser.LineTyper, classContext *ClassContext, indentati
 			CreateBody(line.(codeparser.LineBlock).Lines, classContext, indentation + 2),
 			strings.Repeat(" ", indentation),
 		)
+	case "DoWhileCondition": // The while condition for a do-while, comes after the do block
+		lastWhileCondition = line // Global
 	case "DoWhileStatement":
-		var body string
-		for _, line := range line.(codeparser.LineBlock).Words["Statement"].([]codeparser.LineType) {
-			body += CreateLine(line, classContext, 0, false) + " "
-		}
 		result += strings.Repeat(" ", indentation) + fmt.Sprintf(
 			"for {%s\n%s\n%sif %s {\nbreak\n%s}}",
 			CreateBody(line.(codeparser.LineBlock).Lines, classContext, indentation + 2),
 			strings.Repeat(" ", indentation),
 			strings.Repeat(" ", indentation),
-			body,
+			lastWhileCondition,
 			strings.Repeat(" ", indentation),
 		)
 	case "TypeAssertion":
