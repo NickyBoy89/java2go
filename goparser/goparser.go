@@ -662,7 +662,8 @@ func CreateLine(line codeparser.LineTyper, classContext *ClassContext, indentati
 	case "DoWhileStatement":
 		lastDoWhile = line
 	case "TypeAssertion":
-		result += fmt.Sprintf("(%s)", line.(codeparser.LineType).Words["AssertedType"])
+		// Skip type assertion
+		// result += fmt.Sprintf("(%s)", line.(codeparser.LineType).Words["AssertedType"])
 	case "SwitchExpression":
 		result += strings.Repeat(" ", indentation) + fmt.Sprintf(
 			"switch %s {%s\n%s}",
