@@ -19,12 +19,14 @@ import (
 )
 
 var synchronizedFlag bool
+var ignoredAnnotations []string
 
 func main() {
   outputDir := flag.String("o", "", "Directory to put the parsed files into, defaults to the same directory that the files appear in")
   writeFlag := flag.Bool("w", false, "Create files directly instead of just writing to stdout")
   verbose := flag.Bool("v", false, "Additional debug info")
   skipImports := flag.Bool("skip-imports", false, "Skip the process of automatically setting the imports of the generated files with goimports")
+  ignoreAnnotations := flag.String("ignore-annotations", "", "Specify a comma-separated list of annotations to ignore from methods and class variables")
   // Cpu profiling
   cpuprofile := flag.String("cpuprofile", "", "write cpu profile to file")
   // Testing options
@@ -35,6 +37,8 @@ func main() {
 
   // Synchronization
   synchronizedFlag = *sync
+
+  ignoredAnnotations = strings.Split(*ignoreAnnotations, ",")
 
   // CPU profiling
   if *cpuprofile != "" {
@@ -52,7 +56,7 @@ func main() {
     if err != nil {
       log.Fatal(err)
     }
-    generated := goparser.ParseFile(parsing.ParseFile(string(jsonFile)), true, "main")
+    generated := goparser.ParseFile(parsing.ParseFile(string(jsonFile)), true, "main", ignoredAnnotations)
     fmt.Println(generated)
 
     formatted, err := json.MarshalIndent(parsing.ParseFile(string(jsonFile)), "", "  ")
@@ -133,7 +137,7 @@ func ParseFile(path string, verbose, writeFlag, skipImports *bool, outputDir *st
 
     ioutil.WriteFile(
       *outputDir + ChangeFileExtension(path, ".go"), // Change the output file to .go
-      []byte(goparser.ParseFile(parsing.ParseFile(string(contents)), true, fileDirectory)), // Parse the contents of the file
+      []byte(goparser.ParseFile(parsing.ParseFile(string(contents)), true, fileDirectory, ignoredAnnotations)), // Parse the contents of the file
       0775,
     )
 

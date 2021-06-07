@@ -1,6 +1,8 @@
 package codeparser
 
 import (
+	"strings"
+
 	"gitlab.nicholasnovak.io/snapdragon/java2go/parsetools"
 )
 
@@ -30,9 +32,11 @@ func ParseContent(source string) []LineTyper {
 			lastLine = ci + 1
 		case '{':
 			closingBrace := parsetools.IndexOfMatchingBrace(source, ci)
-			lines = append(lines, ParseLine(source[lastLine:closingBrace + 1]))
 			ci = closingBrace
-			lastLine = ci + 1
+			if !strings.ContainsRune(source[lastLine:ci], '?') {
+				lines = append(lines, ParseLine(source[lastLine:closingBrace + 1]))
+				lastLine = ci + 1
+			}
 		}
 	}
 

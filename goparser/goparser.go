@@ -21,18 +21,18 @@ var toGenerate []string
 var lastDoWhile codeparser.LineTyper
 
 // NewClass is set to true if the class is a nested class
-func ParseFile(sourceFile parsing.ParsedClasses, newClass bool, filename string) string {
+func ParseFile(sourceFile parsing.ParsedClasses, newClass bool, filename string, ignoredAnnotations []string) string {
 	var generated string
 	if newClass {
 		generated += fmt.Sprintf("package %s\n\n", filename)
 	}
 	switch sourceFile.GetType() {
 	case "class":
-		generated += ParseClass(sourceFile.(parsing.ParsedClass), filename) // Parse the class into one struct
+		generated += ParseClass(sourceFile.(parsing.ParsedClass), filename, ignoredAnnotations) // Parse the class into one struct
 	case "interface":
-		generated += ParseInterface(sourceFile.(parsing.ParsedInterface), filename)
+		generated += ParseInterface(sourceFile.(parsing.ParsedInterface), filename, ignoredAnnotations)
 	case "enum":
-		generated += ParseEnum(sourceFile.(parsing.ParsedEnum), filename)
+		generated += ParseEnum(sourceFile.(parsing.ParsedEnum), filename, ignoredAnnotations)
 	default:
 		panic("Unknown class type: " + sourceFile.GetType())
 	}
@@ -46,7 +46,7 @@ func ParseFile(sourceFile parsing.ParsedClasses, newClass bool, filename string)
 }
 
 // Parse a given class
-func ParseClass(source parsing.ParsedClass, filename string) string {
+func ParseClass(source parsing.ParsedClass, filename string, ignoredAnnotations []string) string {
 	var generated string
 
 	// Create a context for the class, so that the methods have some frame of reference
@@ -56,6 +56,7 @@ func ParseClass(source parsing.ParsedClass, filename string) string {
 	// Extract the method names from the class itself, before it has been parsed
 	classContext.Methods = source.MethodContext()
 	classContext.Package = filename
+	classContext.IgnoredAnnotations = ignoredAnnotations
 
 	// If the line below is commented out, then every struct will be declared as public
 
@@ -98,19 +99,20 @@ func ParseClass(source parsing.ParsedClass, filename string) string {
 
 	// Parse the nested classes
 	for _, nested := range source.NestedClasses {
-		generated += ParseFile(nested, false, filename)
+		generated += ParseFile(nested, false, filename, ignoredAnnotations)
 	}
 
 	return generated
 }
 
-func ParseEnum(source parsing.ParsedEnum, filename string) string {
+func ParseEnum(source parsing.ParsedEnum, filename string, ignoredAnnotations []string) string {
 	var generated string
 
 	classContext := new(ClassContext)
 	classContext.Name = ToPublic(source.Name)
 	classContext.Methods = source.MethodContext()
 	classContext.Package = filename
+	classContext.IgnoredAnnotations = ignoredAnnotations
 
 	// Parse the enum fields
 	var parsedEnums []string
@@ -178,13 +180,13 @@ func ParseEnum(source parsing.ParsedEnum, filename string) string {
 
 	// Parse the nested classes
 	for _, nested := range source.NestedClasses {
-		generated += ParseFile(nested, false, filename)
+		generated += ParseFile(nested, false, filename, ignoredAnnotations)
 	}
 
 	return generated
 }
 
-func ParseInterface(source parsing.ParsedInterface, filename string) string {
+func ParseInterface(source parsing.ParsedInterface, filename string, ignoredAnnotations []string) string {
 	var generated string
 
 	// Create a context for the class, so that the methods have some frame of reference
@@ -194,6 +196,7 @@ func ParseInterface(source parsing.ParsedInterface, filename string) string {
 	// Extract the method names from the class itself, before it has been parsed
 	classContext.Methods = source.MethodContext()
 	classContext.Package = filename
+	classContext.IgnoredAnnotations = ignoredAnnotations
 
 	// If the line below is commented out, then every struct will be declared as public
 
@@ -207,7 +210,7 @@ func ParseInterface(source parsing.ParsedInterface, filename string) string {
 
 	// Parse the nested classes
 	for _, nested := range source.NestedClasses {
-		generated += ParseFile(nested, false, filename)
+		generated += ParseFile(nested, false, filename, ignoredAnnotations)
 	}
 
 	return generated
@@ -216,6 +219,12 @@ func ParseInterface(source parsing.ParsedInterface, filename string) string {
 func CreateStruct(classContext *ClassContext, fields []parsing.ParsedVariable) string {
 	result := fmt.Sprintf("type %s struct {", classContext.Name)
 	for _, field := range fields { // Struct fields
+		// If the struct field's annotation is on the global IgnoredAnnotations, then skip creating it
+		for _, ignoredAnno := range classContext.IgnoredAnnotations {
+		  if strings.Contains(field.Annotation, ignoredAnno) {
+		    continue
+		  }
+		}
 		// Generate the field's annotation as a comment
 		if field.Annotation != "" {
 			result += fmt.Sprintf("\n%s//%s", strings.Repeat(" ", indentNum), field.Annotation)
@@ -274,6 +283,13 @@ func AsShorthand(name string) string {
 // For a static method (standalone class) pass in an empty class name
 func CreateMethod(classContext *ClassContext, methodSource parsing.ParsedMethod) string {
 	var result string
+
+	// If the method's annotation is on the global IgnoredAnnotations, then skip creating it
+	for _, ignoredAnno := range classContext.IgnoredAnnotations {
+    if strings.Contains(methodSource.Annotation, ignoredAnno) {
+      return ""
+    }
+  }
 
 	// Generate the method's annotation as a comment
 	if methodSource.Annotation != "" {
@@ -595,7 +611,9 @@ func CreateLine(line codeparser.LineTyper, classContext *ClassContext, indentati
 		}
 		result += strings.Repeat(" ", indentation) + fmt.Sprintf("if %s {\n%s\n}\n else {\n%s\n}", "", trueExp, falseExp)
 	case "ComparisonOperator":
-		result += " == "
+		result += "=="
+	case "NotEquals":
+		result += "!="
 	case "LambdaExpression":
 		var lambdaParams string
 		for li, param := range line.(codeparser.LineType).Words["Parameters"].([][]codeparser.LineType) {
@@ -667,6 +685,16 @@ func CreateLine(line codeparser.LineTyper, classContext *ClassContext, indentati
 		result += fmt.Sprintf("'%s'", line.(codeparser.LineType).Words["Rune"])
 	case "ContentLabel":
 		result += strings.Repeat(" ", indentation) + fmt.Sprintf("%s:", line.(codeparser.LineType).Words["LabelName"])
+	case "MethodReference":
+		result += strings.Repeat(" ", indentation) + fmt.Sprintf(
+			"%s.%s",
+			line.(codeparser.LineType).Words["MethodClass"],
+			line.(codeparser.LineType).Words["MethodName"],
+		)
+	case "BlankStatement":
+		result += strings.Repeat(" ", indentation) + fmt.Sprintf("%s", CreateBody(line.(codeparser.LineBlock).Lines, classContext, indentation + 2))
+	case "LabeledBlock":
+		result += strings.Repeat(" ", indentation) + fmt.Sprintf("%s\n%s", line.(codeparser.LineBlock).Words["Label"], fmt.Sprintf("%s", CreateBody(line.(codeparser.LineBlock).Lines, classContext, indentation + 2)))
 	default:
 		panic("Unknown line type: [" + line.GetName() + "]")
 	}

@@ -5,6 +5,7 @@ type ClassContext struct {
 	Package string
 	Methods map[string][]string
 	ClassVariables []string
+	IgnoredAnnotations []string
 }
 
 func (c ClassContext) ContainsMethod(target string) bool {

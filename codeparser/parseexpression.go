@@ -9,6 +9,7 @@ import (
 
 // Parses an expression (anything that returns a value)
 func ParseExpression(source string) []LineType {
+  // fmt.Printf("Expression: %s\n", source)
 	if source == "" { // No expression
 		return []LineType{}
 	}
@@ -146,6 +147,31 @@ func ParseExpression(source string) []LineType {
             },
           })
           ci = closingParenths
+          lastWord = ci + 1
+        }
+      }
+    case ':': // Loop label, or method reference operator
+      if ci < len(source) - 1 && source[ci + 1] == ':' { // Double colon
+        referenceEnd := parsetools.IndexOfNextNonNormal(source[ci + 2:]) + ci + 2
+        words = append(words, LineType{
+          // A method reference calls a method by referring to its class directly
+          Name: "MethodReference",
+          Words: map[string]interface{}{
+            "MethodClass": source[lastWord:ci],
+            "MethodName": source[ci + 2:referenceEnd],
+          },
+        })
+        ci = referenceEnd
+        lastWord = ci + 1
+      } else {
+        // Ignore a "case" or "default", as well as a non-space character before the colon
+        if !strings.Contains(source[lastWord:ci], "case") && !strings.Contains(source[lastWord:ci], "default") && ci > len(source) - 1 && source[ci - 1] != ' ' {
+          words = append(words, LineType{
+            Name: "ContentLabel",
+            Words: map[string]interface{}{
+              "LabelName": strings.Trim(source[lastWord:ci], " "),
+            },
+          })
           lastWord = ci + 1
         }
       }
