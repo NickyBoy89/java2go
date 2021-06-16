@@ -129,15 +129,28 @@ func ParseExpression(source string) []LineType {
         // Detect a lambda
         } else if charAfterParenths == '-' && source[charAfterParenthsInd + closingParenths + 2] == '>' {
           openingBraces := strings.IndexRune(source[closingParenths:], '{') + closingParenths
-          closingBraces := parsetools.IndexOfMatchingBrace(source, openingBraces)
-          words = append(words, LineType{
-            Name: "LambdaExpression",
-            Words: map[string]interface{}{
-              "Parameters": ParseCommaSeparatedValues(strings.Trim(source[ci + 1:closingParenths], " ")),
-              "Lines": ParseContent(strings.Trim(source[openingBraces + 1:closingBraces], " ")),
-            },
-          })
-          ci = closingBraces
+          // A lambda can sometimes not have a bracketed function after if
+          nextChar, _ := parsetools.FindNextNonBlankChar(source[closingParenths:])
+          if nextChar != '{' {
+            words = append(words, LineType{
+              Name: "LambdaExpression",
+              Words: map[string]interface{}{
+                "Parameters": ParseCommaSeparatedValues(strings.Trim(source[ci + 1:closingParenths], " ")),
+                "Lines": "",
+              },
+            })
+            ci = closingParenths
+          } else {
+            closingBraces := parsetools.IndexOfMatchingBrace(source, openingBraces)
+            words = append(words, LineType{
+              Name: "LambdaExpression",
+              Words: map[string]interface{}{
+                "Parameters": ParseCommaSeparatedValues(strings.Trim(source[ci + 1:closingParenths], " ")),
+                "Lines": ParseContent(strings.Trim(source[openingBraces + 1:closingBraces], " ")),
+              },
+            })
+            ci = closingBraces
+          }
           lastWord = ci + 1
         } else { // Normal parenthesies
           words = append(words, LineType{

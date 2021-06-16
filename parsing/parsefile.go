@@ -2,7 +2,6 @@ package parsing
 
 import (
   "strings"
-  "fmt"
 
   "gitlab.nicholasnovak.io/snapdragon/java2go/keywords"
   "gitlab.nicholasnovak.io/snapdragon/java2go/codeparser"
@@ -13,8 +12,6 @@ func ParseFile(sourceString string) ParsedClasses {
   sourceString = RemoveImports(sourceString)
   sourceString = RemovePackage(sourceString)
   sourceString = RemoveComments(sourceString)
-
-  fmt.Println(sourceString)
 
   _, annotationEnd := ParseAnnotations(sourceString)
 
@@ -159,24 +156,24 @@ func ParseParameters(source string) []ParsedVariable {
 }
 
 func RemoveComments(source string) string {
-  modified := source
-
   // A backslash starts an inline or block-level comment
-  backslashes := parsetools.FindAllIndexesOfCharWithSkip(source, '/', `"'`)
-  for _, ind := range backslashes {
+  slashes := parsetools.FindAllIndexesOfCharWithSkip(source, '/', `"'`)
+  for bi := range slashes {
+    ind := slashes[len(slashes) - (1 + bi)]
+    // Start from the last backslash, to preserve the ordering of the text as it is edited
     if ind + 1 <= len(source) - 1 {
       switch source[ind + 1] {
       case '/': // Inline comment
         closingNewline := strings.IndexRune(source[ind:], '\n') + ind
-        modified = modified[:ind] + modified[closingNewline + 1:]
+        source = source[:ind] + source[closingNewline + 1:]
       case '*': // Block-level comment
         closingBlock := strings.Index(source[ind + 2:], "*/") + ind + 2
-        modified = modified[:ind] + modified[closingBlock + 1 + len("*/"):]
+        source = source[:ind] + source[closingBlock + 1 + len("*/"):]
       }
     }
   }
 
-  return modified
+  return source
 }
 
 func RemoveImports(source string) string {

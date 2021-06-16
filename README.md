@@ -31,6 +31,8 @@ It does this in three intermediary steps:
 
 * `--skip-imports` Skips the process of automatically adding imports for the generated files with goimports
 
+* `--ignore-annotations` Ignores all class fields and methods that contain the specified annotation. Ex: (--ignore-annotations=EnvType.CLIENT)
+
 #### Testing Args
 
 * `--json` Parses the code and outputs the intemediary json format that the tool uses internally
