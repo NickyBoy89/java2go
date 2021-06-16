@@ -2,6 +2,7 @@ package parsing
 
 import (
   "strings"
+  "fmt"
 
   "gitlab.nicholasnovak.io/snapdragon/java2go/keywords"
   "gitlab.nicholasnovak.io/snapdragon/java2go/codeparser"
@@ -12,6 +13,8 @@ func ParseFile(sourceString string) ParsedClasses {
   sourceString = RemoveImports(sourceString)
   sourceString = RemovePackage(sourceString)
   sourceString = RemoveComments(sourceString)
+
+  fmt.Println(sourceString)
 
   _, annotationEnd := ParseAnnotations(sourceString)
 
@@ -158,23 +161,18 @@ func ParseParameters(source string) []ParsedVariable {
 func RemoveComments(source string) string {
   modified := source
 
-  var visitedIndexes []int
-
-  for {
-    ind := parsetools.FindNextIndexOfCharWithSkip(modified, '/', `"'`)
-    if parsetools.ContainsInt(ind, visitedIndexes) { // First time it comes back around, it exits
-      break
-    }
-    visitedIndexes = append(visitedIndexes, ind)
-
-    switch modified[ind + 1] {
-    case '/': // Inline comment
-      visitedIndexes = append(visitedIndexes, ind + 1) // Because this character is a slash also
-      closingIndex := strings.IndexRune(modified[ind:], '\n') + ind
-      modified = modified[:ind] + modified[closingIndex + 1:]
-    case '*': // Block-level comment
-      closingIndex := strings.Index(modified[ind + 2:], "*/") + ind + 2
-      modified = modified[:ind] + modified[closingIndex + 3:]
+  // A backslash starts an inline or block-level comment
+  backslashes := parsetools.FindAllIndexesOfCharWithSkip(source, '/', `"'`)
+  for _, ind := range backslashes {
+    if ind + 1 <= len(source) - 1 {
+      switch source[ind + 1] {
+      case '/': // Inline comment
+        closingNewline := strings.IndexRune(source[ind:], '\n') + ind
+        modified = modified[:ind] + modified[closingNewline + 1:]
+      case '*': // Block-level comment
+        closingBlock := strings.Index(source[ind + 2:], "*/") + ind + 2
+        modified = modified[:ind] + modified[closingBlock + 1 + len("*/"):]
+      }
     }
   }
 

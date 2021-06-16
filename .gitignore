@@ -3,6 +3,10 @@ java2go
 decompiled/
 generated/
 
+# IntelliJ
+.idea/
+java2go.iml
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

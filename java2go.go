@@ -116,12 +116,18 @@ func ParseFile(path string, verbose, writeFlag, skipImports *bool, outputDir *st
     return err
   }
 
+  var filePath string
   // Gets the current path of directories to the file
   lastSlashInd := strings.LastIndex(path, "/")
-  filePath := path[:lastSlashInd]
+  if lastSlashInd != -1 {
+    filePath = path[:lastSlashInd]
+  }
 
   // Gets the current relative directory that the file is in
-  fileDirectory := path[strings.LastIndex(path[:lastSlashInd], "/") + 1:lastSlashInd]
+  var fileDirectory string
+  if lastSlashInd != -1 {
+    fileDirectory = path[strings.LastIndex(path[:lastSlashInd], "/") + 1:lastSlashInd]
+  }
 
   // If writing is enabled through the -w tag
   if *writeFlag {
@@ -173,14 +179,19 @@ func ParseFile(path string, verbose, writeFlag, skipImports *bool, outputDir *st
   return nil
 }
 
+// Takes in a full file path, and the fileType (ex: ".go", ".java") and turns the current path into that file
 func ChangeFileExtension(filePath, to string) string {
+  // If there is a backslash, the filepath contains some sort of folder
   if strings.ContainsRune(filePath, '/') {
+    // If the name of the file contains a '.' (a file extension)
     if strings.ContainsRune(filePath[strings.LastIndex(filePath, "/"):], '.') {
       return filePath[:strings.LastIndex(filePath, ".")] + to
     }
+    // Append the path onto the file
     return filePath + to
   }
-  if strings.ContainsRune(filePath[strings.LastIndex(filePath, "/"):], '.') {
+  // If the non-directory file has a file extension
+  if strings.ContainsRune(filePath, '.') {
     return filePath[:strings.LastIndex(filePath, ".")] + to
   }
   return filePath + to
