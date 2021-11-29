@@ -21,6 +21,8 @@ def generate(asts, outDir=".", write=True):
         if write:
             with open(f"{outDir}/{fileName}.go", "w") as out:
                 out.write(result)
+        else:
+            print(result)
 
 def generate_file(ast) -> str:
     """

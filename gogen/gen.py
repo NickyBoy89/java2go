@@ -9,8 +9,11 @@ class GenerationContext:
         self.name = name
         self._short_name = (name[0] + name[-1]).lower()
     def gen_struct(self, source: javalang.tree.ClassDeclaration) -> str:
-        return f"""type {self.name} struct {{\n{self.gen_lines(filter(lambda x: isinstance(x, javalang.tree.FieldDeclaration), source.body))}\n}}\n"""
+        return f"""type {self.name} struct {{\n{self.gen_lines(list(filter(lambda x: isinstance(x, javalang.tree.FieldDeclaration), source.body)))}\n}}\n"""
     def gen_method(self, source: javalang.tree.MethodDeclaration) -> str:
+        if source.name == "main":
+            source.parameters = []
+            return self.gen_function(source)
         return f"""func ({self._short_name} *{self.name}) {source.name}({self.gen_params(source.parameters)}) {self.gen_type(source.return_type)} {{\n{self.gen_lines(source.body)}\n}}\n"""
     def gen_params(self, params) -> str:
         generated = ""
@@ -34,9 +37,12 @@ return {self._short_name}
 """
         return f"""func {source.name}({self.gen_params(source.parameters)}) {self.gen_type(source.return_type)} {{\n{self.gen_lines(source.body)}\n}}\n"""
     def gen_lines(self, lines: List) -> str:
+        assert iter(lines)
         generated = ""
-        for line in lines:
+        for ind, line in enumerate(lines):
             generated += self.gen_line(line)
+            if ind < len(lines) - 1:
+                generated += "\n"
         return generated
     def gen_line(self, line) -> str:
         generated = ""
@@ -65,16 +71,48 @@ return {self._short_name}
             else:
                 generated += line.value
         elif isinstance(line, javalang.tree.IfStatement):
-            print(line)
             if line.else_statement != None:
-                pass
-            generated += f"""if {self.gen_line(line.condition)} {{\n{""}\n}}"""
+                generated += f"""if {self.gen_line(line.condition)} {{
+{self.gen_line(line.then_statement)}
+}}
+else {{
+{self.gen_line(line.else_statement)}
+}}
+"""
+            else:
+                generated += f"if {self.gen_line(line.condition)} {{\n{self.gen_line(line.then_statement)}\n}}"
         elif isinstance(line, javalang.tree.BinaryOperation):
             generated += f"{self.gen_line(line.operandl)} {line.operator} {self.gen_line(line.operandr)}"
         elif isinstance(line, javalang.tree.LocalVariableDeclaration):
-            generated += f"{line.declarators} := {line.initializer}"
+            # Try to get an initializer, which should be the case if the
+            # variable is being created for the first time
+            try:
+                generated += f"{line.declarators} := {line.initializer}"
+            except AttributeError:
+                # No initializer, variable is referencing an
+                # already created variable
+                generated += f"{line.declarators} = "
+        elif isinstance(line, javalang.tree.VariableDeclaration):
+            generated += f"{self.gen_lines(line.declarators)}"
+        elif isinstance(line, javalang.tree.BlockStatement):
+            generated += f"{self.gen_lines(line.statements)}"
+        elif isinstance(line, javalang.tree.ClassCreator):
+            generated += f"New{self.gen_type(line.type)}({self.gen_args(line.arguments)})"
+        elif isinstance(line, javalang.tree.ForStatement):
+            generated += f"for {self.gen_line(line.control.init)}; {self.gen_line(line.control.condition)}; {self.gen_lines(line.control.update)} {{{self.gen_line(line.body)}}}"
+        elif isinstance(line, javalang.tree.MethodInvocation):
+            generated += f"{line.member}({self.gen_args(line.arguments)})"
+        elif isinstance(line, javalang.tree.ThrowStatement):
+            generated += f"panic({self.gen_line(line.expression)})"
         else:
             raise Exception(f"Unknown line type: {line}")
+        return generated
+    def gen_args(self, arguments):
+        generated = ""
+        for ind, arg in enumerate(arguments):
+            generated += self.gen_line(arg)
+            if ind < len(arguments) - 1:
+                generated += ", "
         return generated
     def gen_type(self, type) -> str:
         # Void return types
