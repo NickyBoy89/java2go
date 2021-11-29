@@ -22,7 +22,7 @@ def main():
         with open(fileName) as inputFile:
             asts[fileName] = javalang.parse.parse(inputFile.read())
 
-    gogen.generate(asts, outDir=outputDirectory)
+    gogen.generate(asts, outDir=outputDirectory, write=False)
 
 if __name__ == "__main__":
     main()
