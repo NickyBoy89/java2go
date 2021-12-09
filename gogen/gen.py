@@ -46,6 +46,11 @@ return {self._short_name}
         return generated
     def gen_line(self, line) -> str:
         generated = ""
+        try:
+            if line.prefix_operators != None and line.prefix_operators != []:
+                generated += "".join(line.prefix_operators)
+        except AttributeError:
+            pass
         if isinstance(line, javalang.tree.ReturnStatement):
             generated += f"return {self.gen_line(line.expression)}"
         elif isinstance(line, javalang.tree.FieldDeclaration):
@@ -91,7 +96,7 @@ else {{
             except AttributeError:
                 # No initializer, variable is referencing an
                 # already created variable
-                generated += f"{line.declarators} = "
+                generated += f"{self.gen_lines(line.declarators)} = "
         elif isinstance(line, javalang.tree.VariableDeclaration):
             generated += f"{self.gen_lines(line.declarators)}"
         elif isinstance(line, javalang.tree.BlockStatement):
@@ -99,13 +104,21 @@ else {{
         elif isinstance(line, javalang.tree.ClassCreator):
             generated += f"New{self.gen_type(line.type)}({self.gen_args(line.arguments)})"
         elif isinstance(line, javalang.tree.ForStatement):
-            generated += f"for {self.gen_line(line.control.init)}; {self.gen_line(line.control.condition)}; {self.gen_lines(line.control.update)} {{{self.gen_line(line.body)}}}"
+            generated += f"for {self.gen_line(line.control.init)}; {self.gen_line(line.control.condition)}; {self.gen_lines(line.control.update)} {{\n{self.gen_line(line.body)}\n}}"
         elif isinstance(line, javalang.tree.MethodInvocation):
-            generated += f"{line.member}({self.gen_args(line.arguments)})"
+            if line.qualifier != "":
+                generated += f"{line.qualifier}.{line.member}({self.gen_args(line.arguments)})"
+            else:
+                generated += f"{line.member}({self.gen_args(line.arguments)})"
         elif isinstance(line, javalang.tree.ThrowStatement):
             generated += f"panic({self.gen_line(line.expression)})"
         else:
             raise Exception(f"Unknown line type: {line}")
+        try:
+            if line.postfix_operators != None and line.postfix_operators != []:
+                generated += "".join(line.postfix_operators)
+        except AttributeError:
+            pass
         return generated
     def gen_args(self, arguments):
         generated = ""
