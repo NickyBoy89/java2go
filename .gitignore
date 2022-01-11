@@ -3,6 +3,8 @@ java2go
 decompiled/
 generated/
 
+testfiles/*.json
+
 # IntelliJ
 .idea/
 java2go.iml
