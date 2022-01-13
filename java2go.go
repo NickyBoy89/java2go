@@ -39,30 +39,38 @@ func main() {
 func ParseType(input map[string]interface{}) ast.Node {
 	// If the JSON indicates a custom type
 	if _, in := input["Name"]; in {
+		// Contents is a convenience variable for accessing the contents of custom
+		// types
+		contents := input["Contents"].(map[string]interface{})
 		switch input["Name"] {
 		case "<class 'javalang.tree.CompilationUnit'>":
-			return &ast.File{
-				Name: &ast.Ident{Name: "main"},
-				Decls: []ast.Decl{
-					GenStruct("Test", WithFields(Fields{
-						"value": "int",
-					})),
-					GenFunction("NewTest", nil, WithFields(Fields{
-						"val": "int",
-					}), &ast.FieldList{
-						List: []*ast.Field{
-							&ast.Field{
-								Type: &ast.StarExpr{
-									X: &ast.Ident{Name: "Test"},
-								},
-							},
-						},
-					}, &ast.BlockStmt{
-						List: []ast.Stmt{},
-					}),
-				},
+			astFile := &ast.File{
+				Name:  &ast.Ident{Name: "main"},
+				Decls: []ast.Decl{},
 			}
-			return ParseType(input["Contents"].(map[string]interface{}))
+			if contents["package"] != nil {
+				astFile.Name = &ast.Ident{Name: contents["package"].(string)}
+			}
+			for _, item := range contents["types"].([]interface{}) {
+				astFile.Decls = append(astFile.Decls, ParseType(item.(map[string]interface{})).(ast.Decl))
+			}
+			return astFile
+		case "<class 'javalang.tree.ClassDeclaration'>":
+			createdStruct := GenStruct(contents["name"].(string), &ast.FieldList{List: []*ast.Field{}})
+			for _, bodyItem := range contents["body"].([]interface{}) {
+				item := bodyItem.(map[string]interface{})
+				if _, in := item["Name"]; in && item["Name"] == "<class 'javalang.tree.FieldDeclaration'>" {
+					createdStruct.(*ast.GenDecl).Specs[0].(*ast.TypeSpec).Type.(*ast.StructType).Fields.List = append(createdStruct.(*ast.GenDecl).Specs[0].(*ast.TypeSpec).Type.(*ast.StructType).Fields.List, ParseType(item).(*ast.Field))
+				}
+			}
+			return createdStruct
+		case "<class 'javalang.tree.FieldDeclaration'>":
+			return &ast.Field{
+				Names: []*ast.Ident{
+					&ast.Ident{Name: "Yes"},
+				},
+				Type: &ast.Ident{Name: "int"},
+			}
 		default:
 			panic(fmt.Sprintf("Unknown type: %v", input["Name"]))
 		}
