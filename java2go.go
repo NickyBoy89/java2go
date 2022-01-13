@@ -65,12 +65,18 @@ func ParseType(input map[string]interface{}) ast.Node {
 			}
 			return createdStruct
 		case "<class 'javalang.tree.FieldDeclaration'>":
-			return &ast.Field{
-				Names: []*ast.Ident{
-					&ast.Ident{Name: "Yes"},
-				},
-				Type: &ast.Ident{Name: "int"},
+			createdField := &ast.Field{
+				Names: []*ast.Ident{},
+				Type:  ParseType(contents["type"].(map[string]interface{})).(*ast.Ident),
 			}
+			for _, decl := range contents["declarators"].([]interface{}) {
+				createdField.Names = append(createdField.Names, ParseType(decl.(map[string]interface{})).(*ast.Ident))
+			}
+			return createdField
+		case "<class 'javalang.tree.BasicType'>":
+			return &ast.Ident{Name: contents["name"].(string)}
+		case "<class 'javalang.tree.VariableDeclarator'>":
+			return &ast.Ident{Name: contents["name"].(string)}
 		default:
 			panic(fmt.Sprintf("Unknown type: %v", input["Name"]))
 		}
