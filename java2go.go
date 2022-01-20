@@ -63,7 +63,35 @@ func StringToToken(str string) token.Token {
 }
 
 func ShortName(longName string) string {
+	if len(longName) == 0 {
+		return ""
+	}
 	return string(unicode.ToLower(rune(longName[0]))) + string(unicode.ToLower(rune(longName[len(longName)-1])))
+}
+
+func AsStringSlice(in interface{}) []string {
+	result := make([]string, len(in.([]interface{})))
+	for ind, item := range in.([]interface{}) {
+		result[ind] = item.(string)
+	}
+	return result
+}
+
+func AssertMapArray(ary interface{}) []map[string]interface{} {
+	result := make([]map[string]interface{}, len(ary.([]interface{})))
+	for ind, item := range ary.([]interface{}) {
+		result[ind] = item.(map[string]interface{})
+	}
+	return result
+}
+
+func Contains(ary []string, target string) bool {
+	for _, item := range ary {
+		if item == target {
+			return true
+		}
+	}
+	return false
 }
 
 func ParseType(input map[string]interface{}, className string) ast.Node {
@@ -114,7 +142,19 @@ func ParseType(input map[string]interface{}, className string) ast.Node {
 			}
 			switch input["Name"] {
 			case "<class 'javalang.tree.MethodDeclaration'>":
-				return GenFunction(contents["name"].(string), &ast.FieldList{List: []*ast.Field{&ast.Field{Names: []*ast.Ident{&ast.Ident{Name: ShortName(className)}}, Type: &ast.StarExpr{X: &ast.Ident{Name: className}}}}}, functionParams, &ast.FieldList{}, functionBody)
+				methodName := contents["name"].(string)
+				if Contains(AsStringSlice(contents["modifiers"]), "public") {
+					methodName = string(unicode.ToUpper(rune(methodName[0]))) + methodName[1:]
+				}
+				return &ast.FuncDecl{
+					Name: &ast.Ident{Name: methodName},
+					Recv: &ast.FieldList{List: []*ast.Field{&ast.Field{Names: []*ast.Ident{&ast.Ident{Name: ShortName(className)}}, Type: &ast.StarExpr{X: &ast.Ident{Name: className}}}}},
+					Type: &ast.FuncType{
+						Params:  functionParams,
+						Results: &ast.FieldList{},
+					},
+					Body: functionBody,
+				}
 			case "<class 'javalang.tree.ConstructorDeclaration'>":
 				functionBody.List = append([]ast.Stmt{&ast.AssignStmt{Lhs: []ast.Expr{&ast.Ident{Name: ShortName(className)}}, Tok: token.DEFINE, Rhs: []ast.Expr{&ast.CallExpr{Fun: &ast.Ident{Name: "new"}, Args: []ast.Expr{&ast.Ident{Name: className}}}}}}, functionBody.List...)
 				functionBody.List = append(functionBody.List, &ast.ReturnStmt{Results: []ast.Expr{&ast.Ident{Name: ShortName(className)}}})
@@ -155,11 +195,13 @@ func ParseType(input map[string]interface{}, className string) ast.Node {
 		case "<class 'javalang.tree.Assignment'>":
 			return &ast.AssignStmt{Lhs: []ast.Expr{ParseType(contents["expressionl"].(map[string]interface{}), className).(ast.Expr)}, Tok: token.ASSIGN, Rhs: []ast.Expr{&ast.Ident{Name: "val"}}}
 		case "<class 'javalang.tree.LocalVariableDeclaration'>", "<class 'javalang.tree.VariableDeclaration'>":
-			variableNames := []ast.Expr{}
+			var varNames, varValues []ast.Expr
 			for _, dec := range contents["declarators"].([]interface{}) {
-				variableNames = append(variableNames, ParseType(dec.(map[string]interface{}), className).(ast.Expr))
+				name, value := ParseVariableDeclaration(dec.(map[string]interface{}))
+				varNames = append(varNames, name)
+				varValues = append(varValues, value)
 			}
-			return &ast.AssignStmt{Lhs: variableNames, Tok: token.DEFINE, Rhs: []ast.Expr{}}
+			return &ast.AssignStmt{Lhs: varNames, Tok: token.DEFINE, Rhs: varValues}
 		case "<class 'javalang.tree.This'>":
 			sel := ParseType(contents["selectors"].([]interface{})[0].(map[string]interface{}), className)
 
@@ -218,6 +260,14 @@ func ParseType(input map[string]interface{}, className string) ast.Node {
 				args = append(args, ParseType(arg.(map[string]interface{}), className).(ast.Expr))
 			}
 			return &ast.CallExpr{Fun: ParseType(contents["type"].(map[string]interface{}), className).(ast.Expr), Args: args}
+		case "<class 'javalang.tree.ArrayCreator'>":
+			return &ast.CompositeLit{Type: &ast.ArrayType{Elt: &ast.Ident{Name: "int"}}, Elts: []ast.Expr{&ast.BasicLit{Kind: token.INT, Value: "99"}}}
+		case "<class 'javalang.tree.ArrayInitializer'>":
+			lits := []ast.Expr{}
+			for _, init := range contents["initializers"].([]interface{}) {
+				lits = append(lits, ParseType(init.(map[string]interface{}), className).(ast.Expr))
+			}
+			return &ast.CompositeLit{Type: &ast.ArrayType{Elt: &ast.Ident{Name: "int"}}, Elts: lits}
 		case "<class 'javalang.tree.BinaryOperation'>":
 			return &ast.BinaryExpr{X: ParseType(contents["operandl"].(map[string]interface{}), className).(ast.Expr), Op: StringToToken(contents["operator"].(string)), Y: ParseType(contents["operandr"].(map[string]interface{}), className).(ast.Expr)}
 		case "<class 'javalang.tree.Literal'>":
@@ -255,4 +305,14 @@ func ParseClass(input map[string]interface{}) []ast.Decl {
 		}
 	}
 	return append([]ast.Decl{createdStruct}, nodes...)
+}
+
+func ParseVariableDeclaration(input map[string]interface{}) (ast.Expr, ast.Expr) {
+	contents := input["Contents"].(map[string]interface{})
+	switch input["Name"].(string) {
+	case "<class 'javalang.tree.VariableDeclarator'>":
+		return &ast.Ident{Name: contents["name"].(string)}, ParseType(contents["initializer"].(map[string]interface{}), "").(ast.Expr)
+	default:
+		panic(fmt.Sprintf("Unknown declaration type: %v", contents))
+	}
 }
