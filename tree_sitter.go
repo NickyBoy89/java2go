@@ -91,13 +91,23 @@ func ParseNode(node *sitter.Node, source []byte, className string) interface{} {
 		mods := node.NamedChild(0)
 		_ = mods
 
+		body := ParseNode(node.NamedChild(3), source, className).(*ast.BlockStmt)
+		// Create the object to construct in the constructor
+		body.List = append([]ast.Stmt{&ast.AssignStmt{
+			Lhs: []ast.Expr{&ast.Ident{Name: ShortName(className)}},
+			Tok: token.DEFINE,
+			Rhs: []ast.Expr{&ast.CallExpr{Fun: &ast.Ident{Name: "new"}, Args: []ast.Expr{&ast.Ident{Name: className}}}},
+		}}, body.List...)
+		// Return the created object
+		body.List = append(body.List, &ast.ReturnStmt{Results: []ast.Expr{&ast.Ident{Name: ShortName(className)}}})
+
 		return &ast.FuncDecl{
 			Name: &ast.Ident{Name: "New" + ParseNode(node.NamedChild(1), source, className).(*ast.Ident).Name},
 			Type: &ast.FuncType{
 				Params:  ParseNode(node.NamedChild(2), source, className).(*ast.FieldList),
 				Results: &ast.FieldList{},
 			},
-			Body: ParseNode(node.NamedChild(3), source, className).(*ast.BlockStmt),
+			Body: body,
 		}
 	case "method_declaration":
 		mods := node.NamedChild(0)
