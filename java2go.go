@@ -12,7 +12,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func main() {
+func oldmain() {
 	toParse := os.Args[1:]
 	for _, fileName := range toParse {
 		contents, err := os.ReadFile(fileName)
