@@ -57,6 +57,8 @@ func StringToToken(str string) token.Token {
 		return token.ADD
 	case "*":
 		return token.MUL
+	case "-":
+		return token.SUB
 	default:
 		panic(fmt.Sprintf("Unknown token conversion from %v", str))
 	}

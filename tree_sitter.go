@@ -23,7 +23,7 @@ func main() {
 		}
 		tree, err := parser.ParseCtx(context.Background(), nil, sourceCode)
 		if err != nil {
-			fmt.Println(err)
+			panic(err)
 		}
 
 		n := tree.RootNode()
@@ -264,19 +264,33 @@ func ParseNode(node *sitter.Node, source []byte, className string) interface{} {
 			Args: ParseNode(node.NamedChild(1), source, className).([]ast.Expr),
 		}
 	case "array_creation_expression":
-		// This contains the array type, and then a dimension(s)? expr
-		return &ast.ExprStmt{X: &ast.CallExpr{
-			Fun: &ast.Ident{Name: "make"},
-			Args: []ast.Expr{
-				&ast.ArrayType{Elt: ParseNode(node.NamedChild(0), source, className).(ast.Expr)},
-				ParseNode(node.NamedChild(1), source, className).(ast.Expr),
-			},
-		}}
+		// The type of the array
+		arrayType := ParseNode(node.NamedChild(0), source, className).(ast.Expr)
+		// The dimensions of the array, which Golang only supports defining one at
+		// a time with the use of the builtin `make`
+		dimensions := []ast.Expr{&ast.ArrayType{Elt: arrayType}}
+		for _, c := range Children(node)[1:] {
+			if c.Type() == "dimensions_expr" {
+				dimensions = append(dimensions, ParseNode(c, source, className).(ast.Expr))
+			}
+		}
+
+		return &ast.CallExpr{
+			Fun:  &ast.Ident{Name: "make"},
+			Args: dimensions,
+		}
+	case "dimensions_expr":
+		return &ast.Ident{Name: node.Content(source)}
 	case "binary_expression":
 		return &ast.BinaryExpr{
 			X:  ParseNode(node.Child(0), source, className).(ast.Expr),
 			Op: StringToToken(node.Child(1).Content(source)),
 			Y:  ParseNode(node.Child(2), source, className).(ast.Expr),
+		}
+	case "unary_expression":
+		return &ast.UnaryExpr{
+			Op: StringToToken(node.Child(0).Content(source)),
+			X:  ParseNode(node.Child(1), source, className).(ast.Expr),
 		}
 	case "field_access":
 		return &ast.SelectorExpr{
@@ -284,12 +298,52 @@ func ParseNode(node *sitter.Node, source []byte, className string) interface{} {
 			Sel: ParseNode(node.NamedChild(1), source, className).(*ast.Ident),
 		}
 	case "method_invocation":
+		// Class methods are called with three nodes, the selector, the identifier,
+		// and the list of arguments, so that they form the shape
+		// `selector.identifier(list of arguments)`
+		// Static methods are only called with the identifier and list of args
+		// They look like: `identifier(args)`
+		var selector, methodName interface{}
+		var args []ast.Expr
+
+		for ind, c := range Children(node) {
+			if c.Type() == "argument_list" {
+				args = ParseNode(c, source, className).([]ast.Expr)
+				// If there was only a selector, then this method is a static method
+				if methodName == nil {
+					return &ast.CallExpr{
+						// The name is in the wrong place, so use the selector as the name
+						Fun:  selector.(ast.Expr),
+						Args: args,
+					}
+				}
+			}
+			switch ind {
+			case 0:
+				// Parse the first node as the selector initially
+				selector = ParseNode(c, source, className)
+			case 1:
+				// If there still isn't an argument list, this means that this is a
+				// class method, and this sets the method name
+				methodName = ParseNode(c, source, className)
+			}
+		}
+
+		// For deeply-nested function calls (ex: `System.out.println`), the selector
+		// will be another ast.SelectorExpr, instead of an ast.Ident
+		if _, ok := selector.(*ast.SelectorExpr); ok {
+			return &ast.SelectorExpr{
+				X:   selector.(ast.Expr),
+				Sel: methodName.(*ast.Ident),
+			}
+		}
+
 		return &ast.SelectorExpr{
 			X: &ast.CallExpr{
-				Fun:  ParseNode(node.NamedChild(1), source, className).(ast.Expr),
-				Args: ParseNode(node.NamedChild(2), source, className).([]ast.Expr),
+				Fun:  methodName.(ast.Expr),
+				Args: args,
 			},
-			Sel: ParseNode(node.NamedChild(0), source, className).(*ast.Ident),
+			Sel: selector.(*ast.Ident),
 		}
 	case "argument_list":
 		args := []ast.Expr{}
@@ -301,6 +355,17 @@ func ParseNode(node *sitter.Node, source []byte, className string) interface{} {
 		return &ast.IndexExpr{
 			X:     ParseNode(node.NamedChild(0), source, className).(ast.Expr),
 			Index: ParseNode(node.NamedChild(1), source, className).(ast.Expr),
+		}
+	case "array_initializer":
+		items := []ast.Expr{}
+		for _, c := range Children(node) {
+			items = append(items, ParseNode(c, source, className).(ast.Expr))
+		}
+		return &ast.CompositeLit{
+			Type: &ast.ArrayType{
+				Elt: &ast.Ident{Name: "int"},
+			},
+			Elts: items,
 		}
 	case "formal_parameters":
 		params := &ast.FieldList{}
