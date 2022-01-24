@@ -93,7 +93,12 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 		// Since `class_body` contains all the methods and fields in the class, we
 		// need to return those, along with the generated struct
 
-		var structName string
+		// Find the class's name first, to name everything
+		for _, c := range Children(node) {
+			if c.Type() == "identifier" {
+				ctx.className = c.Content(source)
+			}
+		}
 
 		var structDecls []ast.Decl
 
@@ -103,15 +108,12 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 			switch child.Type() {
 			case "field_declaration":
 				fields.List = append(fields.List, ParseNode(child, source, ctx).(*ast.Field))
-			case "identifier":
-				structName = child.Content(source)
 			case "class_body":
 				structDecls = ParseNode(child, source, ctx).([]ast.Decl)
 			}
 		}
 
-		ctx.className = structName
-		decls := []ast.Decl{GenStruct(structName, fields)}
+		decls := []ast.Decl{GenStruct(ctx.className, fields)}
 
 		// Join the generated struct with all the other decls
 		return append(decls, structDecls...)
@@ -270,8 +272,11 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 			X:   ParseNode(node.Child(0), source, ctx).(ast.Expr),
 		}
 	case "object_creation_expression":
+		Inspect(node, source)
 		return &ast.CallExpr{
-			Fun:  ParseNode(node.NamedChild(0), source, ctx).(ast.Expr),
+			// All object creations are usually done by calling the constructor
+			//function, which is generated as `"New" + className`
+			Fun:  &ast.Ident{Name: "New" + ParseNode(node.NamedChild(0), source, ctx).(*ast.Ident).Name},
 			Args: ParseNode(node.NamedChild(1), source, ctx).([]ast.Expr),
 		}
 	case "array_creation_expression":
@@ -314,48 +319,40 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 		// `selector.identifier(list of arguments)`
 		// Static methods are only called with the identifier and list of args
 		// They look like: `identifier(args)`
-		var selector, methodName interface{}
-		var args []ast.Expr
 
-		for ind, c := range Children(node) {
-			if c.Type() == "argument_list" {
-				args = ParseNode(c, source, ctx).([]ast.Expr)
-				// If there was only a selector, then this method is a static method
-				if methodName == nil {
-					return &ast.CallExpr{
-						// The name is in the wrong place, so use the selector as the name
-						Fun:  selector.(ast.Expr),
-						Args: args,
-					}
+		Inspect(node, source)
+
+		switch node.NamedChildCount() {
+		case 3: // Invoking a normal class method
+			// For deeply-nested function calls (ex: `System.out.println`), the selector
+			// will be another ast.SelectorExpr, instead of an ast.Ident
+
+			selector := ParseNode(node.NamedChild(0), source, ctx)
+
+			if _, ok := selector.(*ast.SelectorExpr); ok {
+				return &ast.SelectorExpr{
+					X:   selector.(ast.Expr),
+					Sel: ParseNode(node.NamedChild(1), source, ctx).(*ast.Ident),
 				}
 			}
-			switch ind {
-			case 0:
-				// Parse the first node as the selector initially
-				selector = ParseNode(c, source, ctx)
-			case 1:
-				// If there still isn't an argument list, this means that this is a
-				// class method, and this sets the method name
-				methodName = ParseNode(c, source, ctx)
-			}
-		}
 
-		// For deeply-nested function calls (ex: `System.out.println`), the selector
-		// will be another ast.SelectorExpr, instead of an ast.Ident
-		if _, ok := selector.(*ast.SelectorExpr); ok {
 			return &ast.SelectorExpr{
-				X:   selector.(ast.Expr),
-				Sel: methodName.(*ast.Ident),
+				X: &ast.CallExpr{
+					Fun:  ParseNode(node.NamedChild(1), source, ctx).(ast.Expr),
+					Args: ParseNode(node.NamedChild(2), source, ctx).([]ast.Expr),
+				},
+				Sel: selector.(*ast.Ident),
 			}
+		case 2: // Invoking a static method
+			return &ast.CallExpr{
+				// The name is in the wrong place, so use the selector as the name
+				Fun:  ParseNode(node.NamedChild(0), source, ctx).(ast.Expr),
+				Args: ParseNode(node.NamedChild(1), source, ctx).([]ast.Expr),
+			}
+		default:
+			panic(fmt.Sprintf("Calling method with unknown number of args: %v", node.NamedChildCount()))
 		}
 
-		return &ast.SelectorExpr{
-			X: &ast.CallExpr{
-				Fun:  methodName.(ast.Expr),
-				Args: args,
-			},
-			Sel: selector.(*ast.Ident),
-		}
 	case "argument_list":
 		args := []ast.Expr{}
 		for _, c := range Children(node) {
