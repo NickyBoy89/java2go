@@ -1,52 +1,15 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"go/ast"
-	"go/printer"
 	"go/token"
-	"os"
 	"unicode"
 
 	sitter "github.com/smacker/go-tree-sitter"
-	"github.com/smacker/go-tree-sitter/java"
 )
 
-func main() {
-	for _, fileName := range os.Args[1:] {
-		parser := sitter.NewParser()
-		parser.SetLanguage(java.GetLanguage())
-
-		sourceCode, err := os.ReadFile(fileName)
-		if err != nil {
-			panic(err)
-		}
-		tree, err := parser.ParseCtx(context.Background(), nil, sourceCode)
-		if err != nil {
-			panic(err)
-		}
-
-		n := tree.RootNode()
-
-		/*
-			outFile := fileName[:len(fileName)-len(filepath.Ext(fileName))] + ".go"
-			out, err := os.Create(outFile)
-			if err != nil {
-				panic(fmt.Errorf("Error creating file %v: %v", outFile, err))
-			}
-			defer out.Close()
-		*/
-
-		out := os.Stdout
-
-		err = printer.Fprint(out, token.NewFileSet(), ParseNode(n, sourceCode, Ctx{}).(ast.Node))
-		if err != nil {
-			panic(err)
-		}
-	}
-}
-
+// Children gets all named children of a given node
 func Children(node *sitter.Node) []*sitter.Node {
 	count := int(node.NamedChildCount())
 	children := make([]*sitter.Node, count)
@@ -56,6 +19,7 @@ func Children(node *sitter.Node) []*sitter.Node {
 	return children
 }
 
+// UnnamedChildren gets all the named + unnamed children of a given node
 func UnnamedChildren(node *sitter.Node) []*sitter.Node {
 	count := int(node.ChildCount())
 	children := make([]*sitter.Node, count)
@@ -65,16 +29,22 @@ func UnnamedChildren(node *sitter.Node) []*sitter.Node {
 	return children
 }
 
+// Inspect is a function for debugging that prints out every named child of a
+// given node and the source code for that child
 func Inspect(node *sitter.Node, source []byte) {
 	for _, c := range Children(node) {
 		fmt.Println(c, c.Content(source))
 	}
 }
 
+// CapitalizeIdent capitalizes the first letter of a `*ast.Ident` to mark the
+// result as a public method or field
 func CapitalizeIdent(in *ast.Ident) *ast.Ident {
 	return &ast.Ident{Name: string(unicode.ToUpper(rune(in.Name[0]))) + in.Name[1:]}
 }
 
+// LowercaseIdent lowercases the first letter of a `*ast.Ident` to mark the
+// result as a private method or field
 func LowercaseIdent(in *ast.Ident) *ast.Ident {
 	return &ast.Ident{Name: string(unicode.ToLower(rune(in.Name[0]))) + in.Name[1:]}
 }
@@ -90,6 +60,9 @@ type Ctx struct {
 	arrayType string
 }
 
+// Parses a given tree-sitter node and returns the ast representation for it
+// if called on the root of a tree-sitter node, it will return the entire
+// generated golang ast as a `ast.Node` type
 func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 	switch node.Type() {
 	// A program contains all the source code, in this case, one `class_declaration`

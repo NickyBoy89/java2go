@@ -1,2 +1,0 @@
-coloredlogs>=15.0.1
-javalang>=0.13.0
