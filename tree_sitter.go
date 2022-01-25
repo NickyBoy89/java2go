@@ -173,8 +173,12 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 		return &ast.FuncDecl{
 			Name: &ast.Ident{Name: "New" + name.Name},
 			Type: &ast.FuncType{
-				Params:  params,
-				Results: &ast.FieldList{},
+				Params: params,
+				Results: &ast.FieldList{List: []*ast.Field{&ast.Field{
+					Type: &ast.StarExpr{
+						X: name,
+					},
+				}}},
 			},
 			Body: body,
 		}

@@ -9,7 +9,6 @@ func NewTest(val int) *Test {
 	tt.value = val
 	return tt
 }
-
 func (tt *Test) GetValue() int {
 	return tt.value
 }
