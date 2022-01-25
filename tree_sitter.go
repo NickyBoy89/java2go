@@ -7,6 +7,7 @@ import (
 	"go/printer"
 	"go/token"
 	"os"
+	"unicode"
 
 	sitter "github.com/smacker/go-tree-sitter"
 	"github.com/smacker/go-tree-sitter/java"
@@ -59,6 +60,14 @@ func Inspect(node *sitter.Node, source []byte) {
 	}
 }
 
+func CapitalizeIdent(in *ast.Ident) *ast.Ident {
+	return &ast.Ident{Name: string(unicode.ToUpper(rune(in.Name[0]))) + in.Name[1:]}
+}
+
+func LowercaseIdent(in *ast.Ident) *ast.Ident {
+	return &ast.Ident{Name: string(unicode.ToLower(rune(in.Name[0]))) + in.Name[1:]}
+}
+
 // A Ctx is passed into the `ParseNode` function and contains any data that is
 // needed down-the-line for parsing, such as the class's name
 type Ctx struct {
@@ -104,12 +113,15 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 
 		// First go through and generate the struct, with all of its fields
 		fields := &ast.FieldList{}
-		for _, child := range Children(node) {
-			switch child.Type() {
-			case "field_declaration":
-				fields.List = append(fields.List, ParseNode(child, source, ctx).(*ast.Field))
+		for _, c := range Children(node) {
+			switch c.Type() {
 			case "class_body":
-				structDecls = ParseNode(child, source, ctx).([]ast.Decl)
+				structDecls = ParseNode(c, source, ctx).([]ast.Decl)
+				for _, classChild := range Children(c) {
+					if classChild.Type() == "field_declaration" {
+						fields.List = append(fields.List, ParseNode(classChild, source, ctx).(*ast.Field))
+					}
+				}
 			}
 		}
 
@@ -117,6 +129,16 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 
 		// Join the generated struct with all the other decls
 		return append(decls, structDecls...)
+	case "field_declaration":
+		return &ast.Field{
+			Names: []*ast.Ident{
+				// This field is a `variable_declarator` which gets parsed out to a
+				// full statement, but we only want the identifier for its type
+				ParseNode(node.NamedChild(1).NamedChild(0), source, ctx).(*ast.Ident),
+			},
+			Type: ParseNode(node.NamedChild(0), source, ctx).(ast.Expr),
+		}
+		Inspect(node, source)
 	case "import_declaration":
 		return &ast.ImportSpec{Name: ParseNode(node.NamedChild(0), source, ctx).(*ast.Ident)}
 	case "scoped_identifier":
@@ -174,21 +196,41 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 			Body: body,
 		}
 	case "method_declaration":
-		mods := node.NamedChild(0)
-		_ = mods
+		var public, static bool
+		for _, mod := range UnnamedChildren(node.NamedChild(0)) {
+			switch mod.Type() {
+			case "public":
+				public = true
+			case "static":
+				static = true
+			}
+		}
+
+		methodName := ParseNode(node.NamedChild(2), source, ctx).(*ast.Ident)
+		if public {
+			methodName = CapitalizeIdent(methodName)
+		} else {
+			methodName = LowercaseIdent(methodName)
+		}
+
+		methodRecv := &ast.FieldList{List: []*ast.Field{
+			&ast.Field{
+				Names: []*ast.Ident{&ast.Ident{Name: ShortName(ctx.className)}},
+				Type:  &ast.StarExpr{X: &ast.Ident{Name: ctx.className}},
+			},
+		}}
+
+		if static {
+			methodRecv = nil
+		}
 
 		return &ast.FuncDecl{
-			Name: ParseNode(node.NamedChild(2), source, ctx).(*ast.Ident),
-			Recv: &ast.FieldList{List: []*ast.Field{
-				&ast.Field{
-					Names: []*ast.Ident{&ast.Ident{Name: ShortName(ctx.className)}},
-					Type:  &ast.StarExpr{X: &ast.Ident{Name: ctx.className}},
-				},
-			}},
+			Name: methodName,
+			Recv: methodRecv,
 			Type: &ast.FuncType{
 				Params: ParseNode(node.NamedChild(3), source, ctx).(*ast.FieldList),
 				Results: &ast.FieldList{List: []*ast.Field{
-					&ast.Field{Type: ParseNode(node.NamedChild(1), source, ctx).(*ast.Ident)},
+					&ast.Field{Type: ParseNode(node.NamedChild(1), source, ctx).(ast.Expr)},
 				}},
 			},
 			Body: ParseNode(node.NamedChild(4), source, ctx).(*ast.BlockStmt),
@@ -272,11 +314,10 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 			X:   ParseNode(node.Child(0), source, ctx).(ast.Expr),
 		}
 	case "object_creation_expression":
-		Inspect(node, source)
 		return &ast.CallExpr{
 			// All object creations are usually done by calling the constructor
 			//function, which is generated as `"New" + className`
-			Fun:  &ast.Ident{Name: "New" + ParseNode(node.NamedChild(0), source, ctx).(*ast.Ident).Name},
+			Fun:  &ast.Ident{Name: "New" + ParseNode(node.NamedChild(0), source, ctx).(*ast.StarExpr).X.(*ast.Ident).Name},
 			Args: ParseNode(node.NamedChild(1), source, ctx).([]ast.Expr),
 		}
 	case "array_creation_expression":
@@ -320,28 +361,15 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 		// Static methods are only called with the identifier and list of args
 		// They look like: `identifier(args)`
 
-		Inspect(node, source)
-
 		switch node.NamedChildCount() {
 		case 3: // Invoking a normal class method
-			// For deeply-nested function calls (ex: `System.out.println`), the selector
-			// will be another ast.SelectorExpr, instead of an ast.Ident
-
-			selector := ParseNode(node.NamedChild(0), source, ctx)
-
-			if _, ok := selector.(*ast.SelectorExpr); ok {
-				return &ast.SelectorExpr{
-					X:   selector.(ast.Expr),
+			// This is of the form X.Sel(Args)
+			return &ast.CallExpr{
+				Fun: &ast.SelectorExpr{
+					X:   ParseNode(node.NamedChild(0), source, ctx).(ast.Expr),
 					Sel: ParseNode(node.NamedChild(1), source, ctx).(*ast.Ident),
-				}
-			}
-
-			return &ast.SelectorExpr{
-				X: &ast.CallExpr{
-					Fun:  ParseNode(node.NamedChild(1), source, ctx).(ast.Expr),
-					Args: ParseNode(node.NamedChild(2), source, ctx).([]ast.Expr),
 				},
-				Sel: selector.(*ast.Ident),
+				Args: ParseNode(node.NamedChild(2), source, ctx).([]ast.Expr),
 			}
 		case 2: // Invoking a static method
 			return &ast.CallExpr{
@@ -396,8 +424,10 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 		return &ast.Ident{}
 	case "array_type":
 		return &ast.ArrayType{Elt: ParseNode(node.NamedChild(0), source, ctx).(ast.Expr)}
-	case "type_identifier":
-		return &ast.Ident{Name: node.Content(source)}
+	case "type_identifier": // Any reference type
+		return &ast.StarExpr{
+			X: &ast.Ident{Name: node.Content(source)},
+		}
 	case "null_literal":
 		return &ast.Ident{Name: "nil"}
 	case "decimal_integer_literal":
