@@ -29,7 +29,18 @@ func main() {
 
 		n := tree.RootNode()
 
-		err = printer.Fprint(os.Stdout, token.NewFileSet(), ParseNode(n, sourceCode, Ctx{}).(ast.Node))
+		/*
+			outFile := fileName[:len(fileName)-len(filepath.Ext(fileName))] + ".go"
+			out, err := os.Create(outFile)
+			if err != nil {
+				panic(fmt.Errorf("Error creating file %v: %v", outFile, err))
+			}
+			defer out.Close()
+		*/
+
+		out := os.Stdout
+
+		err = printer.Fprint(out, token.NewFileSet(), ParseNode(n, sourceCode, Ctx{}).(ast.Node))
 		if err != nil {
 			panic(err)
 		}
@@ -138,7 +149,6 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 			},
 			Type: ParseNode(node.NamedChild(0), source, ctx).(ast.Expr),
 		}
-		Inspect(node, source)
 	case "import_declaration":
 		return &ast.ImportSpec{Name: ParseNode(node.NamedChild(0), source, ctx).(*ast.Ident)}
 	case "scoped_identifier":
@@ -276,7 +286,7 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 
 		for _, c := range Children(node) {
 			switch c.Type() {
-			case "parenthesied_expression":
+			case "parenthesized_expression":
 				cond = ParseNode(c, source, ctx).(ast.Expr)
 			case "block": // First block is the `if`, second is the `else`
 				if body == nil {
@@ -337,7 +347,7 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 			Args: dimensions,
 		}
 	case "dimensions_expr":
-		return &ast.Ident{Name: node.Content(source)}
+		return &ast.Ident{Name: node.NamedChild(0).Content(source)}
 	case "binary_expression":
 		return &ast.BinaryExpr{
 			X:  ParseNode(node.Child(0), source, ctx).(ast.Expr),
@@ -348,6 +358,10 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 		return &ast.UnaryExpr{
 			Op: StringToToken(node.Child(0).Content(source)),
 			X:  ParseNode(node.Child(1), source, ctx).(ast.Expr),
+		}
+	case "parenthesized_expression":
+		return &ast.ParenExpr{
+			X: ParseNode(node.NamedChild(0), source, ctx).(ast.Expr),
 		}
 	case "field_access":
 		return &ast.SelectorExpr{
