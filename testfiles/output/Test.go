@@ -5,11 +5,11 @@ type Test struct {
 }
 
 func NewTest(val int) *Test {
-	ts := new(Test)
-	ts.value = val
-	return ts
+	tt := new(Test)
+	tt.value = val
+	return tt
 }
 
-func (ts *Test) GetValue() int {
-	return rs.value
+func (tt *Test) GetValue() int {
+	return tt.value
 }
