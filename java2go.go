@@ -7,6 +7,7 @@ import (
 	"go/ast"
 	"go/printer"
 	"go/token"
+	"io/fs"
 	"os"
 	"path/filepath"
 
@@ -15,43 +16,59 @@ import (
 )
 
 func main() {
+	parser := sitter.NewParser()
+	parser.SetLanguage(java.GetLanguage())
+
 	writeFlag := flag.Bool("w", false, "Whether to write the files to disk instead of stdout")
+	quiet := flag.Bool("q", false, "Don't write to stdout on successful parse")
 	flag.Parse()
-	for _, fileName := range flag.Args() {
-		parser := sitter.NewParser()
-		parser.SetLanguage(java.GetLanguage())
 
-		sourceCode, err := os.ReadFile(fileName)
-		if err != nil {
-			panic(err)
-		}
-		tree, err := parser.ParseCtx(context.Background(), nil, sourceCode)
-		if err != nil {
-			panic(err)
-		}
-
-		n := tree.RootNode()
-
-		if *writeFlag {
-			outFile := fileName[:len(fileName)-len(filepath.Ext(fileName))] + ".go"
-			out, err := os.Create(outFile)
-			if err != nil {
-				panic(fmt.Errorf("Error creating file %v: %v", outFile, err))
+	for _, file := range flag.Args() {
+		// For every file given in the args, traverse its directory recursively
+		err := filepath.WalkDir(file, fs.WalkDirFunc(func(path string, d fs.DirEntry, err error) error {
+			// Make sure that the file we are parsing is a `java` file, and not a directory
+			if filepath.Ext(path) != ".java" || d.IsDir() {
+				return nil
 			}
-
-			err = printer.Fprint(out, token.NewFileSet(), ParseNode(n, sourceCode, Ctx{}).(ast.Node))
+			sourceCode, err := os.ReadFile(path)
+			if err != nil {
+				panic(err)
+			}
+			tree, err := parser.ParseCtx(context.Background(), nil, sourceCode)
 			if err != nil {
 				panic(err)
 			}
 
-			fmt.Printf("Successfully converted \"%v\" to \"%v\"\n", fileName, outFile)
+			n := tree.RootNode()
 
-			// Close the file to prevent future writes
-			out.Close()
-			continue
-		}
+			fmt.Printf("Converting file \"%s\" ... ", path)
+			// If the write tag is specified, files will be directly written to their corresponding file
+			if *writeFlag {
+				outFile := path[:len(path)-len(filepath.Ext(path))] + ".go"
+				out, err := os.Create(outFile)
+				if err != nil {
+					panic(fmt.Errorf("Error creating file %v: %v", outFile, err))
+				}
 
-		err = printer.Fprint(os.Stdout, token.NewFileSet(), ParseNode(n, sourceCode, Ctx{}).(ast.Node))
+				err = printer.Fprint(out, token.NewFileSet(), ParseNode(n, sourceCode, Ctx{}).(ast.Node))
+				if err != nil {
+					panic(err)
+				}
+
+				// Close the file to prevent future writes
+				out.Close()
+			} else {
+				// Don't write to stdout if the quiet tag is specified
+				if !*quiet {
+					err = printer.Fprint(os.Stdout, token.NewFileSet(), ParseNode(n, sourceCode, Ctx{}).(ast.Node))
+					if err != nil {
+						panic(err)
+					}
+				}
+			}
+			fmt.Println("Success!")
+			return nil
+		}))
 		if err != nil {
 			panic(err)
 		}
