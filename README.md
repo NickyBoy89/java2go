@@ -20,3 +20,7 @@ The process that it does this is througb several intemediary steps
 * `./java2go files...` to parse a list of files
 
 ## Options
+
+* `-w` writes the files directly to their corresponding `.go` files, instead of `stdout`
+
+* `-q` Prevents the outputs of the parsed files from appearing on stdout
