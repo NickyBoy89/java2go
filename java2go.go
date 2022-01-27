@@ -7,6 +7,7 @@ import (
 	"go/ast"
 	"go/printer"
 	"go/token"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -58,10 +59,10 @@ func main() {
 				// Close the file to prevent future writes
 				out.Close()
 			} else {
-				output := os.Stdout
+				var output io.Writer = os.Stdout
 				// If quiet, throw away result
 				if *quiet {
-					output = nil
+					output = io.Discard
 				}
 				err = printer.Fprint(output, token.NewFileSet(), ParseNode(n, sourceCode, Ctx{}).(ast.Node))
 				if err != nil {
