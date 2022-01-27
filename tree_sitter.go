@@ -114,13 +114,24 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 		// Join the generated struct with all the other decls
 		return append(decls, structDecls...)
 	case "field_declaration":
+		var fieldType ast.Expr
+		var fieldName *ast.Ident
+
+		if node.NamedChild(0).Type() == "modifiers" {
+			fieldType = ParseNode(node.NamedChild(1), source, ctx).(ast.Expr)
+			fieldName = ParseNode(node.NamedChild(2).NamedChild(0), source, ctx).(*ast.Ident)
+		} else {
+			fieldType = ParseNode(node.NamedChild(0), source, ctx).(ast.Expr)
+			fieldName = ParseNode(node.NamedChild(1).NamedChild(0), source, ctx).(*ast.Ident)
+		}
+
 		return &ast.Field{
 			Names: []*ast.Ident{
 				// This field is a `variable_declarator` which gets parsed out to a
 				// full statement, but we only want the identifier for its type
-				ParseNode(node.NamedChild(1).NamedChild(0), source, ctx).(*ast.Ident),
+				fieldName,
 			},
-			Type: ParseNode(node.NamedChild(0), source, ctx).(ast.Expr),
+			Type: fieldType,
 		}
 	case "import_declaration":
 		return &ast.ImportSpec{Name: ParseNode(node.NamedChild(0), source, ctx).(*ast.Ident)}
@@ -222,6 +233,14 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 			},
 			Body: ParseNode(node.NamedChild(4), source, ctx).(*ast.BlockStmt),
 		}
+	case "static_initializer":
+		return &ast.FuncDecl{
+			Name: &ast.Ident{Name: "init"},
+			Type: &ast.FuncType{
+				Params: &ast.FieldList{List: []*ast.Field{}},
+			},
+			Body: ParseNode(node.NamedChild(0), source, ctx).(*ast.BlockStmt),
+		}
 	case "local_variable_declaration":
 		// Ignore the name of the type being declared, because we are going to
 		// infer that when the variable gets assigned
@@ -250,6 +269,9 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 		}
 		return &ast.ExprStmt{X: ParseNode(node.NamedChild(0), source, ctx).(ast.Expr)}
 	case "return_statement":
+		if node.NamedChildCount() < 1 {
+			return &ast.ReturnStmt{Results: []ast.Expr{}}
+		}
 		return &ast.ReturnStmt{Results: []ast.Expr{ParseNode(node.NamedChild(0), source, ctx).(ast.Expr)}}
 	case "throw_statement":
 		return &ast.ExprStmt{X: &ast.CallExpr{
@@ -340,6 +362,19 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 		return &ast.ParenExpr{
 			X: ParseNode(node.NamedChild(0), source, ctx).(ast.Expr),
 		}
+	case "ternary_expression":
+		// Ternary expressions are represented by a built-in function
+		// called `ternary`, which takes in the binary expression, and the two
+		// return values
+
+		args := []ast.Expr{}
+		for _, c := range Children(node) {
+			args = append(args, ParseNode(c, source, ctx).(ast.Expr))
+		}
+		return &ast.CallExpr{
+			Fun:  &ast.Ident{Name: "ternary"},
+			Args: args,
+		}
 	case "field_access":
 		return &ast.SelectorExpr{
 			X:   ParseNode(node.NamedChild(0), source, ctx).(ast.Expr),
@@ -401,6 +436,13 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 		}
 		return params
 	case "formal_parameter":
+		// If the parameter has an annotatioj, ignore that
+		if node.NamedChild(0).Type() == "modifiers" {
+			return &ast.Field{
+				Names: []*ast.Ident{ParseNode(node.NamedChild(2), source, ctx).(*ast.Ident)},
+				Type:  ParseNode(node.NamedChild(1), source, ctx).(ast.Expr),
+			}
+		}
 		return &ast.Field{
 			Names: []*ast.Ident{ParseNode(node.NamedChild(1), source, ctx).(*ast.Ident)},
 			Type:  ParseNode(node.NamedChild(0), source, ctx).(ast.Expr),
@@ -410,6 +452,8 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 	case "identifier":
 		return &ast.Ident{Name: node.Content(source)}
 	case "integral_type":
+		return &ast.Ident{Name: node.Content(source)}
+	case "floating_point_type": // Can be either `float` or `double`
 		return &ast.Ident{Name: node.Content(source)}
 	case "void_type":
 		return &ast.Ident{}
