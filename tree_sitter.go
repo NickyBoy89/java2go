@@ -375,6 +375,19 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 			Fun:  &ast.Ident{Name: "ternary"},
 			Args: args,
 		}
+	case "lambda_expression":
+		return &ast.FuncLit{
+			Type: &ast.FuncType{
+				Params:  ParseNode(node.NamedChild(0), source, ctx).(*ast.FieldList),
+				Results: &ast.FieldList{List: []*ast.Field{}},
+			},
+			Body: ParseNode(node.NamedChild(1), source, ctx).(*ast.BlockStmt),
+		}
+	case "cast_expression":
+		return &ast.TypeAssertExpr{
+			X:    ParseNode(node.NamedChild(1), source, ctx).(ast.Expr),
+			Type: ParseNode(node.NamedChild(0), source, ctx).(ast.Expr),
+		}
 	case "field_access":
 		return &ast.SelectorExpr{
 			X:   ParseNode(node.NamedChild(0), source, ctx).(ast.Expr),
@@ -447,6 +460,22 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 			Names: []*ast.Ident{ParseNode(node.NamedChild(1), source, ctx).(*ast.Ident)},
 			Type:  ParseNode(node.NamedChild(0), source, ctx).(ast.Expr),
 		}
+	case "inferred_parameters":
+		params := &ast.FieldList{}
+		for _, param := range Children(node) {
+			params.List = append(params.List, &ast.Field{
+				Names: []*ast.Ident{ParseNode(param, source, ctx).(*ast.Ident)},
+			})
+		}
+		return params
+	case "method_reference":
+		// This refers to manually selecting a function from a specific class and
+		// passing it in as an argument in the `func(className::methodName)` style
+
+		return &ast.SelectorExpr{
+			X:   ParseNode(node.NamedChild(0), source, ctx).(ast.Expr),
+			Sel: ParseNode(node.NamedChild(0), source, ctx).(*ast.Ident),
+		}
 	case "this":
 		return &ast.Ident{Name: ShortName(ctx.className)}
 	case "identifier":
@@ -466,6 +495,9 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 	case "null_literal":
 		return &ast.Ident{Name: "nil"}
 	case "decimal_integer_literal":
+		return &ast.Ident{Name: node.Content(source)}
+	case "decimal_floating_point_literal":
+		// This is something like 1.3D
 		return &ast.Ident{Name: node.Content(source)}
 	case "string_literal":
 		return &ast.Ident{Name: node.Content(source)}

@@ -29,6 +29,8 @@ func StringToToken(str string) token.Token {
 		return token.MUL
 	case "-":
 		return token.SUB
+	case "!":
+		return token.NOT
 	default:
 		panic(fmt.Sprintf("Unknown token conversion from %v", str))
 	}
