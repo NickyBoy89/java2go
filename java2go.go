@@ -60,7 +60,7 @@ func main() {
 			} else {
 				output := os.Stdout
 				// If quiet, throw away result
-				if !*quiet {
+				if *quiet {
 					output = nil
 				}
 				err = printer.Fprint(output, token.NewFileSet(), ParseNode(n, sourceCode, Ctx{}).(ast.Node))
