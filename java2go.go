@@ -58,12 +58,14 @@ func main() {
 				// Close the file to prevent future writes
 				out.Close()
 			} else {
-				// Don't write to stdout if the quiet tag is specified
+				output := os.Stdout
+				// If quiet, throw away result
 				if !*quiet {
-					err = printer.Fprint(os.Stdout, token.NewFileSet(), ParseNode(n, sourceCode, Ctx{}).(ast.Node))
-					if err != nil {
-						panic(err)
-					}
+					output = nil
+				}
+				err = printer.Fprint(output, token.NewFileSet(), ParseNode(n, sourceCode, Ctx{}).(ast.Node))
+				if err != nil {
+					panic(err)
 				}
 			}
 			fmt.Println("Success!")
