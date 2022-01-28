@@ -154,9 +154,6 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 		}
 		return decls
 	case "constructor_declaration":
-		mods := node.NamedChild(0)
-		_ = mods
-
 		var body *ast.BlockStmt
 		var name *ast.Ident
 		var params *ast.FieldList
@@ -196,7 +193,15 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 	case "method_declaration":
 		var public, static bool
 
-		var returnType ast.Expr
+		// The return type comes as the second node, after the modifiers
+		// however, if the method is generic, this gets pushed down one
+		returnTypeIndex := 1
+		if node.NamedChild(1).Type() == "type_parameters" {
+			returnTypeIndex++
+		}
+
+		returnType := ParseNode(node.NamedChild(returnTypeIndex), source, ctx).(ast.Expr)
+
 		var methodName *ast.Ident
 
 		var params *ast.FieldList
@@ -216,12 +221,10 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 			case "formal_parameters":
 				params = ParseNode(c, source, ctx).(*ast.FieldList)
 			case "identifier":
-				// The next two identifiers determine the return type and name of the method
 				if returnType == nil {
-					returnType = ParseNode(c, source, ctx).(ast.Expr)
 					continue
 				}
-
+				// The next two identifiers determine the return type and name of the method
 				if public {
 					methodName = CapitalizeIdent(ParseNode(c, source, ctx).(*ast.Ident))
 				} else {
@@ -239,6 +242,11 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 
 		if static {
 			methodRecv = nil
+		}
+
+		// If the methodName is nil, then the printer will panic
+		if methodName == nil {
+			panic("Method's name is nil")
 		}
 
 		return &ast.FuncDecl{
@@ -285,6 +293,23 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 			}
 		}
 		return body
+	case "switch_block":
+		switchBlock := &ast.BlockStmt{}
+		var currentCase *ast.CaseClause
+		for _, c := range Children(node) {
+			switch c.Type() {
+			case "switch_label":
+				// When a new switch label comes, append it to the switch block
+				if currentCase != nil {
+					switchBlock.List = append(switchBlock.List, currentCase)
+				}
+				currentCase = ParseNode(c, source, ctx).(*ast.CaseClause)
+			default:
+				currentCase.Body = append(currentCase.Body, ParseNode(c, source, ctx).(ast.Stmt))
+			}
+		}
+
+		return switchBlock
 	case "expression_statement":
 		stmt := ParseNode(node.NamedChild(0), source, ctx)
 		// If the result is already a statement, don't wrap it in a `ExprStmt`
@@ -297,6 +322,8 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 			return &ast.ReturnStmt{Results: []ast.Expr{}}
 		}
 		return &ast.ReturnStmt{Results: []ast.Expr{ParseNode(node.NamedChild(0), source, ctx).(ast.Expr)}}
+	case "break_statement":
+		return &ast.BranchStmt{Tok: token.BREAK}
 	case "throw_statement":
 		return &ast.ExprStmt{X: &ast.CallExpr{
 			Fun:  &ast.Ident{Name: "panic"},
@@ -340,6 +367,11 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 			Cond: ParseNode(node.NamedChild(0), source, ctx).(ast.Expr),
 			Body: ParseNode(node.NamedChild(1), source, ctx).(*ast.BlockStmt),
 		}
+	case "switch_statement":
+		return &ast.SwitchStmt{
+			Tag:  ParseNode(node.NamedChild(0), source, ctx).(ast.Expr),
+			Body: ParseNode(node.NamedChild(1), source, ctx).(*ast.BlockStmt),
+		}
 	case "assignment_expression":
 		names := []ast.Expr{}
 		values := []ast.Expr{}
@@ -351,7 +383,7 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 	case "update_expression":
 		// The token is not a named node, so we need to access that specifically
 		return &ast.IncDecStmt{
-			Tok: StringToToken(node.Child(1).Content(source)),
+			Tok: token.Lookup(node.Child(1).Content(source)),
 			X:   ParseNode(node.Child(0), source, ctx).(ast.Expr),
 		}
 	case "object_creation_expression":
@@ -382,12 +414,12 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 	case "binary_expression":
 		return &ast.BinaryExpr{
 			X:  ParseNode(node.Child(0), source, ctx).(ast.Expr),
-			Op: StringToToken(node.Child(1).Content(source)),
+			Op: token.Lookup(node.Child(1).Content(source)),
 			Y:  ParseNode(node.Child(2), source, ctx).(ast.Expr),
 		}
 	case "unary_expression":
 		return &ast.UnaryExpr{
-			Op: StringToToken(node.Child(0).Content(source)),
+			Op: token.Lookup(node.Child(0).Content(source)),
 			X:  ParseNode(node.Child(1), source, ctx).(ast.Expr),
 		}
 	case "parenthesized_expression":
@@ -420,6 +452,13 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 			X:    ParseNode(node.NamedChild(1), source, ctx).(ast.Expr),
 			Type: ParseNode(node.NamedChild(0), source, ctx).(ast.Expr),
 		}
+	case "switch_label":
+		if node.NamedChildCount() > 0 {
+			return &ast.CaseClause{
+				List: []ast.Expr{ParseNode(node.NamedChild(0), source, ctx).(ast.Expr)},
+			}
+		}
+		return &ast.CaseClause{}
 	case "field_access":
 		return &ast.SelectorExpr{
 			X:   ParseNode(node.NamedChild(0), source, ctx).(ast.Expr),
@@ -497,6 +536,9 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 		for _, param := range Children(node) {
 			params.List = append(params.List, &ast.Field{
 				Names: []*ast.Ident{ParseNode(param, source, ctx).(*ast.Ident)},
+				// When we're not sure what parameters to infer, set them as interface
+				// values to avoid a panic
+				Type: &ast.Ident{Name: "interface{}"},
 			})
 		}
 		return params
@@ -520,6 +562,9 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 		return &ast.Ident{}
 	case "boolean_type":
 		return &ast.Ident{Name: node.Content(source)}
+	case "generic_type":
+		// A generic type is any type that is of the form GenericType<T>
+		return &ast.Ident{Name: node.NamedChild(0).Content(source)}
 	case "array_type":
 		return &ast.ArrayType{Elt: ParseNode(node.NamedChild(0), source, ctx).(ast.Expr)}
 	case "type_identifier": // Any reference type
