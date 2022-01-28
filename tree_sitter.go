@@ -195,20 +195,39 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 		}
 	case "method_declaration":
 		var public, static bool
-		for _, mod := range UnnamedChildren(node.NamedChild(0)) {
-			switch mod.Type() {
-			case "public":
-				public = true
-			case "static":
-				static = true
-			}
-		}
 
-		methodName := ParseNode(node.NamedChild(2), source, ctx).(*ast.Ident)
-		if public {
-			methodName = CapitalizeIdent(methodName)
-		} else {
-			methodName = LowercaseIdent(methodName)
+		var returnType ast.Expr
+		var methodName *ast.Ident
+
+		var params *ast.FieldList
+
+		for _, c := range Children(node) {
+			switch c.Type() {
+			case "modifiers":
+				for _, mod := range UnnamedChildren(c) {
+					switch mod.Type() {
+					case "public":
+						public = true
+					case "static":
+						static = true
+					}
+				}
+			case "type_parameters": // For generic types
+			case "formal_parameters":
+				params = ParseNode(c, source, ctx).(*ast.FieldList)
+			case "identifier":
+				// The next two identifiers determine the return type and name of the method
+				if returnType == nil {
+					returnType = ParseNode(c, source, ctx).(ast.Expr)
+					continue
+				}
+
+				if public {
+					methodName = CapitalizeIdent(ParseNode(c, source, ctx).(*ast.Ident))
+				} else {
+					methodName = LowercaseIdent(ParseNode(c, source, ctx).(*ast.Ident))
+				}
+			}
 		}
 
 		methodRecv := &ast.FieldList{List: []*ast.Field{
@@ -226,12 +245,12 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 			Name: methodName,
 			Recv: methodRecv,
 			Type: &ast.FuncType{
-				Params: ParseNode(node.NamedChild(3), source, ctx).(*ast.FieldList),
+				Params: params,
 				Results: &ast.FieldList{List: []*ast.Field{
-					&ast.Field{Type: ParseNode(node.NamedChild(1), source, ctx).(ast.Expr)},
+					&ast.Field{Type: returnType},
 				}},
 			},
-			Body: ParseNode(node.NamedChild(4), source, ctx).(*ast.BlockStmt),
+			Body: ParseNode(node.NamedChild(int(node.NamedChildCount()-1)), source, ctx).(*ast.BlockStmt),
 		}
 	case "static_initializer":
 		return &ast.FuncDecl{
