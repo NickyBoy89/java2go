@@ -258,7 +258,12 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 			if line.Type() == "comment" {
 				continue
 			}
-			body.List = append(body.List, ParseNode(line, source, ctx).(ast.Stmt))
+			// Try statements are ignored, so they return a list of statements
+			if _, ok := ParseNode(line, source, ctx).([]ast.Stmt); ok {
+				body.List = append(body.List, ParseNode(line, source, ctx).([]ast.Stmt)...)
+			} else {
+				body.List = append(body.List, ParseNode(line, source, ctx).(ast.Stmt))
+			}
 		}
 		return body
 	case "expression_statement":
@@ -278,6 +283,9 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 			Fun:  &ast.Ident{Name: "panic"},
 			Args: []ast.Expr{ParseNode(node.NamedChild(0), source, ctx).(ast.Expr)},
 		}}
+	case "try_statement":
+		// We ignore try statements
+		return ParseNode(node.NamedChild(0), source, ctx).(*ast.BlockStmt).List
 	case "if_statement":
 		var cond ast.Expr
 		var body *ast.BlockStmt
@@ -307,6 +315,11 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 			Cond: ParseNode(node.NamedChild(1), source, ctx).(ast.Expr),
 			Post: ParseNode(node.NamedChild(2), source, ctx).(ast.Stmt),
 			Body: ParseNode(node.NamedChild(3), source, ctx).(*ast.BlockStmt),
+		}
+	case "while_statement":
+		return &ast.ForStmt{
+			Cond: ParseNode(node.NamedChild(0), source, ctx).(ast.Expr),
+			Body: ParseNode(node.NamedChild(1), source, ctx).(*ast.BlockStmt),
 		}
 	case "assignment_expression":
 		names := []ast.Expr{}
@@ -486,6 +499,8 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 		return &ast.Ident{Name: node.Content(source)}
 	case "void_type":
 		return &ast.Ident{}
+	case "boolean_type":
+		return &ast.Ident{Name: node.Content(source)}
 	case "array_type":
 		return &ast.ArrayType{Elt: ParseNode(node.NamedChild(0), source, ctx).(ast.Expr)}
 	case "type_identifier": // Any reference type
@@ -500,6 +515,8 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 		// This is something like 1.3D
 		return &ast.Ident{Name: node.Content(source)}
 	case "string_literal":
+		return &ast.Ident{Name: node.Content(source)}
+	case "true", "false":
 		return &ast.Ident{Name: node.Content(source)}
 	case "comment": // Ignore comments
 		return nil
