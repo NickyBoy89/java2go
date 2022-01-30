@@ -401,7 +401,6 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 
 		// Stores all the assignments if the statement is a multiple-expression
 		assignments := []ast.Stmt{}
-		_ = assignments
 
 		names := []ast.Expr{}
 		values := []ast.Expr{}
@@ -411,13 +410,19 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 			// This is handled by replacing this with the equivalent
 			// `variable2 = 1`
 			// `variable1 = variable2`
-			if node.NamedChild(i+1).Type() == "assignment_expression" {
-				panic("Assignment expressions not implemented")
+			if node.NamedChild(i+1).Type() == "assignment_expression" || len(assignments) > 0 {
+				// NOTE: This is incorrect, as it doesn't pass the other lines down
+				assignments = append(assignments, ParseNode(node.NamedChild(i+1), source, ctx).(ast.Stmt))
+			} else {
+				names = append(names, ParseNode(node.NamedChild(i), source, ctx).(ast.Expr))
+				values = append(values, ParseNode(node.NamedChild(i+1), source, ctx).(ast.Expr))
 			}
-
-			names = append(names, ParseNode(node.NamedChild(i), source, ctx).(ast.Expr))
-			values = append(values, ParseNode(node.NamedChild(i+1), source, ctx).(ast.Expr))
 		}
+
+		if len(assignments) > 0 {
+			return assignments
+		}
+
 		return &ast.AssignStmt{Lhs: names, Tok: token.ASSIGN, Rhs: values}
 	case "update_expression":
 		// If the unnamed token comes first, then this is a pre-increment, such as
