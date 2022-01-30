@@ -113,6 +113,25 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 
 		// Join the generated struct with all the other decls
 		return append(decls, structDecls...)
+	case "enum_declaration":
+		// An enum is treated as both a struct, and a list of values that define
+		// the states that the enum can be in
+
+		//modifiers := ParseNode(node.NamedChild(0), source, ctx)
+
+		ctx.className = node.NamedChild(1).Content(source)
+
+		for _, item := range Children(node.NamedChild(2)) {
+			switch item.Type() {
+			case "enum_body_declarations":
+				for _, bodyDecl := range Children(item) {
+					_ = bodyDecl
+				}
+			}
+		}
+
+		//decls := []ast.Decl{GenStruct(ctx.className, fields)}
+		return []ast.Decl{}
 	case "field_declaration":
 		var fieldType ast.Expr
 		var fieldName *ast.Ident
@@ -141,14 +160,17 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 		decls := []ast.Decl{}
 		for _, item := range Children(node) {
 			if item.Type() != "field_declaration" { // Field declarations have already been handled
-				// A class declaration will return a list of all the declarations within
-				// it, not just a single declaration
-				if item.Type() == "class_declaration" {
-					decls = append(decls, ParseNode(item, source, ctx).([]ast.Decl)...)
+				decl := ParseNode(item, source, ctx)
+				// Skip comments
+				if item.Type() == "comment" {
+					continue
+				}
+				// Parsing a nested class will instead return a list of all the decls
+				// contained within the class
+				if declList, ok := decl.([]ast.Decl); ok {
+					decls = append(decls, declList...)
 				} else {
-					if item.Type() != "comment" {
-						decls = append(decls, ParseNode(item, source, ctx).(ast.Decl))
-					}
+					decls = append(decls, decl.(ast.Decl))
 				}
 			}
 		}
@@ -315,8 +337,10 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 		// If the result is already a statement, don't wrap it in a `ExprStmt`
 		if s, ok := stmt.(ast.Stmt); ok {
 			return s
+		} else if s, ok := stmt.([]ast.Stmt); ok { // Return the assignstmts
+			return s
 		}
-		return &ast.ExprStmt{X: ParseNode(node.NamedChild(0), source, ctx).(ast.Expr)}
+		return &ast.ExprStmt{X: stmt.(ast.Expr)}
 	case "return_statement":
 		if node.NamedChildCount() < 1 {
 			return &ast.ReturnStmt{Results: []ast.Expr{}}
@@ -373,15 +397,46 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 			Body: ParseNode(node.NamedChild(1), source, ctx).(*ast.BlockStmt),
 		}
 	case "assignment_expression":
+		// A simple variable assignment, ex: `name = value`
+
+		// Stores all the assignments if the statement is a multiple-expression
+		assignments := []ast.Stmt{}
+		_ = assignments
+
 		names := []ast.Expr{}
 		values := []ast.Expr{}
 		for i := 0; i < int(node.NamedChildCount())-1; i++ {
+			// Normally, this will set a value to the variable name, but with double
+			// assignments, e.g. `variable1 = variable2 = 1`
+			// This is handled by replacing this with the equivalent
+			// `variable2 = 1`
+			// `variable1 = variable2`
+			if node.NamedChild(i+1).Type() == "assignment_expression" {
+				panic("Assignment expressions not implemented")
+			}
+
 			names = append(names, ParseNode(node.NamedChild(i), source, ctx).(ast.Expr))
 			values = append(values, ParseNode(node.NamedChild(i+1), source, ctx).(ast.Expr))
 		}
 		return &ast.AssignStmt{Lhs: names, Tok: token.ASSIGN, Rhs: values}
 	case "update_expression":
-		// The token is not a named node, so we need to access that specifically
+		// If the unnamed token comes first, then this is a pre-increment, such as
+		// ++value
+		// other than that, if the token comes second, this looks like: value++
+
+		// The post-increment is not supported in go, so instead, this is faked by
+		// passing the value through a function
+		if node.Child(0).Type() != "identifier" {
+			return &ast.ExprStmt{
+				X: &ast.CallExpr{
+					Fun: &ast.Ident{Name: "PostUpdate"},
+					Args: []ast.Expr{
+						ParseNode(node.Child(1), source, ctx).(ast.Expr),
+					},
+				},
+			}
+			panic("Pre-update")
+		}
 		return &ast.IncDecStmt{
 			Tok: token.Lookup(node.Child(1).Content(source)),
 			X:   ParseNode(node.Child(0), source, ctx).(ast.Expr),
@@ -490,7 +545,15 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 		default:
 			panic(fmt.Sprintf("Calling method with unknown number of args: %v", node.NamedChildCount()))
 		}
-
+	case "explicit_constructor_invocation":
+		// This is when a constructor calls another constructor with the use of
+		// something such as `this(args...)`
+		return &ast.ExprStmt{
+			&ast.CallExpr{
+				Fun:  &ast.Ident{Name: "New" + ctx.className},
+				Args: ParseNode(node.NamedChild(1), source, ctx).([]ast.Expr),
+			},
+		}
 	case "argument_list":
 		args := []ast.Expr{}
 		for _, c := range Children(node) {
@@ -542,6 +605,10 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 			})
 		}
 		return params
+	case "scoped_type_identifier":
+		// This contains a reference to the type of a nested class
+		// Ex: LinkedList.Node
+		return &ast.StarExpr{X: &ast.Ident{Name: node.Content(source)}}
 	case "method_reference":
 		// This refers to manually selecting a function from a specific class and
 		// passing it in as an argument in the `func(className::methodName)` style
@@ -579,6 +646,8 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 		// This is something like 1.3D
 		return &ast.Ident{Name: node.Content(source)}
 	case "string_literal":
+		return &ast.Ident{Name: node.Content(source)}
+	case "character_literal":
 		return &ast.Ident{Name: node.Content(source)}
 	case "true", "false":
 		return &ast.Ident{Name: node.Content(source)}
