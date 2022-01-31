@@ -1,10 +1,44 @@
 package main
 
 import (
+	"fmt"
 	"go/ast"
 	"go/token"
 	"unicode"
 )
+
+var tokens = map[string]token.Token{
+	"+": token.ADD,
+	"-": token.SUB,
+	"*": token.MUL,
+	"/": token.QUO,
+	"%": token.REM,
+
+	"&&": token.LAND,
+	"||": token.LOR,
+	"++": token.INC,
+	"--": token.DEC,
+
+	"==": token.EQL,
+	"<":  token.LSS,
+	">":  token.GTR,
+	"=":  token.ASSIGN,
+	"!":  token.NOT,
+
+	"!=":  token.NEQ,
+	"<=":  token.LEQ,
+	">=":  token.GEQ,
+	":=":  token.DEFINE,
+	"...": token.ELLIPSIS,
+}
+
+// Maps a token's representation to its token, e.g. "+" -> token.ADD
+func StrToToken(input string) token.Token {
+	if outToken, known := tokens[input]; known {
+		return outToken
+	}
+	panic(fmt.Errorf("Unknown token for [%v]", input))
+}
 
 // ShortName returns the short-name representation of a class's name for use
 // in methods and construtors

@@ -405,14 +405,26 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 		names := []ast.Expr{}
 		values := []ast.Expr{}
 		for i := 0; i < int(node.NamedChildCount())-1; i++ {
-			// Normally, this will set a value to the variable name, but with double
-			// assignments, e.g. `variable1 = variable2 = 1`
-			// This is handled by replacing this with the equivalent
+			// Rewrite double assignments, e.g. `variable1 = variable2 = 1` to
 			// `variable2 = 1`
 			// `variable1 = variable2`
-			if node.NamedChild(i+1).Type() == "assignment_expression" || len(assignments) > 0 {
-				// NOTE: This is incorrect, as it doesn't pass the other lines down
-				assignments = append(assignments, ParseNode(node.NamedChild(i+1), source, ctx).(ast.Stmt))
+			if node.NamedChild(i+1).Type() == "assignment_expression" {
+				// If a value is a multiple assignment, add that assignment before the
+				// current one, and add the left side of the value to the current line
+				otherAssign := ParseNode(node.NamedChild(i+1), source, ctx)
+
+				if otherStmts, ok := otherAssign.([]ast.Stmt); ok {
+					assignments = append(assignments, otherStmts...)
+				} else {
+					assignments = append(assignments, otherAssign.(ast.Stmt))
+				}
+
+				// Assign the value to the latest Lhs expression
+				assignments = append(assignments, &ast.AssignStmt{
+					Lhs: []ast.Expr{ParseNode(node.NamedChild(i), source, ctx).(ast.Expr)},
+					Tok: token.ASSIGN,
+					Rhs: []ast.Expr{assignments[len(assignments)-1].(*ast.AssignStmt).Lhs[0]},
+				})
 			} else {
 				names = append(names, ParseNode(node.NamedChild(i), source, ctx).(ast.Expr))
 				values = append(values, ParseNode(node.NamedChild(i+1), source, ctx).(ast.Expr))
@@ -443,7 +455,7 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 			panic("Pre-update")
 		}
 		return &ast.IncDecStmt{
-			Tok: token.Lookup(node.Child(1).Content(source)),
+			Tok: StrToToken(node.Child(1).Content(source)),
 			X:   ParseNode(node.Child(0), source, ctx).(ast.Expr),
 		}
 	case "object_creation_expression":
@@ -474,12 +486,12 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 	case "binary_expression":
 		return &ast.BinaryExpr{
 			X:  ParseNode(node.Child(0), source, ctx).(ast.Expr),
-			Op: token.Lookup(node.Child(1).Content(source)),
+			Op: StrToToken(node.Child(1).Content(source)),
 			Y:  ParseNode(node.Child(2), source, ctx).(ast.Expr),
 		}
 	case "unary_expression":
 		return &ast.UnaryExpr{
-			Op: token.Lookup(node.Child(0).Content(source)),
+			Op: StrToToken(node.Child(0).Content(source)),
 			X:  ParseNode(node.Child(1), source, ctx).(ast.Expr),
 		}
 	case "parenthesized_expression":
