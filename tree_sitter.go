@@ -136,10 +136,19 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 		var fieldType ast.Expr
 		var fieldName *ast.Ident
 
-		if node.NamedChild(0).Type() == "modifiers" {
-			fieldType = ParseNode(node.NamedChild(1), source, ctx).(ast.Expr)
-			fieldName = ParseNode(node.NamedChild(2).NamedChild(0), source, ctx).(*ast.Ident)
-		} else {
+		for ind, c := range Children(node) {
+			switch c.Type() {
+			case "modifiers": // Ignore the modifiers for now
+				// The variable's type will always follow the modifiers, if they are present
+				fieldType = ParseNode(node.NamedChild(ind+1), source, ctx).(ast.Expr)
+				// The value will come one after that
+				fieldName = ParseNode(node.NamedChild(ind+2).NamedChild(0), source, ctx).(*ast.Ident)
+			}
+		}
+
+		// If no modifiers were declared, then declare everything with the default
+		// offsets
+		if fieldType == nil {
 			fieldType = ParseNode(node.NamedChild(0), source, ctx).(ast.Expr)
 			fieldName = ParseNode(node.NamedChild(1).NamedChild(0), source, ctx).(*ast.Ident)
 		}
@@ -296,10 +305,11 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 		return ParseNode(node.NamedChild(1), source, ctx).(ast.Stmt)
 	case "variable_declarator":
 		var names, values []ast.Expr
-		for ind := 0; ind < int(node.NamedChildCount())-1; ind++ {
+		for ind := 0; ind < int(node.NamedChildCount())-1; ind += 2 {
 			names = append(names, ParseNode(node.NamedChild(ind), source, ctx).(ast.Expr))
 			values = append(values, ParseNode(node.NamedChild(ind+1), source, ctx).(ast.Expr))
 		}
+
 		return &ast.AssignStmt{Lhs: names, Tok: token.DEFINE, Rhs: values}
 	case "constructor_body", "block":
 		body := &ast.BlockStmt{}
