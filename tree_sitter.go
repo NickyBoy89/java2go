@@ -302,6 +302,9 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 	case "local_variable_declaration":
 		// Ignore the name of the type being declared, because we are going to
 		// infer that when the variable gets assigned
+		if node.NamedChild(0).Type() == "modifiers" {
+			return ParseNode(node.NamedChild(2), source, ctx).(ast.Stmt)
+		}
 		return ParseNode(node.NamedChild(1), source, ctx).(ast.Stmt)
 	case "variable_declarator":
 		var names, values []ast.Expr
@@ -407,6 +410,23 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 		return &ast.ForStmt{
 			Cond: ParseNode(node.NamedChild(0), source, ctx).(ast.Expr),
 			Body: ParseNode(node.NamedChild(1), source, ctx).(*ast.BlockStmt),
+		}
+	case "do_statement":
+		// A do statement is handled as a blank for loop with the condition
+		// inserted as a break condition in the final part of the loop
+		body := ParseNode(node.NamedChild(0), source, ctx).(*ast.BlockStmt)
+
+		body.List = append(body.List, &ast.IfStmt{
+			Cond: &ast.UnaryExpr{
+				X: &ast.ParenExpr{
+					X: ParseNode(node.NamedChild(1), source, ctx).(ast.Expr),
+				},
+			},
+			Body: &ast.BlockStmt{List: []ast.Stmt{&ast.BranchStmt{Tok: token.BREAK}}},
+		})
+
+		return &ast.ForStmt{
+			Body: body,
 		}
 	case "switch_statement":
 		return &ast.SwitchStmt{
@@ -595,6 +615,15 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 		}
 		return args
 	case "array_access":
+		// For an array access such as `arr[i++]`, which is not valid, we need to
+		// call that statement before the current statement
+		if _, isIncDec := ParseNode(node.NamedChild(1), source, ctx).(*ast.IncDecStmt); isIncDec {
+			return &ast.IndexExpr{
+				X: ParseNode(node.NamedChild(0), source, ctx).(ast.Expr),
+				// TODO: Handle this value instead of ignoring it
+				Index: nil,
+			}
+		}
 		return &ast.IndexExpr{
 			X:     ParseNode(node.NamedChild(0), source, ctx).(ast.Expr),
 			Index: ParseNode(node.NamedChild(1), source, ctx).(ast.Expr),
