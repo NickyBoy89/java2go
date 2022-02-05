@@ -305,6 +305,13 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 		return ParseNode(node.NamedChild(1), source, ctx).(ast.Stmt)
 	case "variable_declarator":
 		var names, values []ast.Expr
+
+		// If there is only one node, then that node is just a name
+		if node.NamedChildCount() == 1 {
+			names = append(names, ParseNode(node.NamedChild(0), source, ctx).(ast.Expr))
+		}
+
+		// Loop through every pair of name and value
 		for ind := 0; ind < int(node.NamedChildCount())-1; ind += 2 {
 			names = append(names, ParseNode(node.NamedChild(ind), source, ctx).(ast.Expr))
 			values = append(values, ParseNode(node.NamedChild(ind+1), source, ctx).(ast.Expr))
