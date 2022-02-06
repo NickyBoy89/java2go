@@ -14,6 +14,13 @@ var tokens = map[string]token.Token{
 	"/": token.QUO,
 	"%": token.REM,
 
+	"&":  token.AND,
+	"|":  token.OR,
+	"^":  token.XOR,
+	"<<": token.SHL,
+	">>": token.SHR,
+	"&^": token.AND_NOT,
+
 	"&&": token.LAND,
 	"||": token.LOR,
 	"++": token.INC,

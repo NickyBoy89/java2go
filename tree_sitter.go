@@ -130,7 +130,15 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 			}
 		}
 
+		// NOTE: Fix this to handle an interface correctly
 		//decls := []ast.Decl{GenStruct(ctx.className, fields)}
+		return []ast.Decl{}
+	case "interface_declaration":
+		//modifiers := ParseNode(node.NamedChild(0), source, ctx)
+
+		ctx.className = node.NamedChild(1).Content(source)
+
+		// NOTE: Fix this to correctly generate an interface
 		return []ast.Decl{}
 	case "field_declaration":
 		var fieldType ast.Expr
@@ -366,6 +374,11 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 			return &ast.ReturnStmt{Results: []ast.Expr{}}
 		}
 		return &ast.ReturnStmt{Results: []ast.Expr{ParseNode(node.NamedChild(0), source, ctx).(ast.Expr)}}
+	case "labeled_statement":
+		return &ast.LabeledStmt{
+			Label: ParseNode(node.NamedChild(0), source, ctx).(*ast.Ident),
+			Stmt:  ParseNode(node.NamedChild(1), source, ctx).(ast.Stmt),
+		}
 	case "break_statement":
 		return &ast.BranchStmt{Tok: token.BREAK}
 	case "throw_statement":
@@ -621,7 +634,7 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 			return &ast.IndexExpr{
 				X: ParseNode(node.NamedChild(0), source, ctx).(ast.Expr),
 				// TODO: Handle this value instead of ignoring it
-				Index: nil,
+				Index: &ast.Ident{Name: "undefined"},
 			}
 		}
 		return &ast.IndexExpr{
