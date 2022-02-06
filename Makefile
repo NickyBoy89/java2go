@@ -16,9 +16,9 @@ run:
 
 build: buildyarn buildfernflower
 
+# NOTE: To remove the decompiled files, manually run `rm -r decompiled`
 clean:
 	-rm $(fernflower) $(namedjar)
-	-rm -r decompiled
 	-cd intellij-fernflower && ./gradlew --stop
 	-rm -rf intellij-fernflower
 	-cd yarn && ./gradlew --stop
