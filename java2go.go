@@ -22,6 +22,7 @@ func main() {
 
 	writeFlag := flag.Bool("w", false, "Whether to write the files to disk instead of stdout")
 	quiet := flag.Bool("q", false, "Don't write to stdout on successful parse")
+	astFlag := flag.Bool("ast", false, "Print out go's pretty-printed ast, instead of source code")
 	flag.Parse()
 
 	for _, file := range flag.Args() {
@@ -43,31 +44,31 @@ func main() {
 			n := tree.RootNode()
 
 			fmt.Printf("Converting file \"%s\" ... ", path)
-			// If the write tag is specified, files will be directly written to their corresponding file
+			// Write to stdout by default
+			var output io.Writer = os.Stdout
+
+			// If write is specified, then write everything to the corresponding files
 			if *writeFlag {
 				outFile := path[:len(path)-len(filepath.Ext(path))] + ".go"
-				out, err := os.Create(outFile)
+				output, err = os.Create(outFile)
 				if err != nil {
 					panic(fmt.Errorf("Error creating file %v: %v", outFile, err))
 				}
-
-				err = printer.Fprint(out, token.NewFileSet(), ParseNode(n, sourceCode, Ctx{}).(ast.Node))
-				if err != nil {
-					panic(err)
-				}
-
-				// Close the file to prevent future writes
-				out.Close()
 			} else {
-				var output io.Writer = os.Stdout
-				// If quiet, throw away result
+				// If quiet is specified, then discard the output
 				if *quiet {
 					output = io.Discard
 				}
-				err = printer.Fprint(output, token.NewFileSet(), ParseNode(n, sourceCode, Ctx{}).(ast.Node))
-				if err != nil {
-					panic(err)
-				}
+			}
+
+			// If ast flag is specified, then print out go's formatted ast
+			if *astFlag {
+				ast.Print(token.NewFileSet(), ParseNode(n, sourceCode, Ctx{}).(ast.Node))
+			}
+
+			err = printer.Fprint(output, token.NewFileSet(), ParseNode(n, sourceCode, Ctx{}).(ast.Node))
+			if err != nil {
+				panic(err)
 			}
 			fmt.Println("Success!")
 			return nil
