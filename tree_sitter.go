@@ -254,6 +254,9 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 						public = true
 					case "static":
 						static = true
+					case "abstract":
+						// TODO: Handle abstract methods correctly
+						return &ast.BadDecl{}
 					}
 				}
 			case "type_parameters": // For generic types
@@ -307,6 +310,8 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 			},
 			Body: ParseNode(node.NamedChild(0), source, ctx).(*ast.BlockStmt),
 		}
+	case "super":
+		return &ast.BadExpr{}
 	case "local_variable_declaration":
 		// Ignore the name of the type being declared, because we are going to
 		// infer that when the variable gets assigned
@@ -659,7 +664,7 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 		}
 		return params
 	case "formal_parameter":
-		// If the parameter has an annotatioj, ignore that
+		// If the parameter has an annotation, ignore that
 		if node.NamedChild(0).Type() == "modifiers" {
 			return &ast.Field{
 				Names: []*ast.Ident{ParseNode(node.NamedChild(2), source, ctx).(*ast.Ident)},
@@ -669,6 +674,28 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 		return &ast.Field{
 			Names: []*ast.Ident{ParseNode(node.NamedChild(1), source, ctx).(*ast.Ident)},
 			Type:  ParseNode(node.NamedChild(0), source, ctx).(ast.Expr),
+		}
+	case "spread_parameter":
+		// The spread paramater takes a list and separates it into multiple elements
+		// Ex: addElements([]int elements...)
+
+		// If the parameter is a reference type (ex: ...[]*Test), then the type is
+		// a `StarExpr`, which is passed into the ellipsis
+		if _, is := ParseNode(node.NamedChild(0), source, ctx).(*ast.StarExpr); is {
+			return &ast.Field{
+				Names: []*ast.Ident{ParseNode(node.NamedChild(1).NamedChild(0), source, ctx).(*ast.Ident)},
+				Type: &ast.Ellipsis{
+					Elt: ParseNode(node.NamedChild(0), source, ctx).(ast.Expr),
+				},
+			}
+		}
+
+		return &ast.Field{
+			Names: []*ast.Ident{ParseNode(node.NamedChild(0), source, ctx).(*ast.Ident)},
+			Type: &ast.Ellipsis{
+				// This comes as a variable declarator, but we only need need the identifier for the type
+				Elt: ParseNode(node.NamedChild(1).NamedChild(0), source, ctx).(ast.Expr),
+			},
 		}
 	case "inferred_parameters":
 		params := &ast.FieldList{}
@@ -691,7 +718,7 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 
 		return &ast.SelectorExpr{
 			X:   ParseNode(node.NamedChild(0), source, ctx).(ast.Expr),
-			Sel: ParseNode(node.NamedChild(0), source, ctx).(*ast.Ident),
+			Sel: ParseNode(node.NamedChild(1), source, ctx).(*ast.Ident),
 		}
 	case "this":
 		return &ast.Ident{Name: ShortName(ctx.className)}
