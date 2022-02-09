@@ -65,6 +65,8 @@ type Ctx struct {
 // generated golang ast as a `ast.Node` type
 func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 	switch node.Type() {
+	case "ERROR":
+		return &ast.BadStmt{}
 	// A program contains all the source code, in this case, one `class_declaration`
 	case "program":
 		program := &ast.File{
@@ -386,6 +388,8 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 		}
 	case "break_statement":
 		return &ast.BranchStmt{Tok: token.BREAK}
+	case "continue_statement":
+		return &ast.BranchStmt{Tok: token.CONTINUE}
 	case "throw_statement":
 		return &ast.ExprStmt{X: &ast.CallExpr{
 			Fun:  &ast.Ident{Name: "panic"},
@@ -496,19 +500,31 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 		// ++value
 		// other than that, if the token comes second, this looks like: value++
 
-		// The post-increment is not supported in go, so instead, this is faked by
-		// passing the value through a function
+		// The pre and post increment is not supported in go, so instead, this is
+		// faked by passing the value through a function
 		if node.Child(0).Type() != "identifier" {
-			return &ast.ExprStmt{
-				X: &ast.CallExpr{
+			var updateFunction ast.Expr
+			// For a post increment, the token comes first
+			if node.Child(0).IsNamed() {
+				updateFunction = &ast.CallExpr{
+					Fun: &ast.Ident{Name: "PreUpdate"},
+					Args: []ast.Expr{
+						ParseNode(node.Child(0), source, ctx).(ast.Expr),
+					},
+				}
+			} else {
+				// Otherwise, the token comes second
+				updateFunction = &ast.CallExpr{
 					Fun: &ast.Ident{Name: "PostUpdate"},
 					Args: []ast.Expr{
 						ParseNode(node.Child(1), source, ctx).(ast.Expr),
 					},
-				},
+				}
 			}
-			panic("Pre-update")
+			return &ast.ExprStmt{X: updateFunction}
 		}
+
+		// NOTE: This should return an expression
 		return &ast.IncDecStmt{
 			Tok: StrToToken(node.Child(1).Content(source)),
 			X:   ParseNode(node.Child(0), source, ctx).(ast.Expr),
@@ -536,6 +552,8 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 			Fun:  &ast.Ident{Name: "make"},
 			Args: dimensions,
 		}
+	case "instanceof_expression":
+		return &ast.BadExpr{}
 	case "dimensions_expr":
 		return &ast.Ident{Name: node.NamedChild(0).Content(source)}
 	case "binary_expression":
@@ -614,6 +632,9 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 				Fun:  ParseNode(node.NamedChild(0), source, ctx).(ast.Expr),
 				Args: ParseNode(node.NamedChild(1), source, ctx).([]ast.Expr),
 			}
+		case 4: // Calling a method from the parent function
+			// NOTE: Fix this to add the entire logic of having an outer function
+			return &ast.BadExpr{}
 		default:
 			panic(fmt.Sprintf("Calling method with unknown number of args: %v", node.NamedChildCount()))
 		}
@@ -716,6 +737,14 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 		// This refers to manually selecting a function from a specific class and
 		// passing it in as an argument in the `func(className::methodName)` style
 
+		// For class constructors such as `Class::new`, you only get one node
+		if node.NamedChildCount() < 2 {
+			return &ast.SelectorExpr{
+				X:   ParseNode(node.NamedChild(0), source, ctx).(ast.Expr),
+				Sel: &ast.Ident{Name: "new"},
+			}
+		}
+
 		return &ast.SelectorExpr{
 			X:   ParseNode(node.NamedChild(0), source, ctx).(ast.Expr),
 			Sel: ParseNode(node.NamedChild(1), source, ctx).(*ast.Ident),
@@ -756,8 +785,6 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 		return &ast.Ident{Name: node.Content(source)}
 	case "comment": // Ignore comments
 		return nil
-	default:
-		panic(fmt.Sprintf("Unknown node type: %v", node.Type()))
 	}
-	return nil
+	panic(fmt.Sprintf("Unknown node type: %v", node.Type()))
 }
