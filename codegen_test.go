@@ -9,9 +9,9 @@ import (
 	"os"
 	"testing"
 
+	"github.com/NickyBoy89/go-diff/diffmatchpatch"
 	sitter "github.com/smacker/go-tree-sitter"
 	"github.com/smacker/go-tree-sitter/java"
-	"gitlab.nicholasnovak.io/snapdragon/java2go/diffmatchpatch"
 )
 
 func ParseCodeInput(input []byte) []byte {
