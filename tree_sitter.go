@@ -150,7 +150,7 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 			switch c.Type() {
 			case "modifiers": // Ignore the modifiers for now
 				// The variable's type will always follow the modifiers, if they are present
-				fieldType = ParseNode(node.NamedChild(ind+1), source, ctx).(ast.Expr)
+				fieldType = ParseExpr(node.NamedChild(ind+1), source, ctx)
 				// The value will come one after that
 				fieldName = ParseNode(node.NamedChild(ind+2).NamedChild(0), source, ctx).(*ast.Ident)
 			}
@@ -159,8 +159,8 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 		// If no modifiers were declared, then declare everything with the default
 		// offsets
 		if fieldType == nil {
-			fieldType = ParseNode(node.NamedChild(0), source, ctx).(ast.Expr)
-			fieldName = ParseNode(node.NamedChild(1).NamedChild(0), source, ctx).(*ast.Ident)
+			fieldType = ParseExpr(node.NamedChild(0), source, ctx)
+			fieldName = ParseExpr(node.NamedChild(1).NamedChild(0), source, ctx).(*ast.Ident)
 		}
 
 		return &ast.Field{
@@ -172,9 +172,8 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 			Type: fieldType,
 		}
 	case "import_declaration":
-		return &ast.ImportSpec{Name: ParseNode(node.NamedChild(0), source, ctx).(*ast.Ident)}
-	case "scoped_identifier":
-		return ParseNode(node.NamedChild(0), source, ctx).(*ast.Ident)
+		return &ast.ImportSpec{Name: ParseExpr(node.NamedChild(0), source, ctx).(*ast.Ident)}
+
 	case "class_body":
 		decls := []ast.Decl{}
 		for _, item := range Children(node) {
@@ -202,7 +201,7 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 		for _, c := range Children(node) {
 			switch c.Type() {
 			case "identifier":
-				name = ParseNode(c, source, ctx).(*ast.Ident)
+				name = ParseExpr(c, source, ctx).(*ast.Ident)
 			case "formal_parameters":
 				params = ParseNode(c, source, ctx).(*ast.FieldList)
 			case "constructor_body":
@@ -241,7 +240,7 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 			returnTypeIndex++
 		}
 
-		returnType := ParseNode(node.NamedChild(returnTypeIndex), source, ctx).(ast.Expr)
+		returnType := ParseExpr(node.NamedChild(returnTypeIndex), source, ctx)
 
 		var methodName *ast.Ident
 
@@ -270,9 +269,9 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 				}
 				// The next two identifiers determine the return type and name of the method
 				if public {
-					methodName = CapitalizeIdent(ParseNode(c, source, ctx).(*ast.Ident))
+					methodName = CapitalizeIdent(ParseExpr(c, source, ctx).(*ast.Ident))
 				} else {
-					methodName = LowercaseIdent(ParseNode(c, source, ctx).(*ast.Ident))
+					methodName = LowercaseIdent(ParseExpr(c, source, ctx).(*ast.Ident))
 				}
 			}
 		}
@@ -326,13 +325,13 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 
 		// If there is only one node, then that node is just a name
 		if node.NamedChildCount() == 1 {
-			names = append(names, ParseNode(node.NamedChild(0), source, ctx).(ast.Expr))
+			names = append(names, ParseExpr(node.NamedChild(0), source, ctx))
 		}
 
 		// Loop through every pair of name and value
 		for ind := 0; ind < int(node.NamedChildCount())-1; ind += 2 {
-			names = append(names, ParseNode(node.NamedChild(ind), source, ctx).(ast.Expr))
-			values = append(values, ParseNode(node.NamedChild(ind+1), source, ctx).(ast.Expr))
+			names = append(names, ParseExpr(node.NamedChild(ind), source, ctx))
+			values = append(values, ParseExpr(node.NamedChild(ind+1), source, ctx))
 		}
 
 		return &ast.AssignStmt{Lhs: names, Tok: token.DEFINE, Rhs: values}
@@ -368,19 +367,12 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 
 		return switchBlock
 	case "expression_statement":
-		stmt := ParseNode(node.NamedChild(0), source, ctx)
-		// If the result is already a statement, don't wrap it in a `ExprStmt`
-		if s, ok := stmt.(ast.Stmt); ok {
-			return s
-		} else if s, ok := stmt.([]ast.Stmt); ok { // Return the assignstmts
-			return s
-		}
-		return &ast.ExprStmt{X: stmt.(ast.Expr)}
+		return &ast.ExprStmt{X: ParseExpr(node.NamedChild(0), source, ctx)}
 	case "return_statement":
 		if node.NamedChildCount() < 1 {
 			return &ast.ReturnStmt{Results: []ast.Expr{}}
 		}
-		return &ast.ReturnStmt{Results: []ast.Expr{ParseNode(node.NamedChild(0), source, ctx).(ast.Expr)}}
+		return &ast.ReturnStmt{Results: []ast.Expr{ParseExpr(node.NamedChild(0), source, ctx)}}
 	case "labeled_statement":
 		return &ast.LabeledStmt{
 			Label: ParseNode(node.NamedChild(0), source, ctx).(*ast.Ident),
@@ -393,7 +385,7 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 	case "throw_statement":
 		return &ast.ExprStmt{X: &ast.CallExpr{
 			Fun:  &ast.Ident{Name: "panic"},
-			Args: []ast.Expr{ParseNode(node.NamedChild(0), source, ctx).(ast.Expr)},
+			Args: []ast.Expr{ParseExpr(node.NamedChild(0), source, ctx)},
 		}}
 	case "try_statement":
 		// We ignore try statements
@@ -406,7 +398,7 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 		for _, c := range Children(node) {
 			switch c.Type() {
 			case "parenthesized_expression":
-				cond = ParseNode(c, source, ctx).(ast.Expr)
+				cond = ParseExpr(c, source, ctx)
 			case "block": // First block is the `if`, second is the `else`
 				if body == nil {
 					body = ParseNode(c, source, ctx).(*ast.BlockStmt)
@@ -424,13 +416,13 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 	case "for_statement":
 		return &ast.ForStmt{
 			Init: ParseNode(node.NamedChild(0), source, ctx).(ast.Stmt),
-			Cond: ParseNode(node.NamedChild(1), source, ctx).(ast.Expr),
+			Cond: ParseExpr(node.NamedChild(1), source, ctx),
 			Post: ParseNode(node.NamedChild(2), source, ctx).(ast.Stmt),
 			Body: ParseNode(node.NamedChild(3), source, ctx).(*ast.BlockStmt),
 		}
 	case "while_statement":
 		return &ast.ForStmt{
-			Cond: ParseNode(node.NamedChild(0), source, ctx).(ast.Expr),
+			Cond: ParseExpr(node.NamedChild(0), source, ctx),
 			Body: ParseNode(node.NamedChild(1), source, ctx).(*ast.BlockStmt),
 		}
 	case "do_statement":
@@ -441,7 +433,7 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 		body.List = append(body.List, &ast.IfStmt{
 			Cond: &ast.UnaryExpr{
 				X: &ast.ParenExpr{
-					X: ParseNode(node.NamedChild(1), source, ctx).(ast.Expr),
+					X: ParseExpr(node.NamedChild(1), source, ctx),
 				},
 			},
 			Body: &ast.BlockStmt{List: []ast.Stmt{&ast.BranchStmt{Tok: token.BREAK}}},
@@ -452,49 +444,9 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 		}
 	case "switch_statement":
 		return &ast.SwitchStmt{
-			Tag:  ParseNode(node.NamedChild(0), source, ctx).(ast.Expr),
+			Tag:  ParseExpr(node.NamedChild(0), source, ctx),
 			Body: ParseNode(node.NamedChild(1), source, ctx).(*ast.BlockStmt),
 		}
-	case "assignment_expression":
-		// A simple variable assignment, ex: `name = value`
-
-		// Stores all the assignments if the statement is a multiple-expression
-		assignments := []ast.Stmt{}
-
-		names := []ast.Expr{}
-		values := []ast.Expr{}
-		for i := 0; i < int(node.NamedChildCount())-1; i++ {
-			// Rewrite double assignments, e.g. `variable1 = variable2 = 1` to
-			// `variable2 = 1`
-			// `variable1 = variable2`
-			if node.NamedChild(i+1).Type() == "assignment_expression" {
-				// If a value is a multiple assignment, add that assignment before the
-				// current one, and add the left side of the value to the current line
-				otherAssign := ParseNode(node.NamedChild(i+1), source, ctx)
-
-				if otherStmts, ok := otherAssign.([]ast.Stmt); ok {
-					assignments = append(assignments, otherStmts...)
-				} else {
-					assignments = append(assignments, otherAssign.(ast.Stmt))
-				}
-
-				// Assign the value to the latest Lhs expression
-				assignments = append(assignments, &ast.AssignStmt{
-					Lhs: []ast.Expr{ParseNode(node.NamedChild(i), source, ctx).(ast.Expr)},
-					Tok: token.ASSIGN,
-					Rhs: []ast.Expr{assignments[len(assignments)-1].(*ast.AssignStmt).Lhs[0]},
-				})
-			} else {
-				names = append(names, ParseNode(node.NamedChild(i), source, ctx).(ast.Expr))
-				values = append(values, ParseNode(node.NamedChild(i+1), source, ctx).(ast.Expr))
-			}
-		}
-
-		if len(assignments) > 0 {
-			return assignments
-		}
-
-		return &ast.AssignStmt{Lhs: names, Tok: token.ASSIGN, Rhs: values}
 	case "update_expression":
 		// If the unnamed token comes first, then this is a pre-increment, such as
 		// ++value
@@ -509,7 +461,7 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 				updateFunction = &ast.CallExpr{
 					Fun: &ast.Ident{Name: "PreUpdate"},
 					Args: []ast.Expr{
-						ParseNode(node.Child(0), source, ctx).(ast.Expr),
+						ParseExpr(node.Child(0), source, ctx),
 					},
 				}
 			} else {
@@ -517,7 +469,7 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 				updateFunction = &ast.CallExpr{
 					Fun: &ast.Ident{Name: "PostUpdate"},
 					Args: []ast.Expr{
-						ParseNode(node.Child(1), source, ctx).(ast.Expr),
+						ParseExpr(node.Child(1), source, ctx),
 					},
 				}
 			}
@@ -527,62 +479,7 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 		// NOTE: This should return an expression
 		return &ast.IncDecStmt{
 			Tok: StrToToken(node.Child(1).Content(source)),
-			X:   ParseNode(node.Child(0), source, ctx).(ast.Expr),
-		}
-	case "object_creation_expression":
-		return &ast.CallExpr{
-			// All object creations are usually done by calling the constructor
-			//function, which is generated as `"New" + className`
-			Fun:  &ast.Ident{Name: "New" + ParseNode(node.NamedChild(0), source, ctx).(*ast.StarExpr).X.(*ast.Ident).Name},
-			Args: ParseNode(node.NamedChild(1), source, ctx).([]ast.Expr),
-		}
-	case "array_creation_expression":
-		// The type of the array
-		arrayType := ParseNode(node.NamedChild(0), source, ctx).(ast.Expr)
-		// The dimensions of the array, which Golang only supports defining one at
-		// a time with the use of the builtin `make`
-		dimensions := []ast.Expr{&ast.ArrayType{Elt: arrayType}}
-		for _, c := range Children(node)[1:] {
-			if c.Type() == "dimensions_expr" {
-				dimensions = append(dimensions, ParseNode(c, source, ctx).(ast.Expr))
-			}
-		}
-
-		return &ast.CallExpr{
-			Fun:  &ast.Ident{Name: "make"},
-			Args: dimensions,
-		}
-	case "instanceof_expression":
-		return &ast.BadExpr{}
-	case "dimensions_expr":
-		return &ast.Ident{Name: node.NamedChild(0).Content(source)}
-	case "binary_expression":
-		return &ast.BinaryExpr{
-			X:  ParseNode(node.Child(0), source, ctx).(ast.Expr),
-			Op: StrToToken(node.Child(1).Content(source)),
-			Y:  ParseNode(node.Child(2), source, ctx).(ast.Expr),
-		}
-	case "unary_expression":
-		return &ast.UnaryExpr{
-			Op: StrToToken(node.Child(0).Content(source)),
-			X:  ParseNode(node.Child(1), source, ctx).(ast.Expr),
-		}
-	case "parenthesized_expression":
-		return &ast.ParenExpr{
-			X: ParseNode(node.NamedChild(0), source, ctx).(ast.Expr),
-		}
-	case "ternary_expression":
-		// Ternary expressions are represented by a built-in function
-		// called `ternary`, which takes in the binary expression, and the two
-		// return values
-
-		args := []ast.Expr{}
-		for _, c := range Children(node) {
-			args = append(args, ParseNode(c, source, ctx).(ast.Expr))
-		}
-		return &ast.CallExpr{
-			Fun:  &ast.Ident{Name: "ternary"},
-			Args: args,
+			X:   ParseExpr(node.Child(0), source, ctx),
 		}
 	case "lambda_expression":
 		return &ast.FuncLit{
@@ -592,52 +489,14 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 			},
 			Body: ParseNode(node.NamedChild(1), source, ctx).(*ast.BlockStmt),
 		}
-	case "cast_expression":
-		return &ast.TypeAssertExpr{
-			X:    ParseNode(node.NamedChild(1), source, ctx).(ast.Expr),
-			Type: ParseNode(node.NamedChild(0), source, ctx).(ast.Expr),
-		}
 	case "switch_label":
 		if node.NamedChildCount() > 0 {
 			return &ast.CaseClause{
-				List: []ast.Expr{ParseNode(node.NamedChild(0), source, ctx).(ast.Expr)},
+				List: []ast.Expr{ParseExpr(node.NamedChild(0), source, ctx)},
 			}
 		}
 		return &ast.CaseClause{}
-	case "field_access":
-		return &ast.SelectorExpr{
-			X:   ParseNode(node.NamedChild(0), source, ctx).(ast.Expr),
-			Sel: ParseNode(node.NamedChild(1), source, ctx).(*ast.Ident),
-		}
-	case "method_invocation":
-		// Class methods are called with three nodes, the selector, the identifier,
-		// and the list of arguments, so that they form the shape
-		// `selector.identifier(list of arguments)`
-		// Static methods are only called with the identifier and list of args
-		// They look like: `identifier(args)`
 
-		switch node.NamedChildCount() {
-		case 3: // Invoking a normal class method
-			// This is of the form X.Sel(Args)
-			return &ast.CallExpr{
-				Fun: &ast.SelectorExpr{
-					X:   ParseNode(node.NamedChild(0), source, ctx).(ast.Expr),
-					Sel: ParseNode(node.NamedChild(1), source, ctx).(*ast.Ident),
-				},
-				Args: ParseNode(node.NamedChild(2), source, ctx).([]ast.Expr),
-			}
-		case 2: // Invoking a static method
-			return &ast.CallExpr{
-				// The name is in the wrong place, so use the selector as the name
-				Fun:  ParseNode(node.NamedChild(0), source, ctx).(ast.Expr),
-				Args: ParseNode(node.NamedChild(1), source, ctx).([]ast.Expr),
-			}
-		case 4: // Calling a method from the parent function
-			// NOTE: Fix this to add the entire logic of having an outer function
-			return &ast.BadExpr{}
-		default:
-			panic(fmt.Sprintf("Calling method with unknown number of args: %v", node.NamedChildCount()))
-		}
 	case "explicit_constructor_invocation":
 		// This is when a constructor calls another constructor with the use of
 		// something such as `this(args...)`
@@ -650,30 +509,18 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 	case "argument_list":
 		args := []ast.Expr{}
 		for _, c := range Children(node) {
-			args = append(args, ParseNode(c, source, ctx).(ast.Expr))
+			args = append(args, ParseExpr(c, source, ctx))
 		}
 		return args
-	case "array_access":
-		// For an array access such as `arr[i++]`, which is not valid, we need to
-		// call that statement before the current statement
-		if _, isIncDec := ParseNode(node.NamedChild(1), source, ctx).(*ast.IncDecStmt); isIncDec {
-			return &ast.IndexExpr{
-				X: ParseNode(node.NamedChild(0), source, ctx).(ast.Expr),
-				// TODO: Handle this value instead of ignoring it
-				Index: &ast.Ident{Name: "undefined"},
-			}
-		}
-		return &ast.IndexExpr{
-			X:     ParseNode(node.NamedChild(0), source, ctx).(ast.Expr),
-			Index: ParseNode(node.NamedChild(1), source, ctx).(ast.Expr),
-		}
+
 	case "array_initializer":
 		items := []ast.Expr{}
 		for _, c := range Children(node) {
-			items = append(items, ParseNode(c, source, ctx).(ast.Expr))
+			items = append(items, ParseExpr(c, source, ctx))
 		}
 		return &ast.CompositeLit{
 			Type: &ast.ArrayType{
+				// TODO: Fix this so that the type of array isn't always an array of ints
 				Elt: &ast.Ident{Name: "int"},
 			},
 			Elts: items,
@@ -688,13 +535,13 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 		// If the parameter has an annotation, ignore that
 		if node.NamedChild(0).Type() == "modifiers" {
 			return &ast.Field{
-				Names: []*ast.Ident{ParseNode(node.NamedChild(2), source, ctx).(*ast.Ident)},
-				Type:  ParseNode(node.NamedChild(1), source, ctx).(ast.Expr),
+				Names: []*ast.Ident{ParseExpr(node.NamedChild(2), source, ctx).(*ast.Ident)},
+				Type:  ParseExpr(node.NamedChild(1), source, ctx),
 			}
 		}
 		return &ast.Field{
-			Names: []*ast.Ident{ParseNode(node.NamedChild(1), source, ctx).(*ast.Ident)},
-			Type:  ParseNode(node.NamedChild(0), source, ctx).(ast.Expr),
+			Names: []*ast.Ident{ParseExpr(node.NamedChild(1), source, ctx).(*ast.Ident)},
+			Type:  ParseExpr(node.NamedChild(0), source, ctx),
 		}
 	case "spread_parameter":
 		// The spread paramater takes a list and separates it into multiple elements
@@ -704,25 +551,25 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 		// a `StarExpr`, which is passed into the ellipsis
 		if _, is := ParseNode(node.NamedChild(0), source, ctx).(*ast.StarExpr); is {
 			return &ast.Field{
-				Names: []*ast.Ident{ParseNode(node.NamedChild(1).NamedChild(0), source, ctx).(*ast.Ident)},
+				Names: []*ast.Ident{ParseExpr(node.NamedChild(1).NamedChild(0), source, ctx).(*ast.Ident)},
 				Type: &ast.Ellipsis{
-					Elt: ParseNode(node.NamedChild(0), source, ctx).(ast.Expr),
+					Elt: ParseExpr(node.NamedChild(0), source, ctx),
 				},
 			}
 		}
 
 		return &ast.Field{
-			Names: []*ast.Ident{ParseNode(node.NamedChild(0), source, ctx).(*ast.Ident)},
+			Names: []*ast.Ident{ParseExpr(node.NamedChild(0), source, ctx).(*ast.Ident)},
 			Type: &ast.Ellipsis{
 				// This comes as a variable declarator, but we only need need the identifier for the type
-				Elt: ParseNode(node.NamedChild(1).NamedChild(0), source, ctx).(ast.Expr),
+				Elt: ParseExpr(node.NamedChild(1).NamedChild(0), source, ctx),
 			},
 		}
 	case "inferred_parameters":
 		params := &ast.FieldList{}
 		for _, param := range Children(node) {
 			params.List = append(params.List, &ast.Field{
-				Names: []*ast.Ident{ParseNode(param, source, ctx).(*ast.Ident)},
+				Names: []*ast.Ident{ParseExpr(param, source, ctx).(*ast.Ident)},
 				// When we're not sure what parameters to infer, set them as interface
 				// values to avoid a panic
 				Type: &ast.Ident{Name: "interface{}"},
@@ -740,49 +587,15 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 		// For class constructors such as `Class::new`, you only get one node
 		if node.NamedChildCount() < 2 {
 			return &ast.SelectorExpr{
-				X:   ParseNode(node.NamedChild(0), source, ctx).(ast.Expr),
+				X:   ParseExpr(node.NamedChild(0), source, ctx),
 				Sel: &ast.Ident{Name: "new"},
 			}
 		}
 
 		return &ast.SelectorExpr{
-			X:   ParseNode(node.NamedChild(0), source, ctx).(ast.Expr),
-			Sel: ParseNode(node.NamedChild(1), source, ctx).(*ast.Ident),
+			X:   ParseExpr(node.NamedChild(0), source, ctx),
+			Sel: ParseExpr(node.NamedChild(1), source, ctx).(*ast.Ident),
 		}
-	case "this":
-		return &ast.Ident{Name: ShortName(ctx.className)}
-	case "identifier":
-		return &ast.Ident{Name: node.Content(source)}
-	case "integral_type":
-		return &ast.Ident{Name: node.Content(source)}
-	case "floating_point_type": // Can be either `float` or `double`
-		return &ast.Ident{Name: node.Content(source)}
-	case "void_type":
-		return &ast.Ident{}
-	case "boolean_type":
-		return &ast.Ident{Name: node.Content(source)}
-	case "generic_type":
-		// A generic type is any type that is of the form GenericType<T>
-		return &ast.Ident{Name: node.NamedChild(0).Content(source)}
-	case "array_type":
-		return &ast.ArrayType{Elt: ParseNode(node.NamedChild(0), source, ctx).(ast.Expr)}
-	case "type_identifier": // Any reference type
-		return &ast.StarExpr{
-			X: &ast.Ident{Name: node.Content(source)},
-		}
-	case "null_literal":
-		return &ast.Ident{Name: "nil"}
-	case "decimal_integer_literal":
-		return &ast.Ident{Name: node.Content(source)}
-	case "decimal_floating_point_literal":
-		// This is something like 1.3D
-		return &ast.Ident{Name: node.Content(source)}
-	case "string_literal":
-		return &ast.Ident{Name: node.Content(source)}
-	case "character_literal":
-		return &ast.Ident{Name: node.Content(source)}
-	case "true", "false":
-		return &ast.Ident{Name: node.Content(source)}
 	case "comment": // Ignore comments
 		return nil
 	}
