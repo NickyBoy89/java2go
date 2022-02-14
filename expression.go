@@ -3,55 +3,60 @@ package main
 import (
 	"fmt"
 	"go/ast"
-	"go/token"
 
 	sitter "github.com/smacker/go-tree-sitter"
 )
 
 func ParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
+	if expr := TryParseExpr(node, source, ctx); expr != nil {
+		return expr
+	}
+	panic(fmt.Errorf("Unhandled expr type: %v", node.Type()))
+}
+
+func TryParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 	switch node.Type() {
-	case "assignment_expression":
-		// A simple variable assignment, ex: `name = value`
+	case "scoped_type_identifier":
+		// This contains a reference to the type of a nested class
+		// Ex: LinkedList.Node
+		return &ast.StarExpr{X: &ast.Ident{Name: node.Content(source)}}
+	case "lambda_expression":
+		return &ast.FuncLit{
+			Type: &ast.FuncType{
+				Params:  ParseNode(node.NamedChild(0), source, ctx).(*ast.FieldList),
+				Results: &ast.FieldList{List: []*ast.Field{}},
+			},
+			Body: ParseNode(node.NamedChild(1), source, ctx).(*ast.BlockStmt),
+		}
+	case "method_reference":
+		// This refers to manually selecting a function from a specific class and
+		// passing it in as an argument in the `func(className::methodName)` style
 
-		// Stores all the assignments if the statement is a multiple-expression
-		assignments := []ast.Stmt{}
-
-		names := []ast.Expr{}
-		values := []ast.Expr{}
-		for i := 0; i < int(node.NamedChildCount())-1; i++ {
-			// Rewrite double assignments, e.g. `variable1 = variable2 = 1` to
-			// `variable2 = 1`
-			// `variable1 = variable2`
-			if node.NamedChild(i+1).Type() == "assignment_expression" {
-				// If a value is a multiple assignment, add that assignment before the
-				// current one, and add the left side of the value to the current line
-				otherAssign := ParseNode(node.NamedChild(i+1), source, ctx)
-
-				if otherStmts, ok := otherAssign.([]ast.Stmt); ok {
-					assignments = append(assignments, otherStmts...)
-				} else {
-					assignments = append(assignments, otherAssign.(ast.Stmt))
-				}
-
-				// Assign the value to the latest Lhs expression
-				assignments = append(assignments, &ast.AssignStmt{
-					Lhs: []ast.Expr{ParseExpr(node.NamedChild(i), source, ctx)},
-					Tok: token.ASSIGN,
-					Rhs: []ast.Expr{assignments[len(assignments)-1].(*ast.AssignStmt).Lhs[0]},
-				})
-			} else {
-				names = append(names, ParseExpr(node.NamedChild(i), source, ctx))
-				values = append(values, ParseExpr(node.NamedChild(i+1), source, ctx))
+		// For class constructors such as `Class::new`, you only get one node
+		if node.NamedChildCount() < 2 {
+			return &ast.SelectorExpr{
+				X:   ParseExpr(node.NamedChild(0), source, ctx),
+				Sel: &ast.Ident{Name: "new"},
 			}
 		}
 
-		/*
-			if len(assignments) > 0 {
-				return assignments
-			}
-		*/
-
-		return &ast.AssignStmt{Lhs: names, Tok: token.ASSIGN, Rhs: values}
+		return &ast.SelectorExpr{
+			X:   ParseExpr(node.NamedChild(0), source, ctx),
+			Sel: ParseExpr(node.NamedChild(1), source, ctx).(*ast.Ident),
+		}
+	case "array_initializer":
+		// A literal that initilzes an array, such as `{1, 2, 3}`
+		items := []ast.Expr{}
+		for _, c := range Children(node) {
+			items = append(items, ParseExpr(c, source, ctx))
+		}
+		return &ast.CompositeLit{
+			Type: &ast.ArrayType{
+				// TODO: Fix this so that the type of array isn't always an array of ints
+				Elt: &ast.Ident{Name: "int"},
+			},
+			Elts: items,
+		}
 	case "method_invocation":
 		// Class methods are called with three nodes, the selector, the identifier,
 		// and the list of arguments, so that they form the shape
@@ -146,6 +151,8 @@ func ParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 			Sel: ParseExpr(node.NamedChild(1), source, ctx).(*ast.Ident),
 		}
 	case "array_access":
+		fmt.Println(node)
+		fmt.Println(node.Content(source))
 		return &ast.IndexExpr{
 			X:     ParseExpr(node.NamedChild(0), source, ctx),
 			Index: ParseExpr(node.NamedChild(1), source, ctx),
@@ -187,5 +194,18 @@ func ParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 	case "true", "false":
 		return &ast.Ident{Name: node.Content(source)}
 	}
-	panic("Unknown node to expr conversion: " + node.Type())
+	return nil
+}
+
+func ParseExprs(node *sitter.Node, source []byte, ctx Ctx) []ast.Expr {
+	if exprs := TryParseExprs(node, source, ctx); exprs != nil {
+		return exprs
+	}
+	panic(fmt.Errorf("Unhandled type for exprs: %v", node.Type()))
+}
+
+func TryParseExprs(node *sitter.Node, source []byte, ctx Ctx) []ast.Expr {
+	switch node.Type() {
+	}
+	return nil
 }

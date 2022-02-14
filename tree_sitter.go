@@ -76,72 +76,12 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 		for _, c := range Children(node) {
 			switch c.Type() {
 			case "class_declaration":
-				program.Decls = ParseNode(c, source, ctx).([]ast.Decl)
+				program.Decls = ParseDecls(c, source, ctx)
 			case "import_declaration":
 				program.Imports = append(program.Imports, ParseNode(c, source, ctx).(*ast.ImportSpec))
 			}
 		}
 		return program
-	// A class declaration contains the name of the class, and the `class_body`
-	// that contains the contents of the class
-	case "class_declaration":
-		// Since `class_body` contains all the methods and fields in the class, we
-		// need to return those, along with the generated struct
-
-		// Find the class's name first, to name everything
-		for _, c := range Children(node) {
-			if c.Type() == "identifier" {
-				ctx.className = c.Content(source)
-			}
-		}
-
-		var structDecls []ast.Decl
-
-		// First go through and generate the struct, with all of its fields
-		fields := &ast.FieldList{}
-		for _, c := range Children(node) {
-			switch c.Type() {
-			case "class_body":
-				structDecls = ParseNode(c, source, ctx).([]ast.Decl)
-				for _, classChild := range Children(c) {
-					if classChild.Type() == "field_declaration" {
-						fields.List = append(fields.List, ParseNode(classChild, source, ctx).(*ast.Field))
-					}
-				}
-			}
-		}
-
-		decls := []ast.Decl{GenStruct(ctx.className, fields)}
-
-		// Join the generated struct with all the other decls
-		return append(decls, structDecls...)
-	case "enum_declaration":
-		// An enum is treated as both a struct, and a list of values that define
-		// the states that the enum can be in
-
-		//modifiers := ParseNode(node.NamedChild(0), source, ctx)
-
-		ctx.className = node.NamedChild(1).Content(source)
-
-		for _, item := range Children(node.NamedChild(2)) {
-			switch item.Type() {
-			case "enum_body_declarations":
-				for _, bodyDecl := range Children(item) {
-					_ = bodyDecl
-				}
-			}
-		}
-
-		// NOTE: Fix this to handle an interface correctly
-		//decls := []ast.Decl{GenStruct(ctx.className, fields)}
-		return []ast.Decl{}
-	case "interface_declaration":
-		//modifiers := ParseNode(node.NamedChild(0), source, ctx)
-
-		ctx.className = node.NamedChild(1).Content(source)
-
-		// NOTE: Fix this to correctly generate an interface
-		return []ast.Decl{}
 	case "field_declaration":
 		var fieldType ast.Expr
 		var fieldName *ast.Ident
@@ -152,7 +92,7 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 				// The variable's type will always follow the modifiers, if they are present
 				fieldType = ParseExpr(node.NamedChild(ind+1), source, ctx)
 				// The value will come one after that
-				fieldName = ParseNode(node.NamedChild(ind+2).NamedChild(0), source, ctx).(*ast.Ident)
+				fieldName = ParseExpr(node.NamedChild(ind+2).NamedChild(0), source, ctx).(*ast.Ident)
 			}
 		}
 
@@ -173,144 +113,52 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 		}
 	case "import_declaration":
 		return &ast.ImportSpec{Name: ParseExpr(node.NamedChild(0), source, ctx).(*ast.Ident)}
+	case "assignment_expression":
+		// A simple variable assignment, ex: `name = value`
 
-	case "class_body":
-		decls := []ast.Decl{}
-		for _, item := range Children(node) {
-			if item.Type() != "field_declaration" { // Field declarations have already been handled
-				decl := ParseNode(item, source, ctx)
-				// Skip comments
-				if item.Type() == "comment" {
-					continue
-				}
-				// Parsing a nested class will instead return a list of all the decls
-				// contained within the class
-				if declList, ok := decl.([]ast.Decl); ok {
-					decls = append(decls, declList...)
+		// Stores all the assignments if the statement is a multiple-expression
+		assignments := []ast.Stmt{}
+
+		names := []ast.Expr{}
+		values := []ast.Expr{}
+		for i := 0; i < int(node.NamedChildCount())-1; i++ {
+			// Rewrite double assignments, e.g. `variable1 = variable2 = 1` to
+			// `variable2 = 1`
+			// `variable1 = variable2`
+			if node.NamedChild(i+1).Type() == "assignment_expression" {
+				// If a value is a multiple assignment, add that assignment before the
+				// current one, and add the left side of the value to the current line
+				otherAssign := ParseNode(node.NamedChild(i+1), source, ctx)
+
+				if otherStmts, ok := otherAssign.([]ast.Stmt); ok {
+					assignments = append(assignments, otherStmts...)
 				} else {
-					decls = append(decls, decl.(ast.Decl))
+					assignments = append(assignments, otherAssign.(ast.Stmt))
 				}
-			}
-		}
-		return decls
-	case "constructor_declaration":
-		var body *ast.BlockStmt
-		var name *ast.Ident
-		var params *ast.FieldList
 
-		for _, c := range Children(node) {
-			switch c.Type() {
-			case "identifier":
-				name = ParseExpr(c, source, ctx).(*ast.Ident)
-			case "formal_parameters":
-				params = ParseNode(c, source, ctx).(*ast.FieldList)
-			case "constructor_body":
-				body = ParseNode(c, source, ctx).(*ast.BlockStmt)
+				// Assign the value to the latest Lhs expression
+				assignments = append(assignments, &ast.AssignStmt{
+					Lhs: []ast.Expr{ParseExpr(node.NamedChild(i), source, ctx)},
+					Tok: token.ASSIGN,
+					Rhs: []ast.Expr{assignments[len(assignments)-1].(*ast.AssignStmt).Lhs[0]},
+				})
+			} else {
+				names = append(names, ParseExpr(node.NamedChild(i), source, ctx))
+				values = append(values, ParseExpr(node.NamedChild(i+1), source, ctx))
 			}
 		}
 
-		// Create the object to construct in the constructor
-		body.List = append([]ast.Stmt{&ast.AssignStmt{
-			Lhs: []ast.Expr{&ast.Ident{Name: ShortName(ctx.className)}},
-			Tok: token.DEFINE,
-			Rhs: []ast.Expr{&ast.CallExpr{Fun: &ast.Ident{Name: "new"}, Args: []ast.Expr{&ast.Ident{Name: ctx.className}}}},
-		}}, body.List...)
-		// Return the created object
-		body.List = append(body.List, &ast.ReturnStmt{Results: []ast.Expr{&ast.Ident{Name: ShortName(ctx.className)}}})
-
-		return &ast.FuncDecl{
-			Name: &ast.Ident{Name: "New" + name.Name},
-			Type: &ast.FuncType{
-				Params: params,
-				Results: &ast.FieldList{List: []*ast.Field{&ast.Field{
-					Type: &ast.StarExpr{
-						X: name,
-					},
-				}}},
-			},
-			Body: body,
-		}
-	case "method_declaration":
-		var public, static bool
-
-		// The return type comes as the second node, after the modifiers
-		// however, if the method is generic, this gets pushed down one
-		returnTypeIndex := 1
-		if node.NamedChild(1).Type() == "type_parameters" {
-			returnTypeIndex++
+		if len(assignments) > 0 {
+			return assignments
 		}
 
-		returnType := ParseExpr(node.NamedChild(returnTypeIndex), source, ctx)
-
-		var methodName *ast.Ident
-
-		var params *ast.FieldList
-
-		for _, c := range Children(node) {
-			switch c.Type() {
-			case "modifiers":
-				for _, mod := range UnnamedChildren(c) {
-					switch mod.Type() {
-					case "public":
-						public = true
-					case "static":
-						static = true
-					case "abstract":
-						// TODO: Handle abstract methods correctly
-						return &ast.BadDecl{}
-					}
-				}
-			case "type_parameters": // For generic types
-			case "formal_parameters":
-				params = ParseNode(c, source, ctx).(*ast.FieldList)
-			case "identifier":
-				if returnType == nil {
-					continue
-				}
-				// The next two identifiers determine the return type and name of the method
-				if public {
-					methodName = CapitalizeIdent(ParseExpr(c, source, ctx).(*ast.Ident))
-				} else {
-					methodName = LowercaseIdent(ParseExpr(c, source, ctx).(*ast.Ident))
-				}
-			}
+		// Having no declarations in the assign stmt panics the parser
+		if len(names) == 0 {
+			panic("Assignment with no assignments")
 		}
 
-		methodRecv := &ast.FieldList{List: []*ast.Field{
-			&ast.Field{
-				Names: []*ast.Ident{&ast.Ident{Name: ShortName(ctx.className)}},
-				Type:  &ast.StarExpr{X: &ast.Ident{Name: ctx.className}},
-			},
-		}}
+		return &ast.AssignStmt{Lhs: names, Tok: token.ASSIGN, Rhs: values}
 
-		if static {
-			methodRecv = nil
-		}
-
-		// If the methodName is nil, then the printer will panic
-		if methodName == nil {
-			panic("Method's name is nil")
-		}
-
-		return &ast.FuncDecl{
-			Name: methodName,
-			Recv: methodRecv,
-			Type: &ast.FuncType{
-				Params: params,
-				Results: &ast.FieldList{List: []*ast.Field{
-					&ast.Field{Type: returnType},
-				}},
-			},
-			Body: ParseNode(node.NamedChild(int(node.NamedChildCount()-1)), source, ctx).(*ast.BlockStmt),
-		}
-	case "static_initializer":
-		return &ast.FuncDecl{
-			Name: &ast.Ident{Name: "init"},
-			Type: &ast.FuncType{
-				Params: &ast.FieldList{List: []*ast.Field{}},
-			},
-			Body: ParseNode(node.NamedChild(0), source, ctx).(*ast.BlockStmt),
-		}
 	case "super":
 		return &ast.BadExpr{}
 	case "local_variable_declaration":
@@ -367,6 +215,12 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 
 		return switchBlock
 	case "expression_statement":
+		if stmt := TryParseStmt(node.NamedChild(0), source, ctx); stmt != nil {
+			return stmt
+		}
+		if exprs := TryParseStmts(node.NamedChild(0), source, ctx); exprs != nil {
+			return exprs
+		}
 		return &ast.ExprStmt{X: ParseExpr(node.NamedChild(0), source, ctx)}
 	case "return_statement":
 		if node.NamedChildCount() < 1 {
@@ -481,14 +335,6 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 			Tok: StrToToken(node.Child(1).Content(source)),
 			X:   ParseExpr(node.Child(0), source, ctx),
 		}
-	case "lambda_expression":
-		return &ast.FuncLit{
-			Type: &ast.FuncType{
-				Params:  ParseNode(node.NamedChild(0), source, ctx).(*ast.FieldList),
-				Results: &ast.FieldList{List: []*ast.Field{}},
-			},
-			Body: ParseNode(node.NamedChild(1), source, ctx).(*ast.BlockStmt),
-		}
 	case "switch_label":
 		if node.NamedChildCount() > 0 {
 			return &ast.CaseClause{
@@ -513,18 +359,6 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 		}
 		return args
 
-	case "array_initializer":
-		items := []ast.Expr{}
-		for _, c := range Children(node) {
-			items = append(items, ParseExpr(c, source, ctx))
-		}
-		return &ast.CompositeLit{
-			Type: &ast.ArrayType{
-				// TODO: Fix this so that the type of array isn't always an array of ints
-				Elt: &ast.Ident{Name: "int"},
-			},
-			Elts: items,
-		}
 	case "formal_parameters":
 		params := &ast.FieldList{}
 		for _, param := range Children(node) {
@@ -576,26 +410,6 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 			})
 		}
 		return params
-	case "scoped_type_identifier":
-		// This contains a reference to the type of a nested class
-		// Ex: LinkedList.Node
-		return &ast.StarExpr{X: &ast.Ident{Name: node.Content(source)}}
-	case "method_reference":
-		// This refers to manually selecting a function from a specific class and
-		// passing it in as an argument in the `func(className::methodName)` style
-
-		// For class constructors such as `Class::new`, you only get one node
-		if node.NamedChildCount() < 2 {
-			return &ast.SelectorExpr{
-				X:   ParseExpr(node.NamedChild(0), source, ctx),
-				Sel: &ast.Ident{Name: "new"},
-			}
-		}
-
-		return &ast.SelectorExpr{
-			X:   ParseExpr(node.NamedChild(0), source, ctx),
-			Sel: ParseExpr(node.NamedChild(1), source, ctx).(*ast.Ident),
-		}
 	case "comment": // Ignore comments
 		return nil
 	}
