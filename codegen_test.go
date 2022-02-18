@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"go/ast"
 	"go/printer"
@@ -9,44 +8,40 @@ import (
 	"os"
 	"testing"
 
-	"github.com/NickyBoy89/go-diff/diffmatchpatch"
 	sitter "github.com/smacker/go-tree-sitter"
 	"github.com/smacker/go-tree-sitter/java"
 )
 
-func ParseCodeInput(input []byte) []byte {
-
+// ParseSourceAst parses a given source file and returns the tree-sitter root
+// node for the AST associated with that file
+func ParseSourceAst(fileName string) (*sitter.Node, []byte) {
 	parser := sitter.NewParser()
 	parser.SetLanguage(java.GetLanguage())
 
-	tree, err := parser.ParseCtx(context.Background(), nil, input)
+	sourceCode, err := os.ReadFile(fileName)
 	if err != nil {
 		panic(err)
 	}
 
-	var output bytes.Buffer
-
-	err = printer.Fprint(&output, token.NewFileSet(), ParseNode(tree.RootNode(), input, Ctx{}).(ast.Node))
+	tree, err := parser.ParseCtx(context.Background(), nil, sourceCode)
 	if err != nil {
 		panic(err)
 	}
-	return output.Bytes()
+
+	return tree.RootNode(), sourceCode
 }
 
-func TestSimpleTest(t *testing.T) {
-	input, err := os.ReadFile("testfiles/Test.java")
-	if err != nil {
-		t.Fatalf("Could not read file \"testfiles/Test.java\": %v", err)
-	}
-	expected, err := os.ReadFile("testfiles/output/Test.go")
-	if err != nil {
-		t.Fatalf("Could not read \"testfiles/output/Test.go\": %v", err)
-	}
+func ParseAst(fileName string) ast.Node {
+	root, source := ParseSourceAst(fileName)
+	return ParseNode(root, source, Ctx{}).(ast.Node)
+}
 
-	if string(ParseCodeInput(input)) != string(expected) {
-		diff := diffmatchpatch.New()
-		difference := diff.DiffMain(string(ParseCodeInput(input)), string(expected), false)
-		t.Log("Input and expected did not match:")
-		t.Error(diff.DiffPrettyText(difference))
+func TestIncDec(t *testing.T) {
+	// This tests the increment and decrement handling on increment and decrement
+	// statements, as well as expressions
+
+	err := printer.Fprint(os.Stdout, token.NewFileSet(), ParseAst("testfiles/IncrementDecrement.java"))
+	if err != nil {
+		t.Fatal(err)
 	}
 }
