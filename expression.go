@@ -151,8 +151,6 @@ func TryParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 			Sel: ParseExpr(node.NamedChild(1), source, ctx).(*ast.Ident),
 		}
 	case "array_access":
-		fmt.Println(node)
-		fmt.Println(node.Content(source))
 		return &ast.IndexExpr{
 			X:     ParseExpr(node.NamedChild(0), source, ctx),
 			Index: ParseExpr(node.NamedChild(1), source, ctx),

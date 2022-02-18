@@ -302,12 +302,16 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 			Body: ParseNode(node.NamedChild(1), source, ctx).(*ast.BlockStmt),
 		}
 	case "update_expression":
-		// If the unnamed token comes first, then this is a pre-increment, such as
-		// ++value
-		// other than that, if the token comes second, this looks like: value++
+		// Update expressions can be one of two values
+		// Statements:
+		// 	If the update expression is on a line to itself
+		// Expresssion List:
+		// 	If the element is used as an expression
+		//		Pre: Replaced with a function call
+		//		Post: Replaced with a list of expressions, which sets a temp variable
+		// 			to the value, and then updates it
 
-		// The pre and post increment is not supported in go, so instead, this is
-		// faked by passing the value through a function
+		// The format of this expression is (token) + (identifier) for pre-update,
 		if node.Child(0).Type() != "identifier" {
 			var updateFunction ast.Expr
 			// For a post increment, the token comes first
@@ -330,7 +334,6 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 			return &ast.ExprStmt{X: updateFunction}
 		}
 
-		// NOTE: This should return an expression
 		return &ast.IncDecStmt{
 			Tok: StrToToken(node.Child(1).Content(source)),
 			X:   ParseExpr(node.Child(0), source, ctx),
