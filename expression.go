@@ -16,6 +16,24 @@ func ParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 
 func TryParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 	switch node.Type() {
+	case "update_expression":
+		// This can either be a pre or post expression
+		// a pre expression has the identifier second, while the post expression
+		// has the identifier first
+
+		// Post-update expression, e.g. `i++`
+		if node.Child(0).Type() == "identifier" {
+			return &ast.CallExpr{
+				Fun:  &ast.Ident{Name: "PostUpdate"},
+				Args: []ast.Expr{ParseExpr(node.Child(0), source, ctx)},
+			}
+		}
+
+		// Otherwise, pre-update expression
+		return &ast.CallExpr{
+			Fun:  &ast.Ident{Name: "PreUpdate"},
+			Args: []ast.Expr{ParseExpr(node.Child(1), source, ctx)},
+		}
 	case "scoped_type_identifier":
 		// This contains a reference to the type of a nested class
 		// Ex: LinkedList.Node
