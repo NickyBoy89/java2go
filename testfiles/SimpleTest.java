@@ -1,4 +1,4 @@
-class Test {
+class SimpleTest {
 
   int value;
   public int value2;

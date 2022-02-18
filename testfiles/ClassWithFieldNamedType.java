@@ -1,4 +1,4 @@
-public class TestClass {
+public class ClassWithFieldNamedType {
   private int value;
   // This right here is problematic, as "type" in Go
   // Happens to be a reserved keyword, and not usable in a struct field
@@ -11,5 +11,4 @@ public class TestClass {
   public String GetType() {
     return this.type;
   }
-
 }
