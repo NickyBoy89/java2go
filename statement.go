@@ -18,12 +18,31 @@ func ParseStmt(node *sitter.Node, source []byte, ctx Ctx) ast.Stmt {
 func TryParseStmt(node *sitter.Node, source []byte, ctx Ctx) ast.Stmt {
 	switch node.Type() {
 	case "local_variable_declaration":
-		// Ignore the name of the type being declared, because we are going to
-		// infer that when the variable gets assigned
+		var varTypeIndex int
+
+		// The first child can either be modifiers e.g `final int var = 1`, or
+		// just the variable's type
 		if node.NamedChild(0).Type() == "modifiers" {
-			return ParseStmt(node.NamedChild(2), source, ctx)
+			varTypeIndex = 1
 		}
-		return ParseStmt(node.NamedChild(1), source, ctx)
+
+		// The variable declarator does not have a value
+		if node.NamedChild(varTypeIndex+1).NamedChildCount() == 1 {
+			return &ast.DeclStmt{
+				Decl: &ast.GenDecl{
+					Tok: token.VAR,
+					Specs: []ast.Spec{
+						&ast.ValueSpec{
+							Names: []*ast.Ident{ParseExpr(node.NamedChild(varTypeIndex+1).NamedChild(0), source, ctx).(*ast.Ident)},
+							Type:  ParseExpr(node.NamedChild(varTypeIndex), source, ctx).(*ast.Ident),
+						},
+					},
+				},
+			}
+		}
+
+		// Ignore the type being declared, because it is going to be inferred
+		return ParseStmt(node.NamedChild(varTypeIndex+1), source, ctx)
 	case "variable_declarator":
 		var names, values []ast.Expr
 
@@ -40,9 +59,10 @@ func TryParseStmt(node *sitter.Node, source []byte, ctx Ctx) ast.Stmt {
 
 		return &ast.AssignStmt{Lhs: names, Tok: token.DEFINE, Rhs: values}
 	case "assignment_expression":
-		// Try to handle this assignment as a statement, and if not, don't do anything
-		if stmt, ok := ParseNode(node, source, ctx).(ast.Stmt); ok {
-			return stmt
+		return &ast.AssignStmt{
+			Lhs: []ast.Expr{ParseExpr(node.Child(0), source, ctx)},
+			Tok: StrToToken(node.Child(1).Content(source)),
+			Rhs: []ast.Expr{ParseExpr(node.Child(2), source, ctx)},
 		}
 	case "update_expression":
 		if node.Child(0).Type() == "identifier" {

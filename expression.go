@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"go/ast"
+	"go/token"
 
 	sitter "github.com/smacker/go-tree-sitter"
 )
@@ -33,6 +34,15 @@ func TryParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 		return &ast.CallExpr{
 			Fun:  &ast.Ident{Name: "PreUpdate"},
 			Args: []ast.Expr{ParseExpr(node.Child(1), source, ctx)},
+		}
+	case "assignment_expression":
+		return &ast.CallExpr{
+			Fun: &ast.Ident{Name: "AssignmentExpression"},
+			Args: []ast.Expr{
+				ParseExpr(node.Child(0), source, ctx),
+				&ast.BasicLit{Kind: token.STRING, Value: fmt.Sprintf("\"%s\"", node.Child(1).Content(source))},
+				ParseExpr(node.Child(2), source, ctx),
+			},
 		}
 	case "scoped_type_identifier":
 		// This contains a reference to the type of a nested class
