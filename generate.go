@@ -21,6 +21,19 @@ var tokens = map[string]token.Token{
 	">>": token.SHR,
 	"&^": token.AND_NOT,
 
+	"+=": token.ADD_ASSIGN,
+	"-=": token.SUB_ASSIGN,
+	"*=": token.MUL_ASSIGN,
+	"/=": token.QUO_ASSIGN,
+	"%=": token.REM_ASSIGN,
+
+	"&=":  token.AND_ASSIGN,
+	"|=":  token.OR_ASSIGN,
+	"^=":  token.XOR_ASSIGN,
+	"<<=": token.SHL_ASSIGN,
+	">>=": token.SHR_ASSIGN,
+	"&^=": token.AND_NOT_ASSIGN,
+
 	"&&": token.LAND,
 	"||": token.LOR,
 	"++": token.INC,

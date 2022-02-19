@@ -34,7 +34,7 @@ func TryParseStmt(node *sitter.Node, source []byte, ctx Ctx) ast.Stmt {
 					Specs: []ast.Spec{
 						&ast.ValueSpec{
 							Names: []*ast.Ident{ParseExpr(node.NamedChild(varTypeIndex+1).NamedChild(0), source, ctx).(*ast.Ident)},
-							Type:  ParseExpr(node.NamedChild(varTypeIndex), source, ctx).(*ast.Ident),
+							Type:  ParseExpr(node.NamedChild(varTypeIndex), source, ctx),
 						},
 					},
 				},
@@ -75,6 +75,20 @@ func TryParseStmt(node *sitter.Node, source []byte, ctx Ctx) ast.Stmt {
 		return &ast.IncDecStmt{
 			X:   ParseExpr(node.Child(1), source, ctx),
 			Tok: StrToToken(node.Child(0).Content(source)),
+		}
+	case "expression_statement":
+		if stmt := TryParseStmt(node.NamedChild(0), source, ctx); stmt != nil {
+			return stmt
+		}
+		return &ast.ExprStmt{X: ParseExpr(node.NamedChild(0), source, ctx)}
+	case "explicit_constructor_invocation":
+		// This is when a constructor calls another constructor with the use of
+		// something such as `this(args...)`
+		return &ast.ExprStmt{
+			&ast.CallExpr{
+				Fun:  &ast.Ident{Name: "New" + ctx.className},
+				Args: ParseNode(node.NamedChild(1), source, ctx).([]ast.Expr),
+			},
 		}
 	case "return_statement":
 		if node.NamedChildCount() < 1 {
@@ -151,10 +165,6 @@ func TryParseStmt(node *sitter.Node, source []byte, ctx Ctx) ast.Stmt {
 		return &ast.SwitchStmt{
 			Tag:  ParseExpr(node.NamedChild(0), source, ctx),
 			Body: ParseNode(node.NamedChild(1), source, ctx).(*ast.BlockStmt),
-		}
-	case "expression_statement":
-		if stmt, ok := ParseNode(node, source, ctx).(ast.Stmt); ok {
-			return stmt
 		}
 	}
 	return nil

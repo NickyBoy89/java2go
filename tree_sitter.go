@@ -187,19 +187,11 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 				}
 				currentCase = ParseNode(c, source, ctx).(*ast.CaseClause)
 			default:
-				currentCase.Body = append(currentCase.Body, ParseNode(c, source, ctx).(ast.Stmt))
+				currentCase.Body = append(currentCase.Body, ParseStmt(c, source, ctx))
 			}
 		}
 
 		return switchBlock
-	case "expression_statement":
-		if stmt := TryParseStmt(node.NamedChild(0), source, ctx); stmt != nil {
-			return stmt
-		}
-		if exprs := TryParseStmts(node.NamedChild(0), source, ctx); exprs != nil {
-			return exprs
-		}
-		return &ast.ExprStmt{X: ParseExpr(node.NamedChild(0), source, ctx)}
 	case "try_statement":
 		// We ignore try statements
 		return ParseNode(node.NamedChild(0), source, ctx).(*ast.BlockStmt).List
@@ -210,15 +202,6 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 			}
 		}
 		return &ast.CaseClause{}
-	case "explicit_constructor_invocation":
-		// This is when a constructor calls another constructor with the use of
-		// something such as `this(args...)`
-		return &ast.ExprStmt{
-			&ast.CallExpr{
-				Fun:  &ast.Ident{Name: "New" + ctx.className},
-				Args: ParseNode(node.NamedChild(1), source, ctx).([]ast.Expr),
-			},
-		}
 	case "argument_list":
 		args := []ast.Expr{}
 		for _, c := range Children(node) {
