@@ -158,43 +158,9 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 		}
 
 		return &ast.AssignStmt{Lhs: names, Tok: token.ASSIGN, Rhs: values}
-
-	case "super":
-		return &ast.BadExpr{}
-	case "constructor_body", "block":
-		body := &ast.BlockStmt{}
-		for _, line := range Children(node) {
-			if line.Type() == "comment" {
-				continue
-			}
-			if stmt := TryParseStmt(line, source, ctx); stmt != nil {
-				body.List = append(body.List, stmt)
-			} else {
-				// Try statements are ignored, so they return a list of statements
-				body.List = append(body.List, ParseNode(line, source, ctx).([]ast.Stmt)...)
-			}
-		}
-		return body
-	case "switch_block":
-		switchBlock := &ast.BlockStmt{}
-		var currentCase *ast.CaseClause
-		for _, c := range Children(node) {
-			switch c.Type() {
-			case "switch_label":
-				// When a new switch label comes, append it to the switch block
-				if currentCase != nil {
-					switchBlock.List = append(switchBlock.List, currentCase)
-				}
-				currentCase = ParseNode(c, source, ctx).(*ast.CaseClause)
-			default:
-				currentCase.Body = append(currentCase.Body, ParseStmt(c, source, ctx))
-			}
-		}
-
-		return switchBlock
 	case "try_statement":
 		// We ignore try statements
-		return ParseNode(node.NamedChild(0), source, ctx).(*ast.BlockStmt).List
+		return ParseStmt(node.NamedChild(0), source, ctx).(*ast.BlockStmt).List
 	case "switch_label":
 		if node.NamedChildCount() > 0 {
 			return &ast.CaseClause{
@@ -233,7 +199,7 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 
 		// If the parameter is a reference type (ex: ...[]*Test), then the type is
 		// a `StarExpr`, which is passed into the ellipsis
-		if _, is := ParseNode(node.NamedChild(0), source, ctx).(*ast.StarExpr); is {
+		if _, is := ParseExpr(node.NamedChild(0), source, ctx).(*ast.StarExpr); is {
 			return &ast.Field{
 				Names: []*ast.Ident{ParseExpr(node.NamedChild(1).NamedChild(0), source, ctx).(*ast.Ident)},
 				Type: &ast.Ellipsis{

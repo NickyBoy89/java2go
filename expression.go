@@ -23,7 +23,7 @@ func TryParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 		// has the identifier first
 
 		// Post-update expression, e.g. `i++`
-		if node.Child(0).Type() == "identifier" {
+		if node.Child(0).IsNamed() {
 			return &ast.CallExpr{
 				Fun:  &ast.Ident{Name: "PostUpdate"},
 				Args: []ast.Expr{ParseExpr(node.Child(0), source, ctx)},
@@ -48,13 +48,15 @@ func TryParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 		// This contains a reference to the type of a nested class
 		// Ex: LinkedList.Node
 		return &ast.StarExpr{X: &ast.Ident{Name: node.Content(source)}}
+	case "super":
+		return &ast.BadExpr{}
 	case "lambda_expression":
 		return &ast.FuncLit{
 			Type: &ast.FuncType{
 				Params:  ParseNode(node.NamedChild(0), source, ctx).(*ast.FieldList),
 				Results: &ast.FieldList{List: []*ast.Field{}},
 			},
-			Body: ParseNode(node.NamedChild(1), source, ctx).(*ast.BlockStmt),
+			Body: ParseStmt(node.NamedChild(1), source, ctx).(*ast.BlockStmt),
 		}
 	case "method_reference":
 		// This refers to manually selecting a function from a specific class and
@@ -142,6 +144,12 @@ func TryParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 	case "dimensions_expr":
 		return &ast.Ident{Name: node.NamedChild(0).Content(source)}
 	case "binary_expression":
+		if node.Child(1).Content(source) == ">>>" {
+			return &ast.CallExpr{
+				Fun:  &ast.Ident{Name: "UnsignedRightShift"},
+				Args: []ast.Expr{ParseExpr(node.Child(0), source, ctx), ParseExpr(node.Child(2), source, ctx)},
+			}
+		}
 		return &ast.BinaryExpr{
 			X:  ParseExpr(node.Child(0), source, ctx),
 			Op: StrToToken(node.Child(1).Content(source)),

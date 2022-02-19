@@ -130,7 +130,7 @@ func TryParseDecl(node *sitter.Node, source []byte, ctx Ctx) ast.Decl {
 			case "formal_parameters":
 				params = ParseNode(c, source, ctx).(*ast.FieldList)
 			case "constructor_body":
-				body = ParseNode(c, source, ctx).(*ast.BlockStmt)
+				body = ParseStmt(c, source, ctx).(*ast.BlockStmt)
 			}
 		}
 
@@ -226,7 +226,7 @@ func TryParseDecl(node *sitter.Node, source []byte, ctx Ctx) ast.Decl {
 					&ast.Field{Type: returnType},
 				}},
 			},
-			Body: ParseNode(node.NamedChild(int(node.NamedChildCount()-1)), source, ctx).(*ast.BlockStmt),
+			Body: ParseStmt(node.NamedChild(int(node.NamedChildCount()-1)), source, ctx).(*ast.BlockStmt),
 		}
 	case "static_initializer":
 		// A block of `static`, which is run before the main function
@@ -235,7 +235,7 @@ func TryParseDecl(node *sitter.Node, source []byte, ctx Ctx) ast.Decl {
 			Type: &ast.FuncType{
 				Params: &ast.FieldList{List: []*ast.Field{}},
 			},
-			Body: ParseNode(node.NamedChild(0), source, ctx).(*ast.BlockStmt),
+			Body: ParseStmt(node.NamedChild(0), source, ctx).(*ast.BlockStmt),
 		}
 	}
 	return nil

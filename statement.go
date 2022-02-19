@@ -17,6 +17,8 @@ func ParseStmt(node *sitter.Node, source []byte, ctx Ctx) ast.Stmt {
 
 func TryParseStmt(node *sitter.Node, source []byte, ctx Ctx) ast.Stmt {
 	switch node.Type() {
+	case "ERROR":
+		return &ast.BadStmt{}
 	case "local_variable_declaration":
 		var varTypeIndex int
 
@@ -65,7 +67,7 @@ func TryParseStmt(node *sitter.Node, source []byte, ctx Ctx) ast.Stmt {
 			Rhs: []ast.Expr{ParseExpr(node.Child(2), source, ctx)},
 		}
 	case "update_expression":
-		if node.Child(0).Type() == "identifier" {
+		if node.Child(0).IsNamed() {
 			return &ast.IncDecStmt{
 				X:   ParseExpr(node.Child(0), source, ctx),
 				Tok: StrToToken(node.Child(1).Content(source)),
@@ -76,6 +78,22 @@ func TryParseStmt(node *sitter.Node, source []byte, ctx Ctx) ast.Stmt {
 			X:   ParseExpr(node.Child(1), source, ctx),
 			Tok: StrToToken(node.Child(0).Content(source)),
 		}
+	case "method_invocation":
+		return &ast.ExprStmt{X: ParseExpr(node, source, ctx)}
+	case "constructor_body", "block":
+		body := &ast.BlockStmt{}
+		for _, line := range Children(node) {
+			if line.Type() == "comment" {
+				continue
+			}
+			if stmt := TryParseStmt(line, source, ctx); stmt != nil {
+				body.List = append(body.List, stmt)
+			} else {
+				// Try statements are ignored, so they return a list of statements
+				body.List = append(body.List, ParseNode(line, source, ctx).([]ast.Stmt)...)
+			}
+		}
+		return body
 	case "expression_statement":
 		if stmt := TryParseStmt(node.NamedChild(0), source, ctx); stmt != nil {
 			return stmt
@@ -97,8 +115,8 @@ func TryParseStmt(node *sitter.Node, source []byte, ctx Ctx) ast.Stmt {
 		return &ast.ReturnStmt{Results: []ast.Expr{ParseExpr(node.NamedChild(0), source, ctx)}}
 	case "labeled_statement":
 		return &ast.LabeledStmt{
-			Label: ParseNode(node.NamedChild(0), source, ctx).(*ast.Ident),
-			Stmt:  ParseNode(node.NamedChild(1), source, ctx).(ast.Stmt),
+			Label: ParseExpr(node.NamedChild(0), source, ctx).(*ast.Ident),
+			Stmt:  ParseStmt(node.NamedChild(1), source, ctx),
 		}
 	case "break_statement":
 		return &ast.BranchStmt{Tok: token.BREAK}
@@ -120,9 +138,9 @@ func TryParseStmt(node *sitter.Node, source []byte, ctx Ctx) ast.Stmt {
 				cond = ParseExpr(c, source, ctx)
 			case "block": // First block is the `if`, second is the `else`
 				if body == nil {
-					body = ParseNode(c, source, ctx).(*ast.BlockStmt)
+					body = ParseStmt(c, source, ctx).(*ast.BlockStmt)
 				} else {
-					elseStmt = ParseNode(c, source, ctx).(*ast.BlockStmt)
+					elseStmt = ParseStmt(c, source, ctx).(*ast.BlockStmt)
 				}
 			}
 		}
@@ -133,21 +151,30 @@ func TryParseStmt(node *sitter.Node, source []byte, ctx Ctx) ast.Stmt {
 			Else: elseStmt,
 		}
 	case "for_statement":
+		// This still needs a bit of work, because any one of the three parts of the
+		// for could be missing, but I don't know which one's which
+		if node.NamedChildCount() < 4 {
+			return &ast.ForStmt{
+				Cond: ParseExpr(node.NamedChild(0), source, ctx),
+				Post: ParseStmt(node.NamedChild(1), source, ctx),
+				Body: ParseStmt(node.NamedChild(2), source, ctx).(*ast.BlockStmt),
+			}
+		}
 		return &ast.ForStmt{
 			Init: ParseStmt(node.NamedChild(0), source, ctx),
 			Cond: ParseExpr(node.NamedChild(1), source, ctx),
 			Post: ParseStmt(node.NamedChild(2), source, ctx),
-			Body: ParseNode(node.NamedChild(3), source, ctx).(*ast.BlockStmt),
+			Body: ParseStmt(node.NamedChild(3), source, ctx).(*ast.BlockStmt),
 		}
 	case "while_statement":
 		return &ast.ForStmt{
 			Cond: ParseExpr(node.NamedChild(0), source, ctx),
-			Body: ParseNode(node.NamedChild(1), source, ctx).(*ast.BlockStmt),
+			Body: ParseStmt(node.NamedChild(1), source, ctx).(*ast.BlockStmt),
 		}
 	case "do_statement":
 		// A do statement is handled as a blank for loop with the condition
 		// inserted as a break condition in the final part of the loop
-		body := ParseNode(node.NamedChild(0), source, ctx).(*ast.BlockStmt)
+		body := ParseStmt(node.NamedChild(0), source, ctx).(*ast.BlockStmt)
 
 		body.List = append(body.List, &ast.IfStmt{
 			Cond: &ast.UnaryExpr{
@@ -164,8 +191,25 @@ func TryParseStmt(node *sitter.Node, source []byte, ctx Ctx) ast.Stmt {
 	case "switch_statement":
 		return &ast.SwitchStmt{
 			Tag:  ParseExpr(node.NamedChild(0), source, ctx),
-			Body: ParseNode(node.NamedChild(1), source, ctx).(*ast.BlockStmt),
+			Body: ParseStmt(node.NamedChild(1), source, ctx).(*ast.BlockStmt),
 		}
+	case "switch_block":
+		switchBlock := &ast.BlockStmt{}
+		var currentCase *ast.CaseClause
+		for _, c := range Children(node) {
+			switch c.Type() {
+			case "switch_label":
+				// When a new switch label comes, append it to the switch block
+				if currentCase != nil {
+					switchBlock.List = append(switchBlock.List, currentCase)
+				}
+				currentCase = ParseNode(c, source, ctx).(*ast.CaseClause)
+			default:
+				currentCase.Body = append(currentCase.Body, ParseStmt(c, source, ctx))
+			}
+		}
+
+		return switchBlock
 	}
 	return nil
 }
