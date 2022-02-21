@@ -117,6 +117,19 @@ func TryParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 			panic(fmt.Sprintf("Calling method with unknown number of args: %v", node.NamedChildCount()))
 		}
 	case "object_creation_expression":
+		// An object can be called two different ways, either by creating it like:
+		// new Other.Object();
+		// or Other.this.new Object();
+
+		objExpr := ParseExpr(node.NamedChild(0), source, ctx)
+
+		// The other method of calling the constructor
+		if sel, ok := objExpr.(*ast.SelectorExpr); ok {
+			return &ast.CallExpr{
+				Fun:  &ast.Ident{Name: "New" + sel.X.(*ast.Ident).Name + node.NamedChild(1).Content(source)},
+				Args: ParseNode(node.NamedChild(2), source, ctx).([]ast.Expr),
+			}
+		}
 		return &ast.CallExpr{
 			// All object creations are usually done by calling the constructor
 			//function, which is generated as `"New" + className`
