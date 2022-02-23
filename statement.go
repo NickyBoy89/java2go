@@ -156,6 +156,31 @@ func TryParseStmt(node *sitter.Node, source []byte, ctx Ctx) ast.Stmt {
 			Body: body,
 			Else: elseStmt,
 		}
+	case "enhanced_for_statement":
+		// An enhanced for statement has the following fields:
+		// variables for the variable being declared (ex: int n)
+		// then the expression that is being ranged over
+		// and finally, the block of the expression
+
+		var carrierInd, rangeInd, blockInd int
+
+		var carrierVar ast.Expr
+		for ind, c := range Children(node) {
+			switch c.Type() {
+			case "identifier":
+				// The variable that is ranged over is the last identifier in the nodes
+				carrierVar = ParseExpr(c, source, ctx)
+			}
+		}
+		/*
+			return &ast.RangeStmt{
+				Key: ast.Expr,
+				Value: ast.Expr,
+				Tok: token.DEFINE,
+				X: ast.Expr
+				Body: *ast.BlockStmt
+			}
+		*/
 	case "for_statement":
 		// This still needs a bit of work, because any one of the three parts of the
 		// for could be missing, but I don't know which one's which
