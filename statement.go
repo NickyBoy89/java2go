@@ -61,6 +61,12 @@ func TryParseStmt(node *sitter.Node, source []byte, ctx Ctx) ast.Stmt {
 
 		return &ast.AssignStmt{Lhs: names, Tok: token.DEFINE, Rhs: values}
 	case "assignment_expression":
+		if node.Child(1).Content(source) == ">>>=" {
+			return &ast.ExprStmt{X: &ast.CallExpr{
+				Fun:  &ast.Ident{Name: "UnsignedRightShiftAssignment"},
+				Args: []ast.Expr{ParseExpr(node.Child(0), source, ctx), ParseExpr(node.Child(2), source, ctx)},
+			}}
+		}
 		return &ast.AssignStmt{
 			Lhs: []ast.Expr{ParseExpr(node.Child(0), source, ctx)},
 			Tok: StrToToken(node.Child(1).Content(source)),
@@ -205,7 +211,11 @@ func TryParseStmt(node *sitter.Node, source []byte, ctx Ctx) ast.Stmt {
 				}
 				currentCase = ParseNode(c, source, ctx).(*ast.CaseClause)
 			default:
-				currentCase.Body = append(currentCase.Body, ParseStmt(c, source, ctx))
+				if exprs := TryParseStmts(c, source, ctx); exprs != nil {
+					currentCase.Body = append(currentCase.Body, exprs...)
+				} else {
+					currentCase.Body = append(currentCase.Body, ParseStmt(c, source, ctx))
+				}
 			}
 		}
 
@@ -224,6 +234,10 @@ func ParseStmts(node *sitter.Node, source []byte, ctx Ctx) []ast.Stmt {
 func TryParseStmts(node *sitter.Node, source []byte, ctx Ctx) []ast.Stmt {
 	switch node.Type() {
 	case "assignment_expression":
+		if stmts, ok := ParseNode(node, source, ctx).([]ast.Stmt); ok {
+			return stmts
+		}
+	case "try_statement":
 		if stmts, ok := ParseNode(node, source, ctx).([]ast.Stmt); ok {
 			return stmts
 		}

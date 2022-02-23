@@ -14,9 +14,11 @@ var tokens = map[string]token.Token{
 	"/": token.QUO,
 	"%": token.REM,
 
-	"&":  token.AND,
-	"|":  token.OR,
-	"^":  token.XOR,
+	"&": token.AND,
+	"|": token.OR,
+	"^": token.XOR,
+	// Java bitwise complement (~)
+	"~":  token.XOR,
 	"<<": token.SHL,
 	">>": token.SHR,
 	"&^": token.AND_NOT,

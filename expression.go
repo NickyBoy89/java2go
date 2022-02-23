@@ -17,6 +17,8 @@ func ParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 
 func TryParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 	switch node.Type() {
+	case "ERROR":
+		return &ast.BadExpr{}
 	case "update_expression":
 		// This can either be a pre or post expression
 		// a pre expression has the identifier second, while the post expression
@@ -35,6 +37,10 @@ func TryParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 			Fun:  &ast.Ident{Name: "PreUpdate"},
 			Args: []ast.Expr{ParseExpr(node.Child(1), source, ctx)},
 		}
+	case "class_literal":
+		// Class literals refer to the class directly, such as
+		// Object.class
+		return &ast.BadExpr{}
 	case "assignment_expression":
 		return &ast.CallExpr{
 			Fun: &ast.Ident{Name: "AssignmentExpression"},
@@ -117,9 +123,15 @@ func TryParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 			panic(fmt.Sprintf("Calling method with unknown number of args: %v", node.NamedChildCount()))
 		}
 	case "object_creation_expression":
-		// An object can be called two different ways, either by creating it like:
-		// new Other.Object();
-		// or Other.this.new Object();
+		// For some reason, objects can be created two different ways:
+		// arg.new Object();
+		// or:
+		// new arg.Object();
+
+		if node.NamedChildCount() > 2 {
+			// TODO: Fix this to accept more values
+			return &ast.BadExpr{}
+		}
 
 		objExpr := ParseExpr(node.NamedChild(0), source, ctx)
 
@@ -133,7 +145,7 @@ func TryParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 		return &ast.CallExpr{
 			// All object creations are usually done by calling the constructor
 			//function, which is generated as `"New" + className`
-			Fun:  &ast.Ident{Name: "New" + ParseExpr(node.NamedChild(0), source, ctx).(*ast.StarExpr).X.(*ast.Ident).Name},
+			Fun:  &ast.Ident{Name: "New" + node.NamedChild(0).Content(source)},
 			Args: ParseNode(node.NamedChild(1), source, ctx).([]ast.Expr),
 		}
 	case "array_creation_expression":

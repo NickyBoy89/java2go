@@ -161,6 +161,12 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 	case "try_statement":
 		// We ignore try statements
 		return ParseStmt(node.NamedChild(0), source, ctx).(*ast.BlockStmt).List
+	case "synchronized_statement":
+		// A synchronized statement contains the variable to be synchronized, as
+		// well as the block
+
+		// Ignore the sychronized statement
+		return ParseStmt(node.NamedChild(1), source, ctx).(*ast.BlockStmt).List
 	case "switch_label":
 		if node.NamedChildCount() > 0 {
 			return &ast.CaseClause{
@@ -197,9 +203,18 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 		// The spread paramater takes a list and separates it into multiple elements
 		// Ex: addElements([]int elements...)
 
-		// If the parameter is a reference type (ex: ...[]*Test), then the type is
-		// a `StarExpr`, which is passed into the ellipsis
-		if _, is := ParseExpr(node.NamedChild(0), source, ctx).(*ast.StarExpr); is {
+		switch ParseExpr(node.NamedChild(0), source, ctx).(type) {
+		case *ast.StarExpr:
+			// If the parameter is a reference type (ex: ...[]*Test), then the type is
+			// a `StarExpr`, which is passed into the ellipsis
+			return &ast.Field{
+				Names: []*ast.Ident{ParseExpr(node.NamedChild(1).NamedChild(0), source, ctx).(*ast.Ident)},
+				Type: &ast.Ellipsis{
+					Elt: ParseExpr(node.NamedChild(0), source, ctx),
+				},
+			}
+		case *ast.ArrayType:
+			// Represents something such as `byte[]... name`
 			return &ast.Field{
 				Names: []*ast.Ident{ParseExpr(node.NamedChild(1).NamedChild(0), source, ctx).(*ast.Ident)},
 				Type: &ast.Ellipsis{
