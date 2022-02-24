@@ -60,25 +60,6 @@ func TryParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 		// Lambdas can either be called with a list of expressions
 		// (ex: (n1, n1) -> {}), or with a single expression
 		// (ex: n1 -> {})
-		switch node.NamedChild(0).Type() {
-		case "inferred_parameters":
-			// Informal parameters means a lambda with an associated block of code
-			return &ast.FuncLit{
-				Type: &ast.FuncType{
-					Params: ParseNode(node.NamedChild(0), source, ctx).(*ast.FieldList),
-				},
-				Body: ParseStmt(node.NamedChild(1), source, ctx).(*ast.BlockStmt),
-			}
-		case "formal_parameters":
-			return &ast.FuncLit{
-				Type: &ast.FuncType{
-					Params: ParseNode(node.NamedChild(0), source, ctx).(*ast.FieldList),
-				},
-				Body: &ast.BlockStmt{
-					List: []ast.Stmt{ParseStmt(node.NamedChild(1), source, ctx)},
-				},
-			}
-		}
 
 		var lambdaBody *ast.BlockStmt
 
@@ -93,6 +74,16 @@ func TryParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 			}
 		} else {
 			lambdaBody = ParseStmt(node.NamedChild(1), source, ctx).(*ast.BlockStmt)
+		}
+
+		switch node.NamedChild(0).Type() {
+		case "inferred_parameters", "formal_parameters":
+			return &ast.FuncLit{
+				Type: &ast.FuncType{
+					Params: ParseNode(node.NamedChild(0), source, ctx).(*ast.FieldList),
+				},
+				Body: lambdaBody,
+			}
 		}
 
 		return &ast.FuncLit{
@@ -286,6 +277,8 @@ func TryParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 	case "null_literal":
 		return &ast.Ident{Name: "nil"}
 	case "decimal_integer_literal":
+		return &ast.Ident{Name: node.Content(source)}
+	case "hex_integer_literal":
 		return &ast.Ident{Name: node.Content(source)}
 	case "decimal_floating_point_literal":
 		// This is something like 1.3D

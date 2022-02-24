@@ -84,6 +84,18 @@ func TryParseStmt(node *sitter.Node, source []byte, ctx Ctx) ast.Stmt {
 			X:   ParseExpr(node.Child(1), source, ctx),
 			Tok: StrToToken(node.Child(0).Content(source)),
 		}
+	case "resource_specification":
+		return ParseStmt(node.NamedChild(0), source, ctx)
+	case "resource":
+		var offset int
+		if node.NamedChild(0).Type() == "modifiers" {
+			offset = 1
+		}
+		return &ast.AssignStmt{
+			Lhs: []ast.Expr{ParseExpr(node.NamedChild(1+offset), source, ctx)},
+			Tok: token.DEFINE,
+			Rhs: []ast.Expr{ParseExpr(node.NamedChild(2+offset), source, ctx)},
+		}
 	case "method_invocation":
 		return &ast.ExprStmt{X: ParseExpr(node, source, ctx)}
 	case "constructor_body", "block":

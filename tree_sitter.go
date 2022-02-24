@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"go/ast"
-	"go/token"
 	"unicode"
 
 	sitter "github.com/smacker/go-tree-sitter"
@@ -113,51 +112,11 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 		}
 	case "import_declaration":
 		return &ast.ImportSpec{Name: ParseExpr(node.NamedChild(0), source, ctx).(*ast.Ident)}
-	case "assignment_expression":
-		// A simple variable assignment, ex: `name = value`
-
-		// Stores all the assignments if the statement is a multiple-expression
-		assignments := []ast.Stmt{}
-
-		names := []ast.Expr{}
-		values := []ast.Expr{}
-		for i := 0; i < int(node.NamedChildCount())-1; i++ {
-			// Rewrite double assignments, e.g. `variable1 = variable2 = 1` to
-			// `variable2 = 1`
-			// `variable1 = variable2`
-			if node.NamedChild(i+1).Type() == "assignment_expression" {
-				// If a value is a multiple assignment, add that assignment before the
-				// current one, and add the left side of the value to the current line
-				otherAssign := ParseNode(node.NamedChild(i+1), source, ctx)
-
-				if otherStmts, ok := otherAssign.([]ast.Stmt); ok {
-					assignments = append(assignments, otherStmts...)
-				} else {
-					assignments = append(assignments, otherAssign.(ast.Stmt))
-				}
-
-				// Assign the value to the latest Lhs expression
-				assignments = append(assignments, &ast.AssignStmt{
-					Lhs: []ast.Expr{ParseExpr(node.NamedChild(i), source, ctx)},
-					Tok: token.ASSIGN,
-					Rhs: []ast.Expr{assignments[len(assignments)-1].(*ast.AssignStmt).Lhs[0]},
-				})
-			} else {
-				names = append(names, ParseExpr(node.NamedChild(i), source, ctx))
-				values = append(values, ParseExpr(node.NamedChild(i+1), source, ctx))
-			}
-		}
-
-		if len(assignments) > 0 {
-			return assignments
-		}
-
-		// Having no declarations in the assign stmt panics the parser
-		if len(names) == 0 {
-			panic("Assignment with no assignments")
-		}
-
-		return &ast.AssignStmt{Lhs: names, Tok: token.ASSIGN, Rhs: values}
+	case "try_with_resources_statement":
+		// Ignore try with resources statements as well
+		// NOTE: This will also ignore the catch clause
+		stmts := []ast.Stmt{ParseStmt(node.NamedChild(0), source, ctx)}
+		return append(stmts, ParseStmt(node.NamedChild(1), source, ctx).(*ast.BlockStmt).List...)
 	case "try_statement":
 		// We ignore try statements
 		return ParseStmt(node.NamedChild(0), source, ctx).(*ast.BlockStmt).List
