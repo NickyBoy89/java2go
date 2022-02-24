@@ -19,6 +19,8 @@ func TryParseStmt(node *sitter.Node, source []byte, ctx Ctx) ast.Stmt {
 	switch node.Type() {
 	case "ERROR":
 		return &ast.BadStmt{}
+	case "comment":
+		return &ast.BadStmt{}
 	case "local_variable_declaration":
 		var varTypeIndex int
 

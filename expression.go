@@ -19,6 +19,8 @@ func TryParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 	switch node.Type() {
 	case "ERROR":
 		return &ast.BadExpr{}
+	case "comment":
+		return &ast.BadExpr{}
 	case "update_expression":
 		// This can either be a pre or post expression
 		// a pre expression has the identifier second, while the post expression
