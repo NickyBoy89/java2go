@@ -38,6 +38,8 @@ func TryParseDecls(node *sitter.Node, source []byte, ctx Ctx) []ast.Decl {
 
 		var structDecls []ast.Decl
 
+		globalVariables := &ast.GenDecl{Tok: token.VAR}
+
 		// First go through and generate the struct, with all of its fields
 		fields := &ast.FieldList{}
 		for _, c := range Children(node) {
@@ -46,13 +48,39 @@ func TryParseDecls(node *sitter.Node, source []byte, ctx Ctx) []ast.Decl {
 				structDecls = ParseDecls(c, source, ctx)
 				for _, classChild := range Children(c) {
 					if classChild.Type() == "field_declaration" {
-						fields.List = append(fields.List, ParseNode(classChild, source, ctx).(*ast.Field))
+						var public, static bool
+
+						if classChild.NamedChild(0).Type() == "modifiers" {
+							for _, c := range UnnamedChildren(classChild.NamedChild(0)) {
+								switch c.Type() {
+								case "static":
+									static = true
+								case "public":
+									public = true
+								}
+							}
+						}
+
+						// TODO: Handle public for class fields
+						_ = public
+
+						if static {
+							// Static means that this is a global variable
+							field := ParseNode(classChild, source, ctx).(*ast.Field)
+							globalVariables.Specs = append(globalVariables.Specs, &ast.ValueSpec{Names: field.Names, Type: field.Type})
+						} else {
+							fields.List = append(fields.List, ParseNode(classChild, source, ctx).(*ast.Field))
+						}
 					}
 				}
 			}
 		}
 
-		decls := []ast.Decl{GenStruct(ctx.className, fields)}
+		decls := []ast.Decl{}
+		if len(globalVariables.Specs) > 0 {
+			decls = append(decls, globalVariables)
+		}
+		decls = append(decls, GenStruct(ctx.className, fields))
 
 		// Join the generated struct with all the other decls
 		return append(decls, structDecls...)
