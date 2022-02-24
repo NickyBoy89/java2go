@@ -162,40 +162,82 @@ func TryParseStmt(node *sitter.Node, source []byte, ctx Ctx) ast.Stmt {
 		// then the expression that is being ranged over
 		// and finally, the block of the expression
 
-		var carrierInd, rangeInd, blockInd int
+		total := int(node.NamedChildCount())
 
-		var carrierVar ast.Expr
-		for ind, c := range Children(node) {
-			switch c.Type() {
-			case "identifier":
-				// The variable that is ranged over is the last identifier in the nodes
-				carrierVar = ParseExpr(c, source, ctx)
-			}
+		return &ast.RangeStmt{
+			Key:   ParseExpr(node.NamedChild(total-4), source, ctx),
+			Value: ParseExpr(node.NamedChild(total-3), source, ctx),
+			Tok:   token.DEFINE,
+			X:     ParseExpr(node.NamedChild(total-2), source, ctx),
+			Body:  ParseStmt(node.NamedChild(total-1), source, ctx).(*ast.BlockStmt),
 		}
-		/*
-			return &ast.RangeStmt{
-				Key: ast.Expr,
-				Value: ast.Expr,
-				Tok: token.DEFINE,
-				X: ast.Expr
-				Body: *ast.BlockStmt
-			}
-		*/
 	case "for_statement":
-		// This still needs a bit of work, because any one of the three parts of the
-		// for could be missing, but I don't know which one's which
-		if node.NamedChildCount() < 4 {
-			return &ast.ForStmt{
-				Cond: ParseExpr(node.NamedChild(0), source, ctx),
-				Post: ParseStmt(node.NamedChild(1), source, ctx),
-				Body: ParseStmt(node.NamedChild(2), source, ctx).(*ast.BlockStmt),
+		// The different parts of the for loop
+		var cond ast.Expr
+		var init, post ast.Stmt
+
+		var ignoreInit, ignoreCond, ignorePost bool
+
+		var multipleAssignment bool
+
+		// If the init is a statement, then it will have a semicon associated with
+		// it, instead of an expression, where the semicolon will be separate
+		var initClosed bool
+
+		for _, c := range UnnamedChildren(node) {
+			if c.IsNamed() {
+				if multipleAssignment {
+					otherAssign := ParseStmt(c, source, ctx).(*ast.AssignStmt)
+					init.(*ast.AssignStmt).Lhs = append(init.(*ast.AssignStmt).Lhs, otherAssign.Lhs...)
+					init.(*ast.AssignStmt).Rhs = append(init.(*ast.AssignStmt).Rhs, otherAssign.Rhs...)
+					multipleAssignment = false
+				} else if !ignoreInit && init == nil {
+					if c.Child(int(c.ChildCount())-1).Content(source) == ";" {
+						initClosed = true
+					}
+					ignoreInit = true
+					init = ParseStmt(c, source, ctx)
+				} else if !ignoreCond && cond == nil {
+					ignoreCond = true
+					cond = ParseExpr(c, source, ctx)
+				} else if !ignorePost && post == nil {
+					ignorePost = true
+					post = ParseStmt(c, source, ctx)
+				}
+			} else {
+				switch c.Content(source) {
+				case ";":
+					// If we encounter a semicolon
+
+					// If there has been
+					// If the init is missing, there will be only a semicolon left
+					if !initClosed {
+						initClosed = true
+						ignoreInit = true
+					} else if !ignoreInit && init == nil {
+						ignoreInit = true
+					} else if !ignoreCond && cond == nil {
+						ignoreCond = true
+					}
+				case ",":
+					switch init.(type) {
+					case *ast.AssignStmt:
+						multipleAssignment = true
+					default:
+						panic("Init had multiple non-assignments in init")
+					}
+				case ")":
+					// Once the parenthesies close, stop parsing the for loop
+					break
+				}
 			}
 		}
+
 		return &ast.ForStmt{
-			Init: ParseStmt(node.NamedChild(0), source, ctx),
-			Cond: ParseExpr(node.NamedChild(1), source, ctx),
-			Post: ParseStmt(node.NamedChild(2), source, ctx),
-			Body: ParseStmt(node.NamedChild(3), source, ctx).(*ast.BlockStmt),
+			Init: init,
+			Cond: cond,
+			Post: post,
+			Body: ParseStmt(node.NamedChild(int(node.NamedChildCount())-1), source, ctx).(*ast.BlockStmt),
 		}
 	case "while_statement":
 		return &ast.ForStmt{

@@ -57,12 +57,56 @@ func TryParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 	case "super":
 		return &ast.BadExpr{}
 	case "lambda_expression":
+		// Lambdas can either be called with a list of expressions
+		// (ex: (n1, n1) -> {}), or with a single expression
+		// (ex: n1 -> {})
+		switch node.NamedChild(0).Type() {
+		case "inferred_parameters":
+			// Informal parameters means a lambda with an associated block of code
+			return &ast.FuncLit{
+				Type: &ast.FuncType{
+					Params: ParseNode(node.NamedChild(0), source, ctx).(*ast.FieldList),
+				},
+				Body: ParseStmt(node.NamedChild(1), source, ctx).(*ast.BlockStmt),
+			}
+		case "formal_parameters":
+			return &ast.FuncLit{
+				Type: &ast.FuncType{
+					Params: ParseNode(node.NamedChild(0), source, ctx).(*ast.FieldList),
+				},
+				Body: &ast.BlockStmt{
+					List: []ast.Stmt{ParseStmt(node.NamedChild(1), source, ctx)},
+				},
+			}
+		}
+
+		var lambdaBody *ast.BlockStmt
+
+		if expr := TryParseExpr(node.NamedChild(1), source, ctx); expr != nil {
+			// The body can be a single expression
+			lambdaBody = &ast.BlockStmt{
+				List: []ast.Stmt{
+					&ast.ExprStmt{
+						X: ParseExpr(node.NamedChild(1), source, ctx),
+					},
+				},
+			}
+		} else {
+			lambdaBody = ParseStmt(node.NamedChild(1), source, ctx).(*ast.BlockStmt)
+		}
+
 		return &ast.FuncLit{
 			Type: &ast.FuncType{
-				Params:  ParseNode(node.NamedChild(0), source, ctx).(*ast.FieldList),
-				Results: &ast.FieldList{List: []*ast.Field{}},
+				Params: &ast.FieldList{
+					List: []*ast.Field{
+						&ast.Field{
+							Names: []*ast.Ident{ParseExpr(node.NamedChild(0), source, ctx).(*ast.Ident)},
+							Type:  &ast.Ident{Name: "interface{}"},
+						},
+					},
+				},
 			},
-			Body: ParseStmt(node.NamedChild(1), source, ctx).(*ast.BlockStmt),
+			Body: lambdaBody,
 		}
 	case "method_reference":
 		// This refers to manually selecting a function from a specific class and
