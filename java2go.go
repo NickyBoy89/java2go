@@ -71,6 +71,9 @@ func main() {
 		n := tree.RootNode()
 
 		if *dependencyTreeFlag {
+			fmt.Println(ExtractImports(n, sourceCode, ""))
+			wg.Done()
+			continue
 		}
 
 		log.Infof("Converting file \"%s\"", path)
