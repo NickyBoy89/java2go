@@ -16,6 +16,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	sitter "github.com/smacker/go-tree-sitter"
 	"github.com/smacker/go-tree-sitter/java"
+	"gitlab.nicholasnovak.io/snapdragon/java2go/dot"
 )
 
 func main() {
@@ -55,8 +56,20 @@ func main() {
 		}
 	}
 
+	if len(fileNames) == 0 {
+		log.Warn("No files specified to convert")
+		return
+	}
+
 	var wg sync.WaitGroup
 	wg.Add(len(fileNames))
+
+	// Open a graphviz dot file for adding dependencies to
+	dotfile, err := dot.New("graph.dot")
+	if err != nil {
+		panic(err)
+	}
+	defer dotfile.Close()
 
 	for _, path := range fileNames {
 		sourceCode, err := os.ReadFile(path)
@@ -71,7 +84,13 @@ func main() {
 		n := tree.RootNode()
 
 		if *dependencyTreeFlag {
-			fmt.Println(ExtractImports(n, sourceCode, ""))
+			extracted := ExtractImports(n, sourceCode)
+
+			_ = extracted
+			//fmt.Println(extracted)
+
+			// TODO: Handle imports to correctly handle path differences
+			//dotfile.AddNode(extracted.Name, extracted.Imports...)
 			wg.Done()
 			continue
 		}
@@ -112,4 +131,6 @@ func main() {
 	}
 
 	wg.Wait()
+
+	dotfile.WriteToFile()
 }

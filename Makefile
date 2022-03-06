@@ -9,7 +9,8 @@ run:
 	cp yarn/$(namedjar) .
 	# Copy over fernflower
 	cp intellij-fernflower/build/libs/$(fernflower) .
-	java -jar $(fernflower) $(namedjar) decompiled
+	# Decompile everything
+	java -jar $(fernflower) -rsy=1 $(namedjar) decompiled
 	cd decompiled && unzip $(namedjar)
 
 .PHONY:clean-decom,clean,buildyarn,buildfernflower
