@@ -111,11 +111,6 @@ func main() {
 
 			graph.AddNode(extracted.Name, edges...)
 
-			dotfile.DeleteSubgraph("java")
-			dotfile.DeleteSubgraph("javax")
-			dotfile.DeleteSubgraph("com")
-			dotfile.DeleteSubgraph("it")
-
 			wg.Done()
 			continue
 		}
