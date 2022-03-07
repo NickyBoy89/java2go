@@ -7,8 +7,96 @@ import (
 )
 
 type Dotfile struct {
-	nodes map[string][]string
+	SubGraph
 	*os.File
+}
+
+func (d Dotfile) Name() string {
+	return d.SubGraph.Name()
+}
+
+func (d *Dotfile) DeleteSubgraph(name string) {
+	delete(d.SubGraph.subgraphs, name)
+}
+
+type GraphPrinter interface {
+	AsDot() (string, []Edge)
+	Name() string
+}
+
+// GraphItem is any item in the graph
+type GraphItem interface {
+	GraphPrinter
+	HasSubgraph(name string) bool         // Whether the item has the given subgraph
+	Subgraph(name string) GraphItem       // Returns the named subgraph, adding it if necessary
+	AddNode(name string, edges ...string) // Adds a node to the graph
+}
+
+type Edge struct {
+	From string
+	To   []string
+}
+
+type SubGraph struct {
+	name      string
+	nodes     map[string]Node
+	subgraphs map[string]GraphItem
+}
+
+// Methods for GraphItem
+func (g SubGraph) HasSubgraph(name string) bool {
+	_, has := g.subgraphs[name]
+	return has
+}
+
+func (g *SubGraph) Subgraph(name string) GraphItem {
+	if g.subgraphs == nil {
+		g.subgraphs = make(map[string]GraphItem)
+	}
+	if _, in := g.subgraphs[name]; !in {
+		g.subgraphs[name] = &SubGraph{name: name}
+	}
+	return g.subgraphs[name]
+}
+
+func (g *SubGraph) AddNode(name string, edges ...string) {
+	if g.nodes == nil {
+		g.nodes = make(map[string]Node)
+	}
+	g.nodes[name] = Node{name: name, edges: edges}
+}
+
+func (g SubGraph) Name() string {
+	return g.name
+}
+
+func (g SubGraph) AsDot() (string, []Edge) {
+	totalEdges := []Edge{}
+	total := fmt.Sprintf("subgraph cluster_%s {\n", g.name)
+	total += fmt.Sprintf("label=\"%s\"\n", g.name)
+	for _, item := range g.nodes {
+		totalEdges = append(totalEdges, Edge{From: item.name, To: item.edges})
+		total += item.Name() + "\n"
+	}
+	for _, item := range g.subgraphs {
+		sub, edges := item.AsDot()
+		total += sub + "\n"
+		totalEdges = append(totalEdges, edges...)
+	}
+	return total + "}", totalEdges
+}
+
+type Node struct {
+	name  string
+	edges []string
+}
+
+func (n Node) AsDot() (string, []Edge) {
+	return "", []Edge{Edge{From: n.name, To: n.edges}}
+}
+
+func (n Node) Name() string {
+	return n.name
 }
 
 func New(name string) (*Dotfile, error) {
@@ -16,11 +104,11 @@ func New(name string) (*Dotfile, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Dotfile{File: file, nodes: make(map[string][]string)}, nil
+	return &Dotfile{File: file}, nil
 }
 
 func (d *Dotfile) AddNode(name string, edges ...string) {
-	d.nodes[name] = edges
+	d.nodes[name] = Node{name: name, edges: edges}
 }
 
 func commaSeparatedString(list []string) string {
@@ -35,9 +123,33 @@ func commaSeparatedString(list []string) string {
 }
 
 func (d *Dotfile) WriteToFile() {
+	totalEdges := []Edge{}
 	d.WriteString("digraph {\n")
-	for name, edges := range d.nodes {
-		fmt.Fprintf(d, "  \"%s\" -> {%s}\n", name, commaSeparatedString(edges))
+	d.WriteString("compound=true\n")
+
+	// First, write out all the subgraphs
+	for _, graph := range d.subgraphs {
+		sub, edges := graph.AsDot()
+		totalEdges = append(totalEdges, edges...)
+		d.WriteString(sub + "\n")
+	}
+
+	// Then, go through the nodes
+	for name, node := range d.nodes {
+		fmt.Fprintf(d, "  \"%s\" -> {%s}\n", name, commaSeparatedString(node.edges))
+	}
+
+	// Finally, connect all the edges from everything else
+	for _, edge := range totalEdges {
+		// Skip creating edges that don't point anywhere
+		if len(edge.To) == 0 {
+			continue
+		}
+		// Also skip empty nodes
+		if edge.From == "" {
+			continue
+		}
+		fmt.Fprintf(d, "\"%s\" -> {%s}\n", edge.From, commaSeparatedString(edge.To))
 	}
 	d.WriteString("}")
 }

@@ -1,7 +1,7 @@
 package main
 
 import (
-	"fmt"
+	"strings"
 
 	sitter "github.com/smacker/go-tree-sitter"
 )
@@ -17,15 +17,18 @@ type ClassFile struct {
 // another scope, which contains the rest of the scope (ex: "com.example")
 // When the scope variable is `nil`, then you are at the root of the parent
 type PackageScope struct {
-	Scope *PackageScope // The scope of the package (ex: "com.example")
-	Name  string        // The name of the package (ex: "util")
+	Scope []string
 }
 
 func (ps *PackageScope) String() string {
-	if ps.Scope == nil {
-		return ps.Name
+	var total strings.Builder
+	for ind, item := range ps.Scope {
+		total.WriteString(item)
+		if ind < len(ps.Scope)-1 {
+			total.WriteRune('.')
+		}
 	}
-	return fmt.Sprintf("%v.%s", ps.Scope, ps.Name)
+	return total.String()
 }
 
 // ParseScope takes a identifier from an import node, and the source code, and
@@ -35,20 +38,24 @@ func ParseScope(node *sitter.Node, source []byte) *PackageScope {
 	// A `scoped_identifier` contains two items, one for the scope, and the other
 	// for the name of the current package
 
-	// If there is only one child, the package is complete
-	if node.NamedChildCount() == 1 {
-		return ParseScope(node.NamedChild(0), source)
+	if node.Type() != "package_declaration" {
+		pack.Scope = []string{node.NamedChild(1).Content(source)}
 	}
 
-	// If the scoped identifier refers to another, parse that
-	if node.NamedChild(0).Type() == "scoped_identifier" {
-		pack.Scope = ParseScope(node.NamedChild(0), source)
-	} else {
-		// Otherwise, we have reached the root of the parent
-		pack.Scope = &PackageScope{Name: node.NamedChild(0).Content(source)}
+	scope := node.NamedChild(0)
+	for scope.Type() == "scoped_identifier" {
+		pack.Scope = append(pack.Scope, scope.NamedChild(1).Content(source))
+		scope = scope.NamedChild(0)
 	}
 
-	pack.Name = node.NamedChild(1).Content(source)
+	pack.Scope = append(pack.Scope, scope.Content(source))
+
+	// Flip the order of the scope, because it is the wrong direction
+	for ind := 0; ind < len(pack.Scope)/2; ind++ {
+		rev := len(pack.Scope) - 1 - ind
+		pack.Scope[ind], pack.Scope[rev] = pack.Scope[rev], pack.Scope[ind]
+	}
+
 	return pack
 }
 

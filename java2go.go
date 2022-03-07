@@ -84,13 +84,38 @@ func main() {
 		n := tree.RootNode()
 
 		if *dependencyTreeFlag {
+			// The extracted file contains the name, full package, and relative imports
 			extracted := ExtractImports(n, sourceCode)
 
-			_ = extracted
-			//fmt.Println(extracted)
+			var graph dot.GraphItem = dotfile
 
-			// TODO: Handle imports to correctly handle path differences
-			//dotfile.AddNode(extracted.Name, extracted.Imports...)
+			// Generate all the subgraphs for the package declaration
+			for _, item := range extracted.Package.Scope {
+				graph = graph.Subgraph(item)
+			}
+
+			edges := []string{}
+
+			// Add the class's name, connected to all of its imports
+			for _, imp := range extracted.Imports {
+				var subgraph dot.GraphItem = dotfile
+				for ind, item := range imp.Scope {
+					if ind == len(imp.Scope)-1 {
+						subgraph.AddNode(item)
+						edges = append(edges, item)
+					} else {
+						subgraph = subgraph.Subgraph(item)
+					}
+				}
+			}
+
+			graph.AddNode(extracted.Name, edges...)
+
+			dotfile.DeleteSubgraph("java")
+			dotfile.DeleteSubgraph("javax")
+			dotfile.DeleteSubgraph("com")
+			dotfile.DeleteSubgraph("it")
+
 			wg.Done()
 			continue
 		}
