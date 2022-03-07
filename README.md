@@ -26,3 +26,5 @@ The process that it does this is througb several intemediary steps
 * `-q` Prevents the outputs of the parsed files from appearing on stdout
 
 * `-ast` pretty-prints the generated ast, in addition to the other operations
+
+* `--dependency-tree` outputs a graph of all the files and their dependencies as `graph.dot`, in graphviz dot format. NOTE: This graph is very large
