@@ -108,7 +108,34 @@ func New(name string) (*Dotfile, error) {
 }
 
 func (d *Dotfile) AddNode(name string, edges ...string) {
+	if d.nodes == nil {
+		d.nodes = make(map[string]Node)
+	}
 	d.nodes[name] = Node{name: name, edges: edges}
+}
+
+func (d *Dotfile) HasNode(name string) bool {
+	_, in := d.nodes[name]
+	return in
+}
+
+func (d *Dotfile) AddEdge(node string, edge string) {
+	temp := d.nodes[node]
+	// If the node doesn't exist, create it
+	if temp.name == "" {
+		temp = Node{name: node}
+	}
+	temp.edges = append(temp.edges, edge)
+	d.nodes[node] = temp
+}
+
+func (d *Dotfile) HasEdge(node string, edge string) bool {
+	for _, e := range d.nodes[node].edges {
+		if e == edge {
+			return true
+		}
+	}
+	return false
 }
 
 func commaSeparatedString(list []string) string {
@@ -125,7 +152,7 @@ func commaSeparatedString(list []string) string {
 func (d *Dotfile) WriteToFile() {
 	totalEdges := []Edge{}
 	d.WriteString("digraph {\n")
-	d.WriteString("compound=true\n")
+	//d.WriteString("compound=true\n")
 
 	// First, write out all the subgraphs
 	for _, graph := range d.subgraphs {

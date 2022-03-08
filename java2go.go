@@ -87,29 +87,39 @@ func main() {
 			// The extracted file contains the name, full package, and relative imports
 			extracted := ExtractImports(n, sourceCode)
 
-			var graph dot.GraphItem = dotfile
-
-			// Generate all the subgraphs for the package declaration
-			for _, item := range extracted.Package.Scope {
-				graph = graph.Subgraph(item)
-			}
-
 			edges := []string{}
 
-			// Add the class's name, connected to all of its imports
+			// Add all the imports of the package
 			for _, imp := range extracted.Imports {
-				var subgraph dot.GraphItem = dotfile
-				for ind, item := range imp.Scope {
-					if ind == len(imp.Scope)-1 {
-						subgraph.AddNode(item)
-						edges = append(edges, item)
-					} else {
-						subgraph = subgraph.Subgraph(item)
+				// Remove the last item in the import so that only the dependent package
+				// is present
+				temp := &PackageScope{Scope: imp.Scope[:len(imp.Scope)-1]}
+				var importExists bool
+				for _, edge := range edges {
+					if edge == temp.String() {
+						importExists = true
+						break
 					}
+				}
+				if !importExists {
+					edges = append(edges, temp.String())
 				}
 			}
 
-			graph.AddNode(extracted.Name, edges...)
+			// Use the package as the node
+			if len(edges) > 0 && extracted.Name != "" {
+				pack := extracted.Package.String()
+				// If the node does not exist, create it initially
+				if !dotfile.HasNode(pack) {
+					dotfile.AddNode(pack)
+				}
+				// Otherwise, add all the edges to the existing node
+				for _, edge := range edges {
+					if !dotfile.HasEdge(pack, edge) {
+						dotfile.AddEdge(pack, edge)
+					}
+				}
+			}
 
 			wg.Done()
 			continue
