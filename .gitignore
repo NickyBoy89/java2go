@@ -5,3 +5,9 @@ procyon/
 yarn/
 intellij-fernflower
 *.jar
+
+# Analytic files
+*.dot
+
+# Compiled test files
+*.class
