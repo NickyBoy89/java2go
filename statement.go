@@ -5,6 +5,7 @@ import (
 	"go/ast"
 	"go/token"
 
+	log "github.com/sirupsen/logrus"
 	sitter "github.com/smacker/go-tree-sitter"
 )
 
@@ -18,6 +19,9 @@ func ParseStmt(node *sitter.Node, source []byte, ctx Ctx) ast.Stmt {
 func TryParseStmt(node *sitter.Node, source []byte, ctx Ctx) ast.Stmt {
 	switch node.Type() {
 	case "ERROR":
+		log.WithFields(log.Fields{
+			"parsed": node,
+		}).Warn("Statement parse error")
 		return &ast.BadStmt{}
 	case "comment":
 		return &ast.BadStmt{}

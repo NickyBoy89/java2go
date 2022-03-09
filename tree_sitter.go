@@ -5,6 +5,7 @@ import (
 	"go/ast"
 	"unicode"
 
+	log "github.com/sirupsen/logrus"
 	sitter "github.com/smacker/go-tree-sitter"
 )
 
@@ -65,6 +66,9 @@ type Ctx struct {
 func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 	switch node.Type() {
 	case "ERROR":
+		log.WithFields(log.Fields{
+			"parsed": node,
+		}).Warn("Error parsing generic node")
 		return &ast.BadStmt{}
 	case "program":
 		// A program contains all the source code, in this case, one `class_declaration`
