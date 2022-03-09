@@ -125,9 +125,7 @@ func main() {
 			continue
 		}
 
-		if !*quiet {
-			log.Infof("Converting file \"%s\"", path)
-		}
+		log.Infof("Converting file \"%s\"", path)
 
 		// Write to stdout by default
 		var output io.Writer = os.Stdout
