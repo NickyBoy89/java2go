@@ -13,10 +13,10 @@ import (
 	"path/filepath"
 	"sync"
 
+	"github.com/NickyBoy89/java2go/dot"
 	log "github.com/sirupsen/logrus"
 	sitter "github.com/smacker/go-tree-sitter"
 	"github.com/smacker/go-tree-sitter/java"
-	"gitlab.nicholasnovak.io/snapdragon/java2go/dot"
 )
 
 func main() {
