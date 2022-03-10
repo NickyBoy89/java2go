@@ -23,67 +23,105 @@ func ParseDecls(node *sitter.Node, source []byte, ctx Ctx) []ast.Decl {
 func TryParseDecls(node *sitter.Node, source []byte, ctx Ctx) []ast.Decl {
 	switch node.Type() {
 	case "class_declaration":
-		// A class declaration contains the name of the class, and the `class_body`
-		// that contains the contents of the class
+		// A class declaration contains:
+		// * The `modifiers` of the class
+		// * An `identifier` for the name of the class
+		// * `type_parameters` if the class is a generic class
+		// * The `class_body` for the content of the class
 
-		// Since `class_body` contains all the methods and fields in the class, we
-		// need to return those, along with the generated struct
+		var publicClass bool
 
-		// Find the class's name first, to name everything
-		for _, c := range Children(node) {
-			if c.Type() == "identifier" {
-				ctx.className = c.Content(source)
-			}
-		}
-
-		var structDecls []ast.Decl
-
+		// Static fields are declared as global variables
 		globalVariables := &ast.GenDecl{Tok: token.VAR}
 
-		// First go through and generate the struct, with all of its fields
+		// All the declarations in the class (functions, methods, etc...)
+		var structDecls []ast.Decl
+
+		// All generic types parameters that are used in the class
+		var genericTypes []ast.Decl
+
 		fields := &ast.FieldList{}
+
 		for _, c := range Children(node) {
 			switch c.Type() {
+			// Modifiers for the class
+			case "modifiers":
+				for _, modifier := range UnnamedChildren(c) {
+					switch modifier.Type() {
+					case "public":
+						publicClass = true
+					}
+				}
+			// The class's name
+			case "identifier":
+				if publicClass {
+					ctx.className = ToPublic(c.Content(source))
+				} else {
+					ctx.className = ToPrivate(c.Content(source))
+				}
+			// If the class is generic, contains the type parameters
+			case "type_parameters":
+				// Generate definitions for all the generic types
+				genericTypes = ParseDecls(c, source, ctx)
+			// The body of the class
 			case "class_body":
+				// Parse all the declarations in the class's body
 				structDecls = ParseDecls(c, source, ctx)
-				for _, classChild := range Children(c) {
-					if classChild.Type() == "field_declaration" {
+
+				// Go through the class and extract the fields
+				for _, classDecl := range Children(c) {
+					if classDecl.Type() == "field_declaration" {
 						var public, static bool
 
-						if classChild.NamedChild(0).Type() == "modifiers" {
-							for _, c := range UnnamedChildren(classChild.NamedChild(0)) {
-								switch c.Type() {
-								case "static":
-									static = true
+						if classDecl.NamedChild(0).Type() == "modifiers" {
+							for _, modifier := range UnnamedChildren(classDecl.NamedChild(0)) {
+								switch modifier.Type() {
 								case "public":
 									public = true
+								case "static":
+									static = true
 								}
 							}
 						}
 
-						// TODO: Handle public for class fields
-						_ = public
-
-						if static {
-							// Static means that this is a global variable
-							field := ParseNode(classChild, source, ctx).(*ast.Field)
-							globalVariables.Specs = append(globalVariables.Specs, &ast.ValueSpec{Names: field.Names, Type: field.Type})
+						field := ParseNode(classDecl, source, ctx).(*ast.Field)
+						if public {
+							field.Names = []*ast.Ident{CapitalizeIdent(field.Names[0])}
 						} else {
-							fields.List = append(fields.List, ParseNode(classChild, source, ctx).(*ast.Field))
+							field.Names = []*ast.Ident{LowercaseIdent(field.Names[0])}
+						}
+
+						// Static fields are global variables
+						if static {
+							globalVariables.Specs = append(globalVariables.Specs, &ast.ValueSpec{
+								Names: field.Names,
+								Type:  field.Type,
+							})
+						} else {
+							fields.List = append(fields.List, field)
 						}
 					}
 				}
 			}
 		}
 
-		decls := []ast.Decl{}
-		if len(globalVariables.Specs) > 0 {
-			decls = append(decls, globalVariables)
-		}
-		decls = append(decls, GenStruct(ctx.className, fields))
+		declarations := []ast.Decl{}
 
-		// Join the generated struct with all the other decls
-		return append(decls, structDecls...)
+		// Add the global variables first
+		if len(globalVariables.Specs) > 0 {
+			declarations = append(declarations, globalVariables)
+		}
+
+		// Generic type declarations
+		declarations = append(declarations, genericTypes...)
+
+		// The struct for the class
+		declarations = append(declarations, GenStruct(ctx.className, fields))
+
+		// Add in all the other declarations for the class
+		declarations = append(declarations, structDecls...)
+
+		return declarations
 	case "class_body":
 		decls := []ast.Decl{}
 		for _, item := range Children(node) {
@@ -129,6 +167,18 @@ func TryParseDecls(node *sitter.Node, source []byte, ctx Ctx) []ast.Decl {
 		// NOTE: Fix this to handle an interface correctly
 		//decls := []ast.Decl{GenStruct(ctx.className, fields)}
 		return []ast.Decl{}
+	case "type_parameters":
+		var declarations []ast.Decl
+
+		// A list of generic type parameters
+		for _, param := range Children(node) {
+			switch param.Type() {
+			case "type_parameter":
+				declarations = append(declarations, GenTypeInterface(param.NamedChild(0).Content(source), []string{"any"}))
+			}
+		}
+
+		return declarations
 	}
 	return nil
 }
@@ -266,5 +316,6 @@ func TryParseDecl(node *sitter.Node, source []byte, ctx Ctx) ast.Decl {
 			Body: ParseStmt(node.NamedChild(0), source, ctx).(*ast.BlockStmt),
 		}
 	}
+
 	return nil
 }

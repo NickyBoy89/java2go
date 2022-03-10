@@ -40,13 +40,23 @@ func Inspect(node *sitter.Node, source []byte) {
 // CapitalizeIdent capitalizes the first letter of a `*ast.Ident` to mark the
 // result as a public method or field
 func CapitalizeIdent(in *ast.Ident) *ast.Ident {
-	return &ast.Ident{Name: string(unicode.ToUpper(rune(in.Name[0]))) + in.Name[1:]}
+	return &ast.Ident{Name: ToPublic(in.Name)}
 }
 
 // LowercaseIdent lowercases the first letter of a `*ast.Ident` to mark the
 // result as a private method or field
 func LowercaseIdent(in *ast.Ident) *ast.Ident {
-	return &ast.Ident{Name: string(unicode.ToLower(rune(in.Name[0]))) + in.Name[1:]}
+	return &ast.Ident{Name: ToPrivate(in.Name)}
+}
+
+// ToPublic uppercases the first character of the given string
+func ToPublic(name string) string {
+	return string(unicode.ToUpper(rune(name[0]))) + name[1:]
+}
+
+// ToPrivate lowercases the first character of the given string
+func ToPrivate(name string) string {
+	return string(unicode.ToLower(rune(name[0]))) + name[1:]
 }
 
 // A Ctx is passed into the `ParseNode` function and contains any data that is
@@ -67,7 +77,8 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 	switch node.Type() {
 	case "ERROR":
 		log.WithFields(log.Fields{
-			"parsed": node,
+			"parsed":    node.Content(source),
+			"className": ctx.className,
 		}).Warn("Error parsing generic node")
 		return &ast.BadStmt{}
 	case "program":

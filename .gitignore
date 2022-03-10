@@ -2,6 +2,7 @@
 java2go
 decompiled/
 procyon/
+namedSrc/
 yarn/
 intellij-fernflower
 *.jar

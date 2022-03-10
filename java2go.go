@@ -26,7 +26,9 @@ func main() {
 	writeFlag := flag.Bool("w", false, "Whether to write the files to disk instead of stdout")
 	quiet := flag.Bool("q", false, "Don't write to stdout on successful parse")
 	astFlag := flag.Bool("ast", false, "Print out go's pretty-printed ast, instead of source code")
+	syncFlag := flag.Bool("sync", false, "Parse the files sequentially, instead of multi-threaded")
 	dependencyTreeFlag := flag.Bool("dependency-tree", false, "Output a dependency tree of all classes, in graphviz dot format")
+
 	flag.Parse()
 
 	// Sem determines the number of files parsed in parallel
@@ -149,7 +151,7 @@ func main() {
 			ast.Print(token.NewFileSet(), ParseNode(n, sourceCode, Ctx{}).(ast.Node))
 		}
 
-		go func() {
+		parseFunc := func() {
 			sem <- struct{}{}
 			// Release the semaphore when done
 			defer func() { <-sem }()
@@ -158,7 +160,13 @@ func main() {
 				panic(err)
 			}
 			wg.Done()
-		}()
+		}
+
+		if *syncFlag {
+			parseFunc()
+		} else {
+			go parseFunc()
+		}
 	}
 
 	wg.Wait()

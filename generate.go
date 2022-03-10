@@ -89,3 +89,37 @@ func GenStruct(structName string, structFields *ast.FieldList) ast.Decl {
 		},
 	}
 }
+
+func genType(remaining []string) ast.Expr {
+	if len(remaining) == 1 {
+		return &ast.UnaryExpr{
+			Op: token.TILDE,
+			X:  &ast.Ident{Name: remaining[0]},
+		}
+	}
+	return &ast.BinaryExpr{
+		X:  genType(remaining[1:]),
+		Op: token.OR,
+		Y:  genType(remaining[:1]),
+	}
+}
+
+func GenTypeInterface(name string, types []string) ast.Decl {
+	return &ast.GenDecl{
+		Tok: token.TYPE,
+		Specs: []ast.Spec{
+			&ast.TypeSpec{
+				Name: &ast.Ident{Name: name},
+				Type: &ast.InterfaceType{
+					Methods: &ast.FieldList{
+						List: []*ast.Field{
+							&ast.Field{
+								Type: genType(types),
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+}

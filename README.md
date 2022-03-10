@@ -23,8 +23,10 @@ It does this through several steps:
 
 * `-w` writes the files directly to their corresponding `.go` files, instead of `stdout`
 
-* `-q` Prevents the outputs of the parsed files from appearing on `stdout`, if not being written
+* `-q` prevents the outputs of the parsed files from appearing on `stdout`, if not being written
 
 * `-ast` pretty-prints the generated ast, in addition to any other options
+
+* `-sync` parses the files in sequential order, instead of in parallel
 
 * `--dependency-tree` outputs a graph of all source module dependencies in graphviz dot format, as `graph.dot`

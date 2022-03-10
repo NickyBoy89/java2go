@@ -12,6 +12,7 @@ run:
 	# Decompile everything
 	java -jar $(fernflower) -rsy=1 $(namedjar) decompiled
 	cd decompiled && unzip $(namedjar)
+	cp -r yarn/namedSrc .
 
 .PHONY:clean-decom,clean,buildyarn,buildfernflower
 
@@ -29,7 +30,7 @@ yarn:
 	git clone -b 1.16.5 git@github.com:FabricMC/yarn.git
 
 buildyarn: yarn
-	cd yarn && ./gradlew mapNamedJar
+	cd yarn && ./gradlew mapNamedJar && ./gradlew decompileCFR
 
 intellij-fernflower:
 	git clone git@github.com:FabricMC/intellij-fernflower.git

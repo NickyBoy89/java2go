@@ -20,7 +20,8 @@ func TryParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 	switch node.Type() {
 	case "ERROR":
 		log.WithFields(log.Fields{
-			"parsed": node,
+			"parsed":    node.Content(source),
+			"className": ctx.className,
 		}).Warn("Expression parse error")
 		return &ast.BadExpr{}
 	case "comment":
@@ -164,30 +165,35 @@ func TryParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 			panic(fmt.Sprintf("Calling method with unknown number of args: %v", node.NamedChildCount()))
 		}
 	case "object_creation_expression":
-		// For some reason, objects can be created two different ways:
-		// arg.new Object();
-		// or:
-		// new arg.Object();
+		// This is called when anything is created with a constructor
 
-		if node.NamedChildCount() > 2 {
-			// TODO: Fix this to accept more values
-			return &ast.BadExpr{}
-		}
+		// Usually, this is called in this format:
+		// * The name of the type, this can either be an `identifier` or `generic_type`
+		// * An `argument_list` for the constructor's arguments
 
-		objExpr := ParseExpr(node.NamedChild(0), source, ctx)
+		// But, when creating a new inner class from an outer class, it can use this format:
+		// outerClass.new InnerClass()
 
-		// The other method of calling the constructor
-		if sel, ok := objExpr.(*ast.SelectorExpr); ok {
-			return &ast.CallExpr{
-				Fun:  &ast.Ident{Name: "New" + sel.X.(*ast.Ident).Name + node.NamedChild(1).Content(source)},
-				Args: ParseNode(node.NamedChild(2), source, ctx).([]ast.Expr),
+		// The name of the function will always be the last identifier
+		var functionNameInd int
+		for ind, c := range Children(node) {
+			if c.Type() == "type_identifier" {
+				functionNameInd = ind
 			}
 		}
+
+		var functionName string
+		parsed := ParseExpr(node.NamedChild(functionNameInd), source, ctx)
+		switch parsed.(type) {
+		case *ast.Ident:
+			functionName = parsed.(*ast.Ident).Name
+		case *ast.StarExpr:
+			functionName = parsed.(*ast.StarExpr).X.(*ast.Ident).Name
+		}
+
 		return &ast.CallExpr{
-			// All object creations are usually done by calling the constructor
-			//function, which is generated as `"New" + className`
-			Fun:  &ast.Ident{Name: "New" + node.NamedChild(0).Content(source)},
-			Args: ParseNode(node.NamedChild(1), source, ctx).([]ast.Expr),
+			Fun:  &ast.Ident{Name: "New" + functionName},
+			Args: ParseNode(node.NamedChild(functionNameInd+1), source, ctx).([]ast.Expr),
 		}
 	case "array_creation_expression":
 		// The type of the array

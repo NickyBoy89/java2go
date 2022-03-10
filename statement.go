@@ -20,7 +20,8 @@ func TryParseStmt(node *sitter.Node, source []byte, ctx Ctx) ast.Stmt {
 	switch node.Type() {
 	case "ERROR":
 		log.WithFields(log.Fields{
-			"parsed": node,
+			"parsed":    node.Content(source),
+			"className": ctx.className,
 		}).Warn("Statement parse error")
 		return &ast.BadStmt{}
 	case "comment":
