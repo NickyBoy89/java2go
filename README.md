@@ -23,6 +23,8 @@ It does this through several steps:
 
 * `-w` writes the files directly to their corresponding `.go` files, instead of `stdout`
 
+* `-outDir` specifies an alternate directory for the generated files. Defaults to putting them next to their source files by default
+
 * `-q` prevents the outputs of the parsed files from appearing on `stdout`, if not being written
 
 * `-ast` pretty-prints the generated ast, in addition to any other options

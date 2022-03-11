@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"go/ast"
@@ -12,6 +13,8 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+
+	stdpath "path"
 
 	"github.com/NickyBoy89/java2go/dot"
 	log "github.com/sirupsen/logrus"
@@ -27,6 +30,7 @@ func main() {
 	quiet := flag.Bool("q", false, "Don't write to stdout on successful parse")
 	astFlag := flag.Bool("ast", false, "Print out go's pretty-printed ast, instead of source code")
 	syncFlag := flag.Bool("sync", false, "Parse the files sequentially, instead of multi-threaded")
+	outDirFlag := flag.String("outDir", ".", "Specify a directory for the generated files")
 	dependencyTreeFlag := flag.Bool("dependency-tree", false, "Output a dependency tree of all classes, in graphviz dot format")
 
 	flag.Parse()
@@ -135,7 +139,17 @@ func main() {
 		// If write is specified, then write everything to the corresponding files
 		if *writeFlag {
 			outFile := path[:len(path)-len(filepath.Ext(path))] + ".go"
-			output, err = os.Create(outFile)
+
+			if _, err := os.Stat(stdpath.Dir(*outDirFlag + "/" + outFile)); err != nil {
+				if errors.Is(err, fs.ErrNotExist) {
+					err = os.MkdirAll(stdpath.Dir(*outDirFlag+"/"+outFile), 0755)
+					if err != nil {
+						panic(fmt.Errorf("Failed to create directory: %v", err))
+					}
+				}
+			}
+
+			output, err = os.Create(*outDirFlag + "/" + outFile)
 			if err != nil {
 				panic(fmt.Errorf("Error creating file %v: %v", outFile, err))
 			}
