@@ -100,30 +100,45 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 		var fieldType ast.Expr
 		var fieldName *ast.Ident
 
+		var public bool
+
+		var fieldOffset int
+
 		for ind, c := range Children(node) {
 			switch c.Type() {
 			case "modifiers": // Ignore the modifiers for now
-				// The variable's type will always follow the modifiers, if they are present
-				fieldType = ParseExpr(node.NamedChild(ind+1), source, ctx)
-				// The value will come one after that
-				fieldName = ParseExpr(node.NamedChild(ind+2).NamedChild(0), source, ctx).(*ast.Ident)
+				for _, modifier := range UnnamedChildren(c) {
+					if modifier.Type() == "public" {
+						public = true
+					}
+				}
+				fieldOffset = ind + 1
 			}
 		}
 
-		// If no modifiers were declared, then declare everything with the default
-		// offsets
 		if fieldType == nil {
-			fieldType = ParseExpr(node.NamedChild(0), source, ctx)
-			fieldName = ParseExpr(node.NamedChild(1).NamedChild(0), source, ctx).(*ast.Ident)
+			fieldType = ParseExpr(node.NamedChild(fieldOffset), source, ctx)
+			fieldName = ParseExpr(node.NamedChild(fieldOffset+1).NamedChild(0), source, ctx).(*ast.Ident)
+		}
+
+		if public {
+			fieldName = CapitalizeIdent(fieldName)
+		} else {
+			fieldName = LowercaseIdent(fieldName)
+		}
+
+		// If the field had a value associated with it, (ex: variable = NewValue())
+		if node.NamedChild(fieldOffset+1).NamedChildCount() > 1 {
+			return &ast.ValueSpec{
+				Names:  []*ast.Ident{fieldName},
+				Type:   fieldType,
+				Values: []ast.Expr{ParseExpr(node.NamedChild(fieldOffset+1).NamedChild(1), source, ctx)},
+			}
 		}
 
 		return &ast.Field{
-			Names: []*ast.Ident{
-				// This field is a `variable_declarator` which gets parsed out to a
-				// full statement, but we only want the identifier for its type
-				fieldName,
-			},
-			Type: fieldType,
+			Names: []*ast.Ident{fieldName},
+			Type:  fieldType,
 		}
 	case "import_declaration":
 		return &ast.ImportSpec{Name: ParseExpr(node.NamedChild(0), source, ctx).(*ast.Ident)}

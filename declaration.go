@@ -71,34 +71,42 @@ func TryParseDecls(node *sitter.Node, source []byte, ctx Ctx) []ast.Decl {
 				// Go through the class and extract the fields
 				for _, classDecl := range Children(c) {
 					if classDecl.Type() == "field_declaration" {
-						var public, static bool
+
+						var static bool
 
 						if classDecl.NamedChild(0).Type() == "modifiers" {
 							for _, modifier := range UnnamedChildren(classDecl.NamedChild(0)) {
-								switch modifier.Type() {
-								case "public":
-									public = true
-								case "static":
+								if modifier.Type() == "static" {
 									static = true
 								}
 							}
 						}
 
-						field := ParseNode(classDecl, source, ctx).(*ast.Field)
-						if public {
-							field.Names = []*ast.Ident{CapitalizeIdent(field.Names[0])}
-						} else {
-							field.Names = []*ast.Ident{LowercaseIdent(field.Names[0])}
-						}
+						// The field can either be a `ValueSpec` or a `Field`, based on whether
+						// the field is being set to a value
+						fieldDecl := ParseNode(classDecl, source, ctx)
+
+						field, isField := fieldDecl.(*ast.Field)
 
 						// Static fields are global variables
 						if static {
-							globalVariables.Specs = append(globalVariables.Specs, &ast.ValueSpec{
-								Names: field.Names,
-								Type:  field.Type,
-							})
+							if !isField {
+								globalVariables.Specs = append(globalVariables.Specs, fieldDecl.(*ast.ValueSpec))
+							} else {
+								globalVariables.Specs = append(globalVariables.Specs, &ast.ValueSpec{
+									Names: field.Names,
+									Type:  field.Type,
+								})
+							}
 						} else {
-							fields.List = append(fields.List, field)
+							if !isField {
+								// NOTE: This silently throws away the initial values of some
+								// variables in the class's declaration
+								valueField := fieldDecl.(*ast.ValueSpec)
+								fields.List = append(fields.List, &ast.Field{Names: valueField.Names, Type: valueField.Type})
+							} else {
+								fields.List = append(fields.List, field)
+							}
 						}
 					}
 				}
