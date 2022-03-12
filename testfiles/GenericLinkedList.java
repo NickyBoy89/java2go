@@ -3,7 +3,7 @@ public class GenericLinkedList<T> {
   Node head;
   Node tail;
 
-  class Node {
+  public class Node {
     T val;
     Node next;
 
