@@ -130,8 +130,7 @@ func TryParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 		}
 		return &ast.CompositeLit{
 			Type: &ast.ArrayType{
-				// TODO: Fix this so that the type of array isn't always an array of ints
-				Elt: &ast.Ident{Name: "int"},
+				Elt: &ast.Ident{Name: ctx.arrayType},
 			},
 			Elts: items,
 		}
