@@ -293,8 +293,15 @@ func TryParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 	case "hex_integer_literal":
 		return &ast.Ident{Name: node.Content(source)}
 	case "decimal_floating_point_literal":
-		// This is something like 1.3D
-		return &ast.Ident{Name: node.Content(source)}
+		// This is something like 1.3D or 1.3F
+		literal := node.Content(source)
+		switch literal[len(literal)-1] {
+		case 'D':
+			return &ast.CallExpr{Fun: &ast.Ident{Name: "float64"}, Args: []ast.Expr{&ast.BasicLit{Kind: token.FLOAT, Value: literal[:len(literal)-1]}}}
+		case 'F':
+			return &ast.CallExpr{Fun: &ast.Ident{Name: "float32"}, Args: []ast.Expr{&ast.BasicLit{Kind: token.FLOAT, Value: literal[:len(literal)-1]}}}
+		}
+		return &ast.Ident{Name: literal}
 	case "string_literal":
 		return &ast.Ident{Name: node.Content(source)}
 	case "character_literal":
