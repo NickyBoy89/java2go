@@ -67,7 +67,8 @@ type Ctx struct {
 	className string
 	// Used when generating arrays, because in Java, these are defined as
 	// arrType[] varName = {item, item, item}, and no class name data is defined
-	arrayType string
+	// Can either be of type `*ast.Ident` or `*ast.StarExpr`
+	lastType ast.Expr
 }
 
 // Parses a given tree-sitter node and returns the ast representation for it

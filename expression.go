@@ -129,9 +129,7 @@ func TryParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 			items = append(items, ParseExpr(c, source, ctx))
 		}
 		return &ast.CompositeLit{
-			Type: &ast.ArrayType{
-				Elt: &ast.Ident{Name: ctx.arrayType},
-			},
+			Type: ctx.lastType.(*ast.ArrayType),
 			Elts: items,
 		}
 	case "method_invocation":

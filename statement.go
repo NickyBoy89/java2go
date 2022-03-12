@@ -50,6 +50,8 @@ func TryParseStmt(node *sitter.Node, source []byte, ctx Ctx) ast.Stmt {
 			}
 		}
 
+		ctx.lastType = ParseExpr(node.NamedChild(varTypeIndex), source, ctx)
+
 		declaration := ParseStmt(node.NamedChild(varTypeIndex+1), source, ctx).(*ast.AssignStmt)
 
 		var containsNull bool
