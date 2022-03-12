@@ -35,7 +35,7 @@ func TryParseStmt(node *sitter.Node, source []byte, ctx Ctx) ast.Stmt {
 			varTypeIndex = 1
 		}
 
-		// The variable declarator does not have a value
+		// The variable declarator does not have a value (ex: int value;)
 		if node.NamedChild(varTypeIndex+1).NamedChildCount() == 1 {
 			return &ast.DeclStmt{
 				Decl: &ast.GenDecl{
@@ -50,8 +50,40 @@ func TryParseStmt(node *sitter.Node, source []byte, ctx Ctx) ast.Stmt {
 			}
 		}
 
-		// Ignore the type being declared, because it is going to be inferred
-		return ParseStmt(node.NamedChild(varTypeIndex+1), source, ctx)
+		declaration := ParseStmt(node.NamedChild(varTypeIndex+1), source, ctx).(*ast.AssignStmt)
+
+		var containsNull bool
+
+		// Go through the values and see if there is a `null_literal`
+		for _, child := range Children(node.NamedChild(varTypeIndex + 1)) {
+			if child.Type() == "null_literal" {
+				containsNull = true
+			}
+		}
+
+		names := make([]*ast.Ident, len(declaration.Lhs))
+		for ind, decl := range declaration.Lhs {
+			names[ind] = decl.(*ast.Ident)
+		}
+
+		// If the declaration contains null, declare it with the `var` keyword instead
+		// of implicitly
+		if containsNull {
+			return &ast.DeclStmt{
+				Decl: &ast.GenDecl{
+					Tok: token.VAR,
+					Specs: []ast.Spec{
+						&ast.ValueSpec{
+							Names:  names,
+							Type:   ParseExpr(node.NamedChild(varTypeIndex), source, ctx),
+							Values: declaration.Rhs,
+						},
+					},
+				},
+			}
+		}
+
+		return declaration
 	case "variable_declarator":
 		var names, values []ast.Expr
 
@@ -68,16 +100,21 @@ func TryParseStmt(node *sitter.Node, source []byte, ctx Ctx) ast.Stmt {
 
 		return &ast.AssignStmt{Lhs: names, Tok: token.DEFINE, Rhs: values}
 	case "assignment_expression":
+		assignVar := ParseExpr(node.Child(0), source, ctx)
+		assignVal := ParseExpr(node.Child(2), source, ctx)
+
+		// Unsigned right shift
 		if node.Child(1).Content(source) == ">>>=" {
 			return &ast.ExprStmt{X: &ast.CallExpr{
 				Fun:  &ast.Ident{Name: "UnsignedRightShiftAssignment"},
-				Args: []ast.Expr{ParseExpr(node.Child(0), source, ctx), ParseExpr(node.Child(2), source, ctx)},
+				Args: []ast.Expr{assignVar, assignVal},
 			}}
 		}
+
 		return &ast.AssignStmt{
-			Lhs: []ast.Expr{ParseExpr(node.Child(0), source, ctx)},
+			Lhs: []ast.Expr{assignVar},
 			Tok: StrToToken(node.Child(1).Content(source)),
-			Rhs: []ast.Expr{ParseExpr(node.Child(2), source, ctx)},
+			Rhs: []ast.Expr{assignVal},
 		}
 	case "update_expression":
 		if node.Child(0).IsNamed() {
