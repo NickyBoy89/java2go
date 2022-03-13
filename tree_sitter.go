@@ -179,15 +179,13 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 		return params
 	case "formal_parameter":
 		// If the parameter has an annotation, ignore that
+		offset := 0
 		if node.NamedChild(0).Type() == "modifiers" {
-			return &ast.Field{
-				Names: []*ast.Ident{ParseExpr(node.NamedChild(2), source, ctx).(*ast.Ident)},
-				Type:  ParseExpr(node.NamedChild(1), source, ctx),
-			}
+			offset = 1
 		}
 		return &ast.Field{
-			Names: []*ast.Ident{ParseExpr(node.NamedChild(1), source, ctx).(*ast.Ident)},
-			Type:  ParseExpr(node.NamedChild(0), source, ctx),
+			Names: []*ast.Ident{ParseExpr(node.NamedChild(offset+1), source, ctx).(*ast.Ident)},
+			Type:  ParseExpr(node.NamedChild(offset), source, ctx),
 		}
 	case "spread_parameter":
 		// The spread paramater takes a list and separates it into multiple elements
