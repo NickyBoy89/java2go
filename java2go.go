@@ -12,6 +12,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"sync"
 
 	stdpath "path"
@@ -21,6 +23,8 @@ import (
 	sitter "github.com/smacker/go-tree-sitter"
 	"github.com/smacker/go-tree-sitter/java"
 )
+
+var excludedAnnotations = make(map[string]struct{})
 
 func main() {
 	parser := sitter.NewParser()
@@ -33,10 +37,16 @@ func main() {
 	outDirFlag := flag.String("outDir", ".", "Specify a directory for the generated files")
 	dependencyTreeFlag := flag.Bool("dependency-tree", false, "Output a dependency tree of all classes, in graphviz dot format")
 
+	excludeAnnotationsFlag := flag.String("exclude-annotations", "", "A comma-separated list of annotations to exclude from the final code generation")
+
 	flag.Parse()
 
+	for _, annotation := range strings.Split(*excludeAnnotationsFlag, ",") {
+		excludedAnnotations[annotation] = struct{}{}
+	}
+
 	// Sem determines the number of files parsed in parallel
-	sem := make(chan struct{}, 4)
+	sem := make(chan struct{}, runtime.NumCPU())
 
 	// Collects the list of all the names of the files found
 	fileNames := []string{}

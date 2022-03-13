@@ -74,10 +74,19 @@ func TryParseDecls(node *sitter.Node, source []byte, ctx Ctx) []ast.Decl {
 
 						var static bool
 
+						comments := []*ast.Comment{}
+
 						if classDecl.NamedChild(0).Type() == "modifiers" {
 							for _, modifier := range UnnamedChildren(classDecl.NamedChild(0)) {
-								if modifier.Type() == "static" {
+								switch modifier.Type() {
+								case "static":
 									static = true
+								case "marker_annotation", "annotation":
+									comments = append(comments, &ast.Comment{Text: "//" + modifier.Content(source)})
+									if _, in := excludedAnnotations[modifier.Content(source)]; in {
+										// Skip this field if there is an ignored annotation
+										continue
+									}
 								}
 							}
 						}
@@ -87,6 +96,10 @@ func TryParseDecls(node *sitter.Node, source []byte, ctx Ctx) []ast.Decl {
 						fieldDecl := ParseNode(classDecl, source, ctx)
 
 						field, isField := fieldDecl.(*ast.Field)
+
+						if len(comments) > 0 && isField {
+							field.Doc = &ast.CommentGroup{List: comments}
+						}
 
 						// Static fields are global variables
 						if static {
@@ -257,6 +270,9 @@ func TryParseDecl(node *sitter.Node, source []byte, ctx Ctx) ast.Decl {
 
 		var params *ast.FieldList
 
+		// Store the annotations as comments on the method
+		comments := []*ast.Comment{}
+
 		for _, c := range Children(node) {
 			switch c.Type() {
 			case "modifiers":
@@ -269,6 +285,13 @@ func TryParseDecl(node *sitter.Node, source []byte, ctx Ctx) ast.Decl {
 					case "abstract":
 						// TODO: Handle abstract methods correctly
 						return &ast.BadDecl{}
+					case "marker_annotation", "annotation":
+						comments = append(comments, &ast.Comment{Text: "//" + mod.Content(source)})
+						// If the annotation was on the list of ignored annotations, don't
+						// parse the method
+						if _, in := excludedAnnotations[mod.Content(source)]; in {
+							return &ast.BadDecl{}
+						}
 					}
 				}
 			case "type_parameters": // For generic types
@@ -304,6 +327,7 @@ func TryParseDecl(node *sitter.Node, source []byte, ctx Ctx) ast.Decl {
 		}
 
 		return &ast.FuncDecl{
+			Doc:  &ast.CommentGroup{List: comments},
 			Name: methodName,
 			Recv: methodRecv,
 			Type: &ast.FuncType{

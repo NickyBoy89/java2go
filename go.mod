@@ -5,6 +5,7 @@ go 1.18
 require (
 	github.com/sirupsen/logrus v1.8.1
 	github.com/smacker/go-tree-sitter v0.0.0-20220209044044-0d3022e933c3
+	golang.org/x/exp v0.0.0-20220312040426-20fd27f61765
 )
 
 require (
