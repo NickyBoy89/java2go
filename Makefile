@@ -1,7 +1,12 @@
 fernflower = fabric-fernflower-1.4.1+local.jar
 namedjar = 1.16.5-named.jar
 
-all: build run
+all:
+
+decompile:
+	go run . -outDir=out -exclude-annotations="@Environment(EnvType.CLIENT)" -w quiltflower/
+
+gen-sources: build run
 
 run:
 	mkdir decompiled
