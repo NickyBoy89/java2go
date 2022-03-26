@@ -1,4 +1,5 @@
 fernflower = fabric-fernflower-1.4.1+local.jar
+quiltflower = quiltflower-1.7.0+local.jar
 namedjar = 1.16.5-named.jar
 
 all:
@@ -31,6 +32,12 @@ clean:
 	-cd yarn && ./gradlew --stop
 	-rm -rf yarn
 	-rm -r out
+
+quiltflower:
+	git clone git@github.com:QuiltMC/quiltflower.git quiltflower-src
+	cd quiltflower-src && ./gradlew build
+	mkdir quiltflower
+	java -jar quiltflower-src/build/libs/$(quiltflower) -rsy=1 $(namedjar) quiltflower
 
 yarn:
 	git clone -b 1.16.5 git@github.com:FabricMC/yarn.git
