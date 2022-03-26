@@ -30,6 +30,7 @@ clean:
 	-rm -rf intellij-fernflower
 	-cd yarn && ./gradlew --stop
 	-rm -rf yarn
+	-rm -r out
 
 yarn:
 	git clone -b 1.16.5 git@github.com:FabricMC/yarn.git

@@ -137,6 +137,7 @@ func TryParseDecls(node *sitter.Node, source []byte, ctx Ctx) []ast.Decl {
 		declarations = append(declarations, genericTypes...)
 
 		// The struct for the class
+		// NOTE: This will be generated regardless of anything depending on it
 		declarations = append(declarations, GenStruct(ctx.className, fields))
 
 		// Add in all the other declarations for the class
@@ -157,7 +158,11 @@ func TryParseDecls(node *sitter.Node, source []byte, ctx Ctx) []ast.Decl {
 				decls = append(decls, declList...)
 			} else {
 				// Otherwise, treat it as a decl
-				decls = append(decls, ParseDecl(item, source, ctx))
+				decl := ParseDecl(item, source, ctx)
+				// Only add good declarations
+				if _, bad := decl.(*ast.BadDecl); !bad {
+					decls = append(decls, decl)
+				}
 			}
 		}
 		return decls
