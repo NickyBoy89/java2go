@@ -1,11 +1,15 @@
-# Files specific to this project
+# Main binary
 java2go
-decompiled/
-quiltflower/
-procyon/
-namedSrc/
+
+# Intemediary decompiled directories
+quiltflower-src/
+intellij-fernflower/
 yarn/
-intellij-fernflower
+
+# Decompiled code
+fernflower/
+quiltflower/
+namedSrc/
 *.jar
 
 # Analytic files
