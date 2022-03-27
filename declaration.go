@@ -167,13 +167,36 @@ func TryParseDecls(node *sitter.Node, source []byte, ctx Ctx) []ast.Decl {
 			}
 		}
 		return decls
+	case "interface_body":
+		methods := &ast.FieldList{}
+
+		for _, c := range Children(node) {
+			if c.Type() == "method_declaration" {
+				parsedMethod := ParseNode(c, source, ctx).(*ast.Field)
+				// If the method was ignored with an annotation, it will return a blank
+				// field, so ignore that
+				if parsedMethod.Type != nil {
+					methods.List = append(methods.List, parsedMethod)
+				}
+			}
+		}
+
+		return []ast.Decl{GenInterface(ctx.className, methods)}
 	case "interface_declaration":
-		//modifiers := ParseNode(node.NamedChild(0), source, ctx)
+		decls := []ast.Decl{}
 
-		ctx.className = node.NamedChild(1).Content(source)
+		for _, c := range Children(node) {
+			switch c.Type() {
+			case "modifiers":
+			case "identifier":
+				ctx.className = c.Content(source)
+			case "interface_body":
+				decls = ParseDecls(c, source, ctx)
+			}
+		}
 
-		// NOTE: Fix this to correctly generate an interface
-		return []ast.Decl{}
+		// TODO: Fix this to correctly generate an interface
+		return decls
 	case "enum_declaration":
 		// An enum is treated as both a struct, and a list of values that define
 		// the states that the enum can be in
@@ -191,7 +214,7 @@ func TryParseDecls(node *sitter.Node, source []byte, ctx Ctx) []ast.Decl {
 			}
 		}
 
-		// NOTE: Fix this to handle an interface correctly
+		// TODO: Fix this to handle an enum correctly
 		//decls := []ast.Decl{GenStruct(ctx.className, fields)}
 		return []ast.Decl{}
 	case "type_parameters":

@@ -92,7 +92,7 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 			switch c.Type() {
 			case "package_declaration":
 				program.Name = &ast.Ident{Name: c.NamedChild(0).NamedChild(int(c.NamedChild(0).NamedChildCount()) - 1).Content(source)}
-			case "class_declaration":
+			case "class_declaration", "interface_declaration":
 				program.Decls = ParseDecls(c, source, ctx)
 			case "import_declaration":
 				program.Imports = append(program.Imports, ParseNode(c, source, ctx).(*ast.ImportSpec))
@@ -145,6 +145,51 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 		}
 	case "import_declaration":
 		return &ast.ImportSpec{Name: ParseExpr(node.NamedChild(0), source, ctx).(*ast.Ident)}
+	case "method_declaration":
+		//methodName string, methodParams, returnType
+
+		var offset int
+
+		var public bool
+
+		comments := []*ast.Comment{}
+
+		if node.NamedChild(0).Type() == "modifiers" {
+			for _, modifier := range UnnamedChildren(node.NamedChild(0)) {
+				switch modifier.Type() {
+				case "public":
+					public = true
+				case "marker_annotation", "annotation":
+					comments = append(comments, &ast.Comment{Text: "//" + modifier.Content(source)})
+					if _, in := excludedAnnotations[modifier.Content(source)]; in {
+						return &ast.Field{}
+					}
+				}
+			}
+			offset = 1
+		}
+
+		methodName := &ast.Ident{Name: node.NamedChild(offset + 1).Content(source)}
+
+		if public {
+			methodName = CapitalizeIdent(methodName)
+		} else {
+			methodName = LowercaseIdent(methodName)
+		}
+
+		return &ast.Field{
+			Doc:   &ast.CommentGroup{List: comments},
+			Names: []*ast.Ident{methodName},
+			Type: &ast.FuncType{
+				Params: ParseNode(node.NamedChild(offset+2), source, ctx).(*ast.FieldList),
+				Results: &ast.FieldList{List: []*ast.Field{
+					&ast.Field{
+						Type: ParseExpr(node.NamedChild(offset), source, ctx).(*ast.Ident),
+					},
+				},
+				},
+			},
+		}
 	case "try_with_resources_statement":
 		// Ignore try with resources statements as well
 		// NOTE: This will also ignore the catch clause
