@@ -3,6 +3,7 @@
 fernflower = fabric-fernflower-1.4.1+local.jar
 quiltflower = quiltflower-1.7.0+local.jar
 namedjar = 1.16.5-named.jar
+procyon = `curl --silent https://api.github.com/repos/mstrobel/procyon/releases/latest | jq -r .assets[0].name`
 
 decompile: quiltflower
 	go run . -outDir=out -exclude-annotations="@Environment(EnvType.CLIENT)" -w quiltflower/
@@ -12,12 +13,14 @@ clean:
 	-rm -rf quiltflower-src
 	-rm -rf yarn
 	-rm -rf intellij-fernflower
+	-rm ${procyon}*
 	# Decompiled files
-	-rm -r yarn fernflower quiltflower namedSrc
+	-rm -r yarn fernflower quiltflower namedSrc procyon
 
 # Yarn generates the deobfuscated jar files to decompile
 yarn:
 	git clone -b 1.16.5 git@github.com:FabricMC/yarn.git
+	#git clone -b 1.16.5 git@github.com:QuiltMC/yarn.git
 	cd yarn && ./gradlew --no-daemon mapNamedJar
 
 # Uses the quiltflower decompiler for decompilation
@@ -31,6 +34,11 @@ quiltflower: yarn
 CFR: yarn
 	cd yarn && ./gradlew --no-daemon decompileCFR
 	mv yarn/namedSrc .
+
+# Uses the Procyon decompiler for decompilation
+procyon: yarn
+	wget `curl --silent "https://api.github.com/repos/mstrobel/procyon/releases/latest" | jq -r .assets[0].browser_download_url`
+	java -jar "${procyon}" -jar "yarn/${namedjar}" -o procyon
 
 # Uses the fernflower decompiler for decompilation
 fernflower: yarn
