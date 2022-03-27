@@ -223,7 +223,8 @@ func TryParseStmt(node *sitter.Node, source []byte, ctx Ctx) ast.Stmt {
 		total := int(node.NamedChildCount())
 
 		return &ast.RangeStmt{
-			Key:   ParseExpr(node.NamedChild(total-4), source, ctx),
+			// We don't need the type of the variable for the range expression
+			Key:   &ast.Ident{Name: "_"},
 			Value: ParseExpr(node.NamedChild(total-3), source, ctx),
 			Tok:   token.DEFINE,
 			X:     ParseExpr(node.NamedChild(total-2), source, ctx),

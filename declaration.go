@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"go/ast"
 	"go/token"
+	"strings"
 
 	sitter "github.com/smacker/go-tree-sitter"
 )
@@ -315,15 +316,16 @@ func TryParseDecl(node *sitter.Node, source []byte, ctx Ctx) ast.Decl {
 			}
 		}
 
-		methodRecv := &ast.FieldList{List: []*ast.Field{
-			&ast.Field{
-				Names: []*ast.Ident{&ast.Ident{Name: ShortName(ctx.className)}},
-				Type:  &ast.StarExpr{X: &ast.Ident{Name: ctx.className}},
-			},
-		}}
+		var methodRecv *ast.FieldList
 
-		if static {
-			methodRecv = nil
+		// If the method is not static, define it as a struct's method
+		if !static {
+			methodRecv = &ast.FieldList{List: []*ast.Field{
+				&ast.Field{
+					Names: []*ast.Ident{&ast.Ident{Name: ShortName(ctx.className)}},
+					Type:  &ast.StarExpr{X: &ast.Ident{Name: ctx.className}},
+				},
+			}}
 		}
 
 		// If the methodName is nil, then the printer will panic
@@ -331,7 +333,7 @@ func TryParseDecl(node *sitter.Node, source []byte, ctx Ctx) ast.Decl {
 			panic("Method's name is nil")
 		}
 
-		return &ast.FuncDecl{
+		method := &ast.FuncDecl{
 			Doc:  &ast.CommentGroup{List: comments},
 			Name: methodName,
 			Recv: methodRecv,
@@ -343,6 +345,30 @@ func TryParseDecl(node *sitter.Node, source []byte, ctx Ctx) ast.Decl {
 			},
 			Body: ParseStmt(node.NamedChild(int(node.NamedChildCount()-1)), source, ctx).(*ast.BlockStmt),
 		}
+
+		// Special case for the main method, since this should always be lowercase,
+		// and per java rules, have an array of args defined with it
+		if strings.ToLower(methodName.Name) == "main" {
+			methodName.Name = "main"
+			// Remove all of its parameters
+			method.Type.Params = nil
+			// Add a new variable for the args
+			// args := os.Args
+			method.Body.List = append([]ast.Stmt{
+				&ast.AssignStmt{
+					Lhs: []ast.Expr{&ast.Ident{Name: "args"}},
+					Tok: token.DEFINE,
+					Rhs: []ast.Expr{
+						&ast.SelectorExpr{
+							X:   &ast.Ident{Name: "os"},
+							Sel: &ast.Ident{Name: "Args"},
+						},
+					},
+				},
+			}, method.Body.List...)
+		}
+
+		return method
 	case "static_initializer":
 		// A block of `static`, which is run before the main function
 		return &ast.FuncDecl{
