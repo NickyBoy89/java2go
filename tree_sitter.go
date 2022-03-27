@@ -84,12 +84,12 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 		return &ast.BadStmt{}
 	case "program":
 		// A program contains all the source code, in this case, one `class_declaration`
-		program := &ast.File{
-			Name: &ast.Ident{Name: "main"},
-		}
+		program := &ast.File{}
 
 		for _, c := range Children(node) {
 			switch c.Type() {
+			case "package_declaration":
+				program.Name = &ast.Ident{Name: c.NamedChild(0).NamedChild(int(c.NamedChild(0).NamedChildCount()) - 1).Content(source)}
 			case "class_declaration":
 				program.Decls = ParseDecls(c, source, ctx)
 			case "import_declaration":
