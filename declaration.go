@@ -195,7 +195,6 @@ func TryParseDecls(node *sitter.Node, source []byte, ctx Ctx) []ast.Decl {
 			}
 		}
 
-		// TODO: Fix this to correctly generate an interface
 		return decls
 	case "enum_declaration":
 		// An enum is treated as both a struct, and a list of values that define
