@@ -24,7 +24,10 @@ import (
 	"github.com/smacker/go-tree-sitter/java"
 )
 
-var excludedAnnotations = make(map[string]struct{})
+var (
+	// Stores a global list of Java annotations to exclude from the generated code
+	excludedAnnotations = make(map[string]struct{})
+)
 
 func main() {
 	parser := sitter.NewParser()
