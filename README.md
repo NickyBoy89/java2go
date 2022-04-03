@@ -1,13 +1,13 @@
 # Java2go
 ## About
 
-Java2go is a program that is intended to automatically convert Java files to Golang
+Java2go is a transpiler that automatically converts Java source code to compatible Go code
 
 It does this through several steps:
 
-1. Parse the java source code with the [golang bindings for the tree-sitter](git@github.com:smacker/go-tree-sitter.git) java parser into a `tree-sitter` AST
+1. Parse the java source code into a [`tree-sitter`](https://github.com/smacker/go-tree-sitter) AST
 
-2. Parse the bindings into Golang's own [AST representation](https://pkg.go.dev/go/ast)
+2. Convert that AST into Golang's own internal [AST representation](https://pkg.go.dev/go/ast)
 
 3. Use Golang's builtin [AST printer](https://pkg.go.dev/go/printer) to print out the generated code
 
