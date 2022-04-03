@@ -18,6 +18,7 @@ type TypeInformation struct {
 	types map[string]string
 }
 
+// TypeDecl is a mapping of a variable's name to its type
 type TypeDecl struct {
 	Type string
 	Name string
@@ -60,6 +61,8 @@ func walkTypeInfo(node *sitter.Node, source []byte) []TypeDecl {
 	return types
 }
 
+// ExtractTypeInformation returns a mapping of every variable and type in
+// the scope of the provided node
 func ExtractTypeInformation(root *sitter.Node, source []byte) (TypeInformation, error) {
 	info := TypeInformation{types: make(map[string]string)}
 
