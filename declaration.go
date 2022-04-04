@@ -24,125 +24,93 @@ func ParseDecls(node *sitter.Node, source []byte, ctx Ctx) []ast.Decl {
 func TryParseDecls(node *sitter.Node, source []byte, ctx Ctx) []ast.Decl {
 	switch node.Type() {
 	case "class_declaration":
-		// A class declaration contains:
-		// * The `modifiers` of the class
-		// * An `identifier` for the name of the class
-		// * `type_parameters` if the class is a generic class
-		// * The `class_body` for the content of the class
+		// TODO: Currently ignores implements and extends with the following tags:
+		//"superclass"
+		//"interfaces"
 
-		var publicClass bool
+		// All the declarations for the class
+		declarations := []ast.Decl{}
 
-		// Static fields are declared as global variables
+		// Global variables
 		globalVariables := &ast.GenDecl{Tok: token.VAR}
 
-		// All the declarations in the class (functions, methods, etc...)
-		var structDecls []ast.Decl
-
-		// All generic types parameters that are used in the class
-		var genericTypes []ast.Decl
-
+		// Other declarations
 		fields := &ast.FieldList{}
 
-		for _, c := range Children(node) {
-			switch c.Type() {
-			// Modifiers for the class
-			case "modifiers":
-				for _, modifier := range UnnamedChildren(c) {
-					switch modifier.Type() {
-					case "public":
-						publicClass = true
+		var public bool
+
+		// First, look through the class's body for field declarations
+		for _, child := range Children(node.ChildByFieldName("body")) {
+			if child.Type() == "field_declaration" {
+				var static bool
+
+				comments := []*ast.Comment{}
+
+				// Handle any modifiers that the field might have
+				if child.NamedChild(0).Type() == "modifiers" {
+					for _, modifier := range Children(child.NamedChild(0)) {
+						switch modifier.Type() {
+						case "static":
+							static = true
+						case "marker_annotation", "annotation":
+							comments = append(comments, &ast.Comment{Text: "//" + modifier.Content(source)})
+							if _, in := excludedAnnotations[modifier.Content(source)]; in {
+								// Skip this field if there is an ignored annotation
+								continue
+							}
+						}
 					}
 				}
-			// The class's name
-			case "identifier":
-				if publicClass {
-					ctx.className = ToPublic(c.Content(source))
+
+				// Parse the field declaration
+				// The field can either be a `Field`, or a `ValueSpec` if it was assigned to a value
+				field := ParseNode(child, source, ctx)
+
+				if valueField, hasValue := field.(*ast.ValueSpec); hasValue {
+					if len(comments) > 0 {
+						valueField.Doc = &ast.CommentGroup{List: comments}
+					}
+
+					if static {
+						globalVariables.Specs = append(globalVariables.Specs, valueField)
+					} else {
+						// TODO: If a variable is not static and it is initialized to
+						// a value, the value is thrown away
+						fields.List = append(fields.List, &ast.Field{Names: valueField.Names, Type: valueField.Type})
+					}
 				} else {
-					ctx.className = ToPrivate(c.Content(source))
-				}
-			// If the class is generic, contains the type parameters
-			case "type_parameters":
-				// Generate definitions for all the generic types
-				genericTypes = ParseDecls(c, source, ctx)
-			// The body of the class
-			case "class_body":
-				// Parse all the declarations in the class's body
-				structDecls = ParseDecls(c, source, ctx)
+					if len(comments) > 0 {
+						field.(*ast.Field).Doc = &ast.CommentGroup{List: comments}
+					}
 
-				// Go through the class and extract the fields
-				for _, classDecl := range Children(c) {
-					if classDecl.Type() == "field_declaration" {
-
-						var static bool
-
-						comments := []*ast.Comment{}
-
-						if classDecl.NamedChild(0).Type() == "modifiers" {
-							for _, modifier := range UnnamedChildren(classDecl.NamedChild(0)) {
-								switch modifier.Type() {
-								case "static":
-									static = true
-								case "marker_annotation", "annotation":
-									comments = append(comments, &ast.Comment{Text: "//" + modifier.Content(source)})
-									if _, in := excludedAnnotations[modifier.Content(source)]; in {
-										// Skip this field if there is an ignored annotation
-										continue
-									}
-								}
-							}
-						}
-
-						// The field can either be a `ValueSpec` or a `Field`, based on whether
-						// the field is being set to a value
-						fieldDecl := ParseNode(classDecl, source, ctx)
-
-						field, isField := fieldDecl.(*ast.Field)
-
-						if len(comments) > 0 && isField {
-							field.Doc = &ast.CommentGroup{List: comments}
-						}
-
-						// Static fields are global variables
-						if static {
-							if !isField {
-								globalVariables.Specs = append(globalVariables.Specs, fieldDecl.(*ast.ValueSpec))
-							} else {
-								globalVariables.Specs = append(globalVariables.Specs, &ast.ValueSpec{
-									Names: field.Names,
-									Type:  field.Type,
-								})
-							}
-						} else {
-							if !isField {
-								// NOTE: This silently throws away the initial values of some
-								// variables in the class's declaration
-								valueField := fieldDecl.(*ast.ValueSpec)
-								fields.List = append(fields.List, &ast.Field{Names: valueField.Names, Type: valueField.Type})
-							} else {
-								fields.List = append(fields.List, field)
-							}
-						}
+					if static {
+						globalVariables.Specs = append(globalVariables.Specs, &ast.ValueSpec{Names: field.(*ast.Field).Names, Type: field.(*ast.Field).Type})
+					} else {
+						fields.List = append(fields.List, field.(*ast.Field))
 					}
 				}
 			}
 		}
 
-		declarations := []ast.Decl{}
+		if public {
+			ctx.className = ToPublic(node.ChildByFieldName("name").Content(source))
+		} else {
+			ctx.className = ToPrivate(node.ChildByFieldName("name").Content(source))
+		}
 
-		// Add the global variables first
+		// Add everything into the declarations
+
 		if len(globalVariables.Specs) > 0 {
 			declarations = append(declarations, globalVariables)
 		}
 
-		// Generic type declarations
-		declarations = append(declarations, genericTypes...)
+		if node.ChildByFieldName("type_parameters") != nil {
+			declarations = append(declarations, ParseDecls(node.ChildByFieldName("type_parameters"), source, ctx)...)
+		}
 
-		// The struct for the class
-		// NOTE: This will be generated regardless of anything depending on it
 		declarations = append(declarations, GenStruct(ctx.className, fields))
 
-		// Add in all the other declarations for the class
-		declarations = append(declarations, structDecls...)
+		declarations = append(declarations, ParseDecls(node.ChildByFieldName("body"), source, ctx)...)
 
 		return declarations
 	case "class_body":
