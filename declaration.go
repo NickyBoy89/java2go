@@ -39,19 +39,36 @@ func TryParseDecls(node *sitter.Node, source []byte, ctx Ctx) []ast.Decl {
 
 		var public bool
 
+		if node.NamedChild(0).Type() == "modifiers" {
+			for _, modifier := range UnnamedChildren(node.NamedChild(0)) {
+				if modifier.Type() == "public" {
+					public = true
+				}
+			}
+		}
+
+		if public {
+			ctx.className = ToPublic(node.ChildByFieldName("name").Content(source))
+		} else {
+			ctx.className = ToPrivate(node.ChildByFieldName("name").Content(source))
+		}
+
 		// First, look through the class's body for field declarations
 		for _, child := range Children(node.ChildByFieldName("body")) {
 			if child.Type() == "field_declaration" {
-				var static bool
+
+				var publicField, staticField bool
 
 				comments := []*ast.Comment{}
 
 				// Handle any modifiers that the field might have
 				if child.NamedChild(0).Type() == "modifiers" {
-					for _, modifier := range Children(child.NamedChild(0)) {
+					for _, modifier := range UnnamedChildren(child.NamedChild(0)) {
 						switch modifier.Type() {
 						case "static":
-							static = true
+							staticField = true
+						case "public":
+							publicField = true
 						case "marker_annotation", "annotation":
 							comments = append(comments, &ast.Comment{Text: "//" + modifier.Content(source)})
 							if _, in := excludedAnnotations[modifier.Content(source)]; in {
@@ -71,7 +88,16 @@ func TryParseDecls(node *sitter.Node, source []byte, ctx Ctx) []ast.Decl {
 						valueField.Doc = &ast.CommentGroup{List: comments}
 					}
 
-					if static {
+					if staticField {
+						// Add the name of the current class to scope the variable to the current class
+						valueField.Names[0].Name = ctx.className + valueField.Names[0].Name
+
+						if publicField {
+							valueField.Names[0] = CapitalizeIdent(valueField.Names[0])
+						} else {
+							valueField.Names[0] = LowercaseIdent(valueField.Names[0])
+						}
+
 						globalVariables.Specs = append(globalVariables.Specs, valueField)
 					} else {
 						// TODO: If a variable is not static and it is initialized to
@@ -83,19 +109,22 @@ func TryParseDecls(node *sitter.Node, source []byte, ctx Ctx) []ast.Decl {
 						field.(*ast.Field).Doc = &ast.CommentGroup{List: comments}
 					}
 
-					if static {
+					if staticField {
+						// Add the name of the current class to scope the variable to the current class
+						field.(*ast.Field).Names[0].Name = ctx.className + field.(*ast.Field).Names[0].Name
+
+						if publicField {
+							field.(*ast.Field).Names[0] = CapitalizeIdent(field.(*ast.Field).Names[0])
+						} else {
+							field.(*ast.Field).Names[0] = LowercaseIdent(field.(*ast.Field).Names[0])
+						}
+
 						globalVariables.Specs = append(globalVariables.Specs, &ast.ValueSpec{Names: field.(*ast.Field).Names, Type: field.(*ast.Field).Type})
 					} else {
 						fields.List = append(fields.List, field.(*ast.Field))
 					}
 				}
 			}
-		}
-
-		if public {
-			ctx.className = ToPublic(node.ChildByFieldName("name").Content(source))
-		} else {
-			ctx.className = ToPrivate(node.ChildByFieldName("name").Content(source))
 		}
 
 		// Add everything into the declarations
