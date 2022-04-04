@@ -183,8 +183,14 @@ func TryParseStmt(node *sitter.Node, source []byte, ctx Ctx) ast.Stmt {
 			Stmt:  ParseStmt(node.NamedChild(1), source, ctx),
 		}
 	case "break_statement":
+		if node.NamedChildCount() > 0 {
+			return &ast.BranchStmt{Tok: token.BREAK, Label: ParseExpr(node.NamedChild(0), source, ctx).(*ast.Ident)}
+		}
 		return &ast.BranchStmt{Tok: token.BREAK}
 	case "continue_statement":
+		if node.NamedChildCount() > 0 {
+			return &ast.BranchStmt{Tok: token.CONTINUE, Label: ParseExpr(node.NamedChild(0), source, ctx).(*ast.Ident)}
+		}
 		return &ast.BranchStmt{Tok: token.CONTINUE}
 	case "throw_statement":
 		return &ast.ExprStmt{X: &ast.CallExpr{
