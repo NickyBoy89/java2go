@@ -198,27 +198,14 @@ func TryParseStmt(node *sitter.Node, source []byte, ctx Ctx) ast.Stmt {
 			Args: []ast.Expr{ParseExpr(node.NamedChild(0), source, ctx)},
 		}}
 	case "if_statement":
-		var cond ast.Expr
-		var body *ast.BlockStmt
-		var elseStmt ast.Stmt
-
-		for _, c := range Children(node) {
-			switch c.Type() {
-			case "parenthesized_expression":
-				cond = ParseExpr(c, source, ctx)
-			case "block": // First block is the `if`, second is the `else`
-				if body == nil {
-					body = ParseStmt(c, source, ctx).(*ast.BlockStmt)
-				} else {
-					elseStmt = ParseStmt(c, source, ctx).(*ast.BlockStmt)
-				}
-			}
+		var other ast.Stmt
+		if node.ChildByFieldName("alternative") != nil {
+			other = ParseStmt(node.ChildByFieldName("alternative"), source, ctx)
 		}
-
 		return &ast.IfStmt{
-			Cond: cond,
-			Body: body,
-			Else: elseStmt,
+			Cond: ParseExpr(node.ChildByFieldName("condition"), source, ctx),
+			Body: ParseStmt(node.ChildByFieldName("consequence"), source, ctx).(*ast.BlockStmt),
+			Else: other,
 		}
 	case "enhanced_for_statement":
 		// An enhanced for statement has the following fields:
@@ -237,72 +224,23 @@ func TryParseStmt(node *sitter.Node, source []byte, ctx Ctx) ast.Stmt {
 			Body:  ParseStmt(node.NamedChild(total-1), source, ctx).(*ast.BlockStmt),
 		}
 	case "for_statement":
-		// The different parts of the for loop
-		var cond ast.Expr
 		var init, post ast.Stmt
-
-		var ignoreInit, ignoreCond, ignorePost bool
-
-		var multipleAssignment bool
-
-		// If the init is a statement, then it will have a semicon associated with
-		// it, instead of an expression, where the semicolon will be separate
-		var initClosed bool
-
-		for _, c := range UnnamedChildren(node) {
-			if c.IsNamed() {
-				if multipleAssignment {
-					otherAssign := ParseStmt(c, source, ctx).(*ast.AssignStmt)
-					init.(*ast.AssignStmt).Lhs = append(init.(*ast.AssignStmt).Lhs, otherAssign.Lhs...)
-					init.(*ast.AssignStmt).Rhs = append(init.(*ast.AssignStmt).Rhs, otherAssign.Rhs...)
-					multipleAssignment = false
-				} else if !ignoreInit && init == nil {
-					if c.Child(int(c.ChildCount())-1).Content(source) == ";" {
-						initClosed = true
-					}
-					ignoreInit = true
-					init = ParseStmt(c, source, ctx)
-				} else if !ignoreCond && cond == nil {
-					ignoreCond = true
-					cond = ParseExpr(c, source, ctx)
-				} else if !ignorePost && post == nil {
-					ignorePost = true
-					post = ParseStmt(c, source, ctx)
-				}
-			} else {
-				switch c.Content(source) {
-				case ";":
-					// If we encounter a semicolon
-
-					// If there has been
-					// If the init is missing, there will be only a semicolon left
-					if !initClosed {
-						initClosed = true
-						ignoreInit = true
-					} else if !ignoreInit && init == nil {
-						ignoreInit = true
-					} else if !ignoreCond && cond == nil {
-						ignoreCond = true
-					}
-				case ",":
-					switch init.(type) {
-					case *ast.AssignStmt:
-						multipleAssignment = true
-					default:
-						panic("Init had multiple non-assignments in init")
-					}
-				case ")":
-					// Once the parenthesies close, stop parsing the for loop
-					break
-				}
-			}
+		if node.ChildByFieldName("init") != nil {
+			init = ParseStmt(node.ChildByFieldName("init"), source, ctx)
+		}
+		if node.ChildByFieldName("update") != nil {
+			post = ParseStmt(node.ChildByFieldName("update"), source, ctx)
+		}
+		var cond ast.Expr
+		if node.ChildByFieldName("condition") != nil {
+			cond = ParseExpr(node.ChildByFieldName("condition"), source, ctx)
 		}
 
 		return &ast.ForStmt{
 			Init: init,
 			Cond: cond,
 			Post: post,
-			Body: ParseStmt(node.NamedChild(int(node.NamedChildCount())-1), source, ctx).(*ast.BlockStmt),
+			Body: ParseStmt(node.ChildByFieldName("body"), source, ctx).(*ast.BlockStmt),
 		}
 	case "while_statement":
 		return &ast.ForStmt{

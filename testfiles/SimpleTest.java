@@ -4,7 +4,7 @@ class SimpleTest {
   public int value2;
   private int value3;
 
-  Test(int value) {
+  SimpleTest(int value) {
     this.value = value;
     this.value2 = value + 1;
     this.value3 = value + 2;

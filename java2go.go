@@ -38,7 +38,7 @@ func main() {
 	astFlag := flag.Bool("ast", false, "Print out go's pretty-printed ast, instead of source code")
 	syncFlag := flag.Bool("sync", false, "Parse the files sequentially, instead of multi-threaded")
 	outDirFlag := flag.String("outDir", ".", "Specify a directory for the generated files")
-	dependencyTreeFlag := flag.Bool("dependency-tree", false, "Output a dependency tree of all classes, in graphviz dot format")
+	dependencyTreeFlag := flag.Bool("dependency-tree", false, "Output a dependency tree of all classes in graphviz dot format")
 
 	excludeAnnotationsFlag := flag.String("exclude-annotations", "", "A comma-separated list of annotations to exclude from the final code generation")
 

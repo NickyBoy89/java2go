@@ -152,6 +152,7 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 
 		if node.NamedChild(0).Type() == "modifiers" {
 			cursor := sitter.NewTreeCursor(node.NamedChild(0))
+			defer cursor.Close()
 			cursor.GoToFirstChild()
 			for cursor.GoToNextSibling() {
 				switch cursor.CurrentNode().Type() {
