@@ -2,9 +2,7 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
-	"fmt"
 	"go/ast"
 	"go/printer"
 	"go/token"
@@ -13,12 +11,12 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"runtime/pprof"
 	"strings"
 	"sync"
 
 	stdpath "path"
 
-	"github.com/NickyBoy89/java2go/dot"
 	log "github.com/sirupsen/logrus"
 	sitter "github.com/smacker/go-tree-sitter"
 	"github.com/smacker/go-tree-sitter/java"
@@ -38,11 +36,24 @@ func main() {
 	astFlag := flag.Bool("ast", false, "Print out go's pretty-printed ast, instead of source code")
 	syncFlag := flag.Bool("sync", false, "Parse the files sequentially, instead of multi-threaded")
 	outDirFlag := flag.String("outDir", ".", "Specify a directory for the generated files")
-	dependencyTreeFlag := flag.Bool("dependency-tree", false, "Output a dependency tree of all classes in graphviz dot format")
+
+	var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to `file`")
 
 	excludeAnnotationsFlag := flag.String("exclude-annotations", "", "A comma-separated list of annotations to exclude from the final code generation")
 
 	flag.Parse()
+
+	if *cpuprofile != "" {
+		f, err := os.Create(*cpuprofile)
+		if err != nil {
+			log.Fatal("could not create CPU profile: ", err)
+		}
+		defer f.Close()
+		if err := pprof.StartCPUProfile(f); err != nil {
+			log.Fatal("could not start CPU profile: ", err)
+		}
+		defer pprof.StopCPUProfile()
+	}
 
 	for _, annotation := range strings.Split(*excludeAnnotationsFlag, ",") {
 		excludedAnnotations[annotation] = struct{}{}
@@ -51,18 +62,15 @@ func main() {
 	// Sem determines the number of files parsed in parallel
 	sem := make(chan struct{}, runtime.NumCPU())
 
-	// Collects the list of all the names of the files found
+	// All the files to parse
 	fileNames := []string{}
 
 	for _, file := range flag.Args() {
-		// For every file given in the args, traverse its directory recursively
 		err := filepath.WalkDir(file, fs.WalkDirFunc(func(path string, d fs.DirEntry, err error) error {
-			// Make sure that the file we are parsing is a `java` file, and not a directory
-			if filepath.Ext(path) != ".java" || d.IsDir() {
-				return nil
+			// Only include java files
+			if filepath.Ext(path) == ".java" && !d.IsDir() {
+				fileNames = append(fileNames, path)
 			}
-
-			fileNames = append(fileNames, path)
 
 			return nil
 		}))
@@ -83,112 +91,78 @@ func main() {
 	var wg sync.WaitGroup
 	wg.Add(len(fileNames))
 
-	// Open a graphviz dot file for adding dependencies to
-	dotfile, err := dot.New("graph.dot")
-	if err != nil {
-		panic(err)
-	}
-	defer dotfile.Close()
-
+	// Start looking through the files
 	for _, path := range fileNames {
 		sourceCode, err := os.ReadFile(path)
 		if err != nil {
-			panic(err)
+			log.WithFields(log.Fields{
+				"file":  path,
+				"error": err,
+			}).Panic("Error reading source file")
 		}
+
 		tree, err := parser.ParseCtx(context.Background(), nil, sourceCode)
 		if err != nil {
-			panic(err)
+			log.WithFields(log.Fields{
+				"error": err,
+			}).Panic("Error parsing tree-sitter AST")
 		}
 
 		n := tree.RootNode()
-
-		if *dependencyTreeFlag {
-			// The extracted file contains the name, full package, and relative imports
-			extracted := ExtractImports(n, sourceCode)
-
-			edges := []string{}
-
-			// Add all the imports of the package
-			for _, imp := range extracted.Imports {
-				// Remove the last item in the import so that only the dependent package
-				// is present
-				temp := &PackageScope{Scope: imp.Scope[:len(imp.Scope)-1]}
-				var importExists bool
-				for _, edge := range edges {
-					if edge == temp.String() {
-						importExists = true
-						break
-					}
-				}
-				if !importExists {
-					edges = append(edges, temp.String())
-				}
-			}
-
-			// Use the package as the node
-			if len(edges) > 0 && extracted.Name != "" {
-				pack := extracted.Package.String()
-				// If the node does not exist, create it initially
-				if !dotfile.HasNode(pack) {
-					dotfile.AddNode(pack)
-				}
-				// Otherwise, add all the edges to the existing node
-				for _, edge := range edges {
-					if !dotfile.HasEdge(pack, edge) {
-						dotfile.AddEdge(pack, edge)
-					}
-				}
-			}
-
-			wg.Done()
-			continue
-		}
 
 		log.Infof("Converting file \"%s\"", path)
 
 		// Write to stdout by default
 		var output io.Writer = os.Stdout
 
-		// If write is specified, then write everything to the corresponding files
+		outputFile := path[:len(path)-len(filepath.Ext(path))] + ".go"
+		outputPath := *outDirFlag + "/" + outputFile
+
 		if *writeFlag {
-			outFile := path[:len(path)-len(filepath.Ext(path))] + ".go"
-
-			if _, err := os.Stat(stdpath.Dir(*outDirFlag + "/" + outFile)); err != nil {
-				if errors.Is(err, fs.ErrNotExist) {
-					err = os.MkdirAll(stdpath.Dir(*outDirFlag+"/"+outFile), 0755)
-					if err != nil {
-						panic(fmt.Errorf("Failed to create directory: %v", err))
-					}
-				}
+			if err := os.MkdirAll(stdpath.Dir(outputPath), 0755); err != nil {
+				log.WithFields(log.Fields{
+					"error": err,
+					"path":  outputPath,
+				}).Panic("Error creating output directory")
 			}
 
-			output, err = os.Create(*outDirFlag + "/" + outFile)
+			// Write the output to another file
+			output, err = os.Create(outputPath)
 			if err != nil {
-				panic(fmt.Errorf("Error creating file %v: %v", outFile, err))
+				log.WithFields(log.Fields{
+					"error": err,
+					"file":  outputPath,
+				}).Panic("Error creating output file")
 			}
-		} else {
-			// If quiet is specified, then discard the output
-			if *quiet {
-				output = io.Discard
-			}
+			defer output.(*os.File).Close()
+		} else if *quiet {
+			output = io.Discard
 		}
 
-		// If ast flag is specified, then print out go's formatted ast
-		if *astFlag {
-			ast.Print(token.NewFileSet(), ParseNode(n, sourceCode, Ctx{}).(ast.Node))
-		}
+		// Acquire a semaphore
+		sem <- struct{}{}
 
 		parseFunc := func() {
-			sem <- struct{}{}
 			// Release the semaphore when done
 			defer func() { <-sem }()
-			err = printer.Fprint(output, token.NewFileSet(), ParseNode(n, sourceCode, Ctx{}).(ast.Node))
-			if err != nil {
-				panic(err)
+
+			defer wg.Done()
+
+			parsedAst := ParseNode(n, sourceCode, Ctx{}).(ast.Node)
+
+			// Print the generated AST
+			if *astFlag {
+				ast.Print(token.NewFileSet(), parsedAst)
 			}
-			wg.Done()
+
+			if err := printer.Fprint(output, token.NewFileSet(), parsedAst); err != nil {
+				log.WithFields(log.Fields{
+					"error": err,
+				}).Panic("Error printing generated code")
+			}
 		}
 
+		// If we don't want this to run in parallel
 		if *syncFlag {
 			parseFunc()
 		} else {
@@ -197,6 +171,4 @@ func main() {
 	}
 
 	wg.Wait()
-
-	dotfile.WriteToFile()
 }

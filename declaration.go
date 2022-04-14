@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"go/ast"
 	"go/token"
 	"strings"
@@ -10,18 +9,8 @@ import (
 )
 
 // ParseDecls represents any type that returns a list of top-level declarations,
-// this is any class, interface, or enum declaration, and the function panics
-// if an unknown node type is passed into it
+// this is any class, interface, or enum declaration
 func ParseDecls(node *sitter.Node, source []byte, ctx Ctx) []ast.Decl {
-	if decls := TryParseDecls(node, source, ctx); decls != nil {
-		return decls
-	}
-	panic(fmt.Errorf("Unknown type to parse for decls: %v", node.Type()))
-}
-
-// TryParseDecls is the underlying function for ParseDecls, although it returns
-// `nil` on an unknown node, allowing for type testing to be done
-func TryParseDecls(node *sitter.Node, source []byte, ctx Ctx) []ast.Decl {
 	switch node.Type() {
 	case "class_declaration":
 		// TODO: Currently ignores implements and extends with the following tags:
@@ -144,23 +133,19 @@ func TryParseDecls(node *sitter.Node, source []byte, ctx Ctx) []ast.Decl {
 		return declarations
 	case "class_body":
 		decls := []ast.Decl{}
-		for _, item := range Children(node) {
-			// Skip all the field declarations in the class body, because they
-			// have already been handled, as well as the comments
-			if item.Type() == "field_declaration" || item.Type() == "comment" {
-				continue
-			}
-
-			// Parsing a nested class will return a list of decls
-			if declList := TryParseDecls(item, source, ctx); declList != nil {
-				decls = append(decls, declList...)
-			} else {
-				// Otherwise, treat it as a decl
-				decl := ParseDecl(item, source, ctx)
-				// Only add good declarations
-				if _, bad := decl.(*ast.BadDecl); !bad {
-					decls = append(decls, decl)
+		var child *sitter.Node
+		for i := 0; i < int(node.NamedChildCount()); i++ {
+			child = node.NamedChild(i)
+			switch child.Type() {
+			// Skip fields and comments
+			case "field_declaration", "comment":
+			case "constructor_declaration", "method_declaration", "static_initializer":
+				d := ParseDecl(child, source, ctx)
+				if _, bad := d.(*ast.BadDecl); !bad {
+					decls = append(decls, d)
 				}
+			case "class_declaration", "interface_declaration", "enum_declaration":
+				decls = append(decls, ParseDecls(child, source, ctx)...)
 			}
 		}
 		return decls
@@ -226,21 +211,12 @@ func TryParseDecls(node *sitter.Node, source []byte, ctx Ctx) []ast.Decl {
 
 		return declarations
 	}
-	return nil
+	panic("Unknown type to parse for decls: " + node.Type())
 }
 
-// ParseDecl handles anything that is declared within a source file, such as a
-// method, function, etc...
+// ParseDecl parses a top-level declaration within a source file, including
+// but not limited to fields and methods
 func ParseDecl(node *sitter.Node, source []byte, ctx Ctx) ast.Decl {
-	if decl := TryParseDecl(node, source, ctx); decl != nil {
-		return decl
-	}
-	panic(fmt.Errorf("Unknown node for declaration: %v", node.Type()))
-}
-
-// TryParseDecls is the underlying function for ParseDecl, although it returns
-// `nil` when an unknown node is passed in
-func TryParseDecl(node *sitter.Node, source []byte, ctx Ctx) ast.Decl {
 	switch node.Type() {
 	case "constructor_declaration":
 		var body *ast.BlockStmt
@@ -399,5 +375,5 @@ func TryParseDecl(node *sitter.Node, source []byte, ctx Ctx) ast.Decl {
 		}
 	}
 
-	return nil
+	panic("Unknown node type for declaration: " + node.Type())
 }

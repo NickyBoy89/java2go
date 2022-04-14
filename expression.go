@@ -133,33 +133,20 @@ func TryParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 			Elts: items,
 		}
 	case "method_invocation":
-		// Class methods are called with three nodes, the selector, the identifier,
-		// and the list of arguments, so that they form the shape
-		// `selector.identifier(list of arguments)`
-		// Static methods are only called with the identifier and list of args
-		// They look like: `identifier(args)`
-
-		switch node.NamedChildCount() {
-		case 3: // Invoking a normal class method
-			// This is of the form X.Sel(Args)
+		// Methods with a selector are called as X.Sel(Args)
+		// Otherwise, they are called as Fun(Args)
+		if node.ChildByFieldName("object") != nil {
 			return &ast.CallExpr{
 				Fun: &ast.SelectorExpr{
-					X:   ParseExpr(node.NamedChild(0), source, ctx),
-					Sel: ParseExpr(node.NamedChild(1), source, ctx).(*ast.Ident),
+					X:   ParseExpr(node.ChildByFieldName("object"), source, ctx),
+					Sel: ParseExpr(node.ChildByFieldName("name"), source, ctx).(*ast.Ident),
 				},
-				Args: ParseNode(node.NamedChild(2), source, ctx).([]ast.Expr),
+				Args: ParseNode(node.ChildByFieldName("arguments"), source, ctx).([]ast.Expr),
 			}
-		case 2: // Invoking a static method
-			return &ast.CallExpr{
-				// The name is in the wrong place, so use the selector as the name
-				Fun:  ParseExpr(node.NamedChild(0), source, ctx),
-				Args: ParseNode(node.NamedChild(1), source, ctx).([]ast.Expr),
-			}
-		case 4: // Calling a method from the parent function
-			// NOTE: Fix this to add the entire logic of having an outer function
-			return &ast.BadExpr{}
-		default:
-			panic(fmt.Sprintf("Calling method with unknown number of args: %v", node.NamedChildCount()))
+		}
+		return &ast.CallExpr{
+			Fun:  ParseExpr(node.ChildByFieldName("name"), source, ctx),
+			Args: ParseNode(node.ChildByFieldName("arguments"), source, ctx).([]ast.Expr),
 		}
 	case "object_creation_expression":
 		// This is called when anything is created with a constructor

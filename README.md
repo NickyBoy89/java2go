@@ -32,5 +32,3 @@ It does this through several steps:
 * `-sync` parses the files in sequential order, instead of in parallel
 
 * `-exclude-annotations` specifies a list of annotations on methods and fields that will exclude them from the generated code
-
-* `--dependency-tree` outputs a graph of all source module dependencies in graphviz dot format, as `graph.dot`
