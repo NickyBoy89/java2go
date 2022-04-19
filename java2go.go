@@ -9,13 +9,12 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"runtime"
 	"runtime/pprof"
 	"strings"
 	"sync"
-
-	stdpath "path"
 
 	log "github.com/sirupsen/logrus"
 	sitter "github.com/smacker/go-tree-sitter"
@@ -28,9 +27,6 @@ var (
 )
 
 func main() {
-	parser := sitter.NewParser()
-	parser.SetLanguage(java.GetLanguage())
-
 	writeFlag := flag.Bool("w", false, "Whether to write the files to disk instead of stdout")
 	quiet := flag.Bool("q", false, "Don't write to stdout on successful parse")
 	astFlag := flag.Bool("ast", false, "Print out go's pretty-printed ast, instead of source code")
@@ -59,9 +55,6 @@ func main() {
 		excludedAnnotations[annotation] = struct{}{}
 	}
 
-	// Sem determines the number of files parsed in parallel
-	sem := make(chan struct{}, runtime.NumCPU())
-
 	// All the files to parse
 	fileNames := []string{}
 
@@ -85,41 +78,114 @@ func main() {
 
 	if len(fileNames) == 0 {
 		log.Warn("No files specified to convert")
-		return
 	}
 
 	var wg sync.WaitGroup
 	wg.Add(len(fileNames))
 
-	// Start looking through the files
-	for _, path := range fileNames {
-		sourceCode, err := os.ReadFile(path)
+	// Sem determines the number of files parsed in parallel
+	sem := make(chan struct{}, runtime.NumCPU())
+
+	parsedAsts := make(chan struct {
+		ast   *sitter.Node
+		index int
+	})
+
+	asts := make([]*sitter.Node, len(fileNames))
+
+	// Parse all the files into their tree-sitter representations
+	for ind, filePath := range fileNames {
+		go func(index int, path string) {
+			sourceCode, err := os.ReadFile(path)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"file":  path,
+					"error": err,
+				}).Panic("Error reading source file")
+			}
+
+			sem <- struct{}{}
+			// Release the semaphore when done
+			defer func() { <-sem }()
+			defer wg.Done()
+			parser := sitter.NewParser()
+			defer parser.Close()
+			parser.SetLanguage(java.GetLanguage())
+			tree, err := parser.ParseCtx(context.Background(), nil, sourceCode)
+			if err != nil {
+				log.WithFields(log.Fields{
+					"error": err,
+				}).Panic("Error parsing tree-sitter AST")
+			}
+
+			var test struct {
+				ast   *sitter.Node
+				index int
+			}
+
+			test.ast = tree.RootNode()
+			test.index = index
+
+			parsedAsts <- test
+		}(ind, filePath)
+	}
+
+	var n int
+	for p := range parsedAsts {
+		asts[p.index] = p.ast
+		n++
+		if n == len(fileNames) {
+			close(parsedAsts)
+		}
+	}
+
+	globalPackages := make(map[string]*PackageScope)
+	classDefinitions := make([]*ClassScope, len(fileNames))
+
+	// Generate symbol tables
+	for ind, filePath := range fileNames {
+		sourceCode, err := os.ReadFile(filePath)
 		if err != nil {
 			log.WithFields(log.Fields{
-				"file":  path,
+				"file":  filePath,
 				"error": err,
 			}).Panic("Error reading source file")
 		}
 
-		tree, err := parser.ParseCtx(context.Background(), nil, sourceCode)
+		classDef := ExtractDefinitions(asts[ind], sourceCode)
+		classDefinitions[ind] = classDef
+		classPackage := classDef.Package
+		if classPackage == "" {
+			classPackage = "main"
+		}
+		if _, exist := globalPackages[classDef.Package]; !exist {
+			globalPackages[classDef.Package] = &PackageScope{files: make(map[string]*ClassScope)}
+		}
+		globalPackages[classDef.Package].files[classPackage] = classDef
+	}
+
+	_ = syncFlag
+
+	// Start looking through the files
+	for ind, filePath := range fileNames {
+		sourceCode, err := os.ReadFile(filePath)
 		if err != nil {
 			log.WithFields(log.Fields{
+				"file":  filePath,
 				"error": err,
-			}).Panic("Error parsing tree-sitter AST")
+			}).Panic("Error reading source file")
 		}
 
-		n := tree.RootNode()
-
-		log.Infof("Converting file \"%s\"", path)
+		log.Infof("Converting file \"%s\"", filePath)
 
 		// Write to stdout by default
 		var output io.Writer = os.Stdout
 
-		outputFile := path[:len(path)-len(filepath.Ext(path))] + ".go"
+		outputFile := filePath[:len(filePath)-len(filepath.Ext(filePath))] + ".go"
 		outputPath := *outDirFlag + "/" + outputFile
 
 		if *writeFlag {
-			if err := os.MkdirAll(stdpath.Dir(outputPath), 0755); err != nil {
+			if err := os.MkdirAll(path.Dir(outputPath), 0755); err != nil {
 				log.WithFields(log.Fields{
 					"error": err,
 					"path":  outputPath,
@@ -127,48 +193,31 @@ func main() {
 			}
 
 			// Write the output to another file
-			output, err = os.Create(outputPath)
+			output, err := os.Create(outputPath)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error": err,
 					"file":  outputPath,
 				}).Panic("Error creating output file")
 			}
-			defer output.(*os.File).Close()
+			defer output.Close()
 		} else if *quiet {
 			output = io.Discard
 		}
 
-		// Acquire a semaphore
-		sem <- struct{}{}
+		// The converted AST, in Go's AST representation
+		parsed := ParseNode(asts[ind], sourceCode, Ctx{classScope: classDefinitions[ind]}).(ast.Node)
 
-		parseFunc := func() {
-			// Release the semaphore when done
-			defer func() { <-sem }()
-
-			defer wg.Done()
-
-			parsedAst := ParseNode(n, sourceCode, Ctx{}).(ast.Node)
-
-			// Print the generated AST
-			if *astFlag {
-				ast.Print(token.NewFileSet(), parsedAst)
-			}
-
-			if err := printer.Fprint(output, token.NewFileSet(), parsedAst); err != nil {
-				log.WithFields(log.Fields{
-					"error": err,
-				}).Panic("Error printing generated code")
-			}
+		// Print the generated AST
+		if *astFlag {
+			ast.Print(token.NewFileSet(), parsed)
 		}
 
-		// If we don't want this to run in parallel
-		if *syncFlag {
-			parseFunc()
-		} else {
-			go parseFunc()
+		// Output the parsed AST, into the source specified earlier
+		if err := printer.Fprint(output, token.NewFileSet(), parsed); err != nil {
+			log.WithFields(log.Fields{
+				"error": err,
+			}).Panic("Error printing generated code")
 		}
 	}
-
-	wg.Wait()
 }

@@ -3,7 +3,6 @@ package main
 import (
 	"go/ast"
 	"go/token"
-	"strings"
 
 	sitter "github.com/smacker/go-tree-sitter"
 )
@@ -26,21 +25,9 @@ func ParseDecls(node *sitter.Node, source []byte, ctx Ctx) []ast.Decl {
 		// Other declarations
 		fields := &ast.FieldList{}
 
-		var public bool
+		def := ctx.classScope.FindClass(node.ChildByFieldName("name").Content(source))
 
-		if node.NamedChild(0).Type() == "modifiers" {
-			for _, modifier := range UnnamedChildren(node.NamedChild(0)) {
-				if modifier.Type() == "public" {
-					public = true
-				}
-			}
-		}
-
-		if public {
-			ctx.className = ToPublic(node.ChildByFieldName("name").Content(source))
-		} else {
-			ctx.className = ToPrivate(node.ChildByFieldName("name").Content(source))
-		}
+		ctx.className = def.Name()
 
 		// First, look through the class's body for field declarations
 		for _, child := range Children(node.ChildByFieldName("body")) {
@@ -219,137 +206,82 @@ func ParseDecls(node *sitter.Node, source []byte, ctx Ctx) []ast.Decl {
 func ParseDecl(node *sitter.Node, source []byte, ctx Ctx) ast.Decl {
 	switch node.Type() {
 	case "constructor_declaration":
-		var body *ast.BlockStmt
-		var name *ast.Ident
-		var params *ast.FieldList
+		body := ParseStmt(node.ChildByFieldName("body"), source, ctx).(*ast.BlockStmt)
 
-		for _, c := range Children(node) {
-			switch c.Type() {
-			case "identifier":
-				name = ParseExpr(c, source, ctx).(*ast.Ident)
-			case "formal_parameters":
-				params = ParseNode(c, source, ctx).(*ast.FieldList)
-			case "constructor_body":
-				body = ParseStmt(c, source, ctx).(*ast.BlockStmt)
-			}
-		}
+		body.List = append([]ast.Stmt{
+			&ast.AssignStmt{
+				Lhs: []ast.Expr{&ast.Ident{Name: ShortName(ctx.className)}},
+				Tok: token.DEFINE,
+				Rhs: []ast.Expr{&ast.CallExpr{Fun: &ast.Ident{Name: "new"}, Args: []ast.Expr{&ast.Ident{Name: ctx.className}}}},
+			},
+		}, body.List...)
 
-		// Create the object to construct in the constructor
-		body.List = append([]ast.Stmt{&ast.AssignStmt{
-			Lhs: []ast.Expr{&ast.Ident{Name: ShortName(ctx.className)}},
-			Tok: token.DEFINE,
-			Rhs: []ast.Expr{&ast.CallExpr{Fun: &ast.Ident{Name: "new"}, Args: []ast.Expr{&ast.Ident{Name: ctx.className}}}},
-		}}, body.List...)
-		// Return the created object
 		body.List = append(body.List, &ast.ReturnStmt{Results: []ast.Expr{&ast.Ident{Name: ShortName(ctx.className)}}})
 
+		def := ctx.classScope.FindMethod(ParseExpr(node.ChildByFieldName("name"), source, ctx).(*ast.Ident).Name)
+
 		return &ast.FuncDecl{
-			Name: &ast.Ident{Name: "New" + name.Name},
+			Name: &ast.Ident{Name: def.Name()},
 			Type: &ast.FuncType{
-				Params: params,
+				Params: ParseNode(node.ChildByFieldName("parameters"), source, ctx).(*ast.FieldList),
 				Results: &ast.FieldList{List: []*ast.Field{&ast.Field{
 					Type: &ast.StarExpr{
-						X: name,
+						X: &ast.Ident{Name: def.Type()},
 					},
 				}}},
 			},
 			Body: body,
 		}
 	case "method_declaration":
-		var public, static bool
-
-		// The return type comes as the second node, after the modifiers
-		// however, if the method is generic, this gets pushed down one
-		returnTypeIndex := 1
-		if node.NamedChild(1).Type() == "type_parameters" {
-			returnTypeIndex++
-		}
-
-		returnType := ParseExpr(node.NamedChild(returnTypeIndex), source, ctx)
-
-		var methodName *ast.Ident
-
-		var params *ast.FieldList
+		var static bool
 
 		// Store the annotations as comments on the method
 		comments := []*ast.Comment{}
 
-		for _, c := range Children(node) {
-			switch c.Type() {
-			case "modifiers":
-				for _, mod := range UnnamedChildren(c) {
-					switch mod.Type() {
-					case "public":
-						public = true
-					case "static":
-						static = true
-					case "abstract":
-						// TODO: Handle abstract methods correctly
+		if node.NamedChild(0).Type() == "modifiers" {
+			for _, modifier := range UnnamedChildren(node.NamedChild(0)) {
+				switch modifier.Type() {
+				case "static":
+					static = true
+				case "abstract":
+					// TODO: Handle abstract methods correctly
+					return &ast.BadDecl{}
+				case "marker_annotation", "annotation":
+					comments = append(comments, &ast.Comment{Text: "//" + modifier.Content(source)})
+					// If the annotation was on the list of ignored annotations, don't
+					// parse the method
+					if _, in := excludedAnnotations[modifier.Content(source)]; in {
 						return &ast.BadDecl{}
-					case "marker_annotation", "annotation":
-						comments = append(comments, &ast.Comment{Text: "//" + mod.Content(source)})
-						// If the annotation was on the list of ignored annotations, don't
-						// parse the method
-						if _, in := excludedAnnotations[mod.Content(source)]; in {
-							return &ast.BadDecl{}
-						}
 					}
-				}
-			case "type_parameters": // For generic types
-			case "formal_parameters":
-				params = ParseNode(c, source, ctx).(*ast.FieldList)
-			case "identifier":
-				if returnType == nil {
-					continue
-				}
-				// The next two identifiers determine the return type and name of the method
-				if public {
-					methodName = CapitalizeIdent(ParseExpr(c, source, ctx).(*ast.Ident))
-				} else {
-					methodName = LowercaseIdent(ParseExpr(c, source, ctx).(*ast.Ident))
 				}
 			}
 		}
 
-		var methodRecv *ast.FieldList
-
-		// If the method is not static, define it as a struct's method
+		// If a function is non-static, it has a method receiver
+		var receiver *ast.FieldList
 		if !static {
-			methodRecv = &ast.FieldList{List: []*ast.Field{
-				&ast.Field{
-					Names: []*ast.Ident{&ast.Ident{Name: ShortName(ctx.className)}},
-					Type:  &ast.StarExpr{X: &ast.Ident{Name: ctx.className}},
+			receiver = &ast.FieldList{
+				List: []*ast.Field{
+					&ast.Field{
+						Names: []*ast.Ident{&ast.Ident{Name: ShortName(ctx.className)}},
+						Type:  &ast.StarExpr{X: &ast.Ident{Name: ctx.className}},
+					},
 				},
-			}}
+			}
 		}
 
-		// If the methodName is nil, then the printer will panic
-		if methodName == nil {
-			panic("Method's name is nil")
-		}
+		name := ParseExpr(node.ChildByFieldName("name"), source, ctx).(*ast.Ident)
 
-		method := &ast.FuncDecl{
-			Doc:  &ast.CommentGroup{List: comments},
-			Name: methodName,
-			Recv: methodRecv,
-			Type: &ast.FuncType{
-				Params: params,
-				Results: &ast.FieldList{List: []*ast.Field{
-					&ast.Field{Type: returnType},
-				}},
-			},
-			Body: ParseStmt(node.NamedChild(int(node.NamedChildCount()-1)), source, ctx).(*ast.BlockStmt),
-		}
+		def := ctx.classScope.FindMethod(name.Name)
 
-		// Special case for the main method, since this should always be lowercase,
-		// and per java rules, have an array of args defined with it
-		if strings.ToLower(methodName.Name) == "main" {
-			methodName.Name = "main"
-			// Remove all of its parameters
-			method.Type.Params = nil
-			// Add a new variable for the args
-			// args := os.Args
-			method.Body.List = append([]ast.Stmt{
+		body := ParseStmt(node.ChildByFieldName("body"), source, ctx).(*ast.BlockStmt)
+		params := ParseNode(node.ChildByFieldName("parameters"), source, ctx).(*ast.FieldList)
+
+		// Special case for the main method, because in Java, this method has the
+		// command line args passed in as a parameter
+		if name.Name == "main" {
+			params = nil
+			body.List = append([]ast.Stmt{
 				&ast.AssignStmt{
 					Lhs: []ast.Expr{&ast.Ident{Name: "args"}},
 					Tok: token.DEFINE,
@@ -360,10 +292,23 @@ func ParseDecl(node *sitter.Node, source []byte, ctx Ctx) ast.Decl {
 						},
 					},
 				},
-			}, method.Body.List...)
+			}, body.List...)
 		}
 
-		return method
+		return &ast.FuncDecl{
+			Doc:  &ast.CommentGroup{List: comments},
+			Name: &ast.Ident{Name: def.Name()},
+			Recv: receiver,
+			Type: &ast.FuncType{
+				Params: params,
+				Results: &ast.FieldList{
+					List: []*ast.Field{
+						&ast.Field{Type: &ast.Ident{Name: def.Type()}},
+					},
+				},
+			},
+			Body: body,
+		}
 	case "static_initializer":
 		// A block of `static`, which is run before the main function
 		return &ast.FuncDecl{

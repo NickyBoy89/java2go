@@ -65,6 +65,10 @@ type Ctx struct {
 	// Used to generate the names of all the methods, as well as the names
 	// of the constructors
 	className string
+	// All the symbols of the file that is currently being parsed
+	classScope *ClassScope
+	// The symbols of the current scope
+	localScope *Definition
 	// Used when generating arrays, because in Java, these are defined as
 	// arrType[] varName = {item, item, item}, and no class name data is defined
 	// Can either be of type `*ast.Ident` or `*ast.StarExpr`
