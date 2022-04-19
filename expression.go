@@ -292,6 +292,16 @@ func TryParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 		case "String":
 			return &ast.Ident{Name: "string"}
 		}
+
+		if ctx.classScope != nil {
+			// Look for the class locally first
+			if localClass := ctx.classScope.FindClass(node.Content(source)); localClass != nil {
+				return &ast.StarExpr{
+					X: &ast.Ident{Name: localClass.Name()},
+				}
+			}
+		}
+
 		return &ast.StarExpr{
 			X: &ast.Ident{Name: node.Content(source)},
 		}
