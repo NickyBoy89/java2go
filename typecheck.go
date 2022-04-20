@@ -49,7 +49,7 @@ func (cs ClassScope) String() string {
 // FindMethod looks for a given method by its name in a class definition
 func (cs *ClassScope) FindMethod(name string) *Definition {
 	for _, method := range cs.Methods {
-		if method.name == name {
+		if method.originalName == name {
 			return method
 		}
 	}
@@ -58,7 +58,7 @@ func (cs *ClassScope) FindMethod(name string) *Definition {
 
 func (cs *ClassScope) FindClass(name string) *Definition {
 	for _, class := range cs.Classes {
-		if class.name == name {
+		if class.originalName == name {
 			return class
 		}
 	}

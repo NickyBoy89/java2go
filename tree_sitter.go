@@ -40,22 +40,22 @@ func Inspect(node *sitter.Node, source []byte) {
 // CapitalizeIdent capitalizes the first letter of a `*ast.Ident` to mark the
 // result as a public method or field
 func CapitalizeIdent(in *ast.Ident) *ast.Ident {
-	return &ast.Ident{Name: ToPublic(in.Name)}
+	return &ast.Ident{Name: Uppercase(in.Name)}
 }
 
 // LowercaseIdent lowercases the first letter of a `*ast.Ident` to mark the
 // result as a private method or field
 func LowercaseIdent(in *ast.Ident) *ast.Ident {
-	return &ast.Ident{Name: ToPrivate(in.Name)}
+	return &ast.Ident{Name: Lowercase(in.Name)}
 }
 
-// ToPublic uppercases the first character of the given string
-func ToPublic(name string) string {
+// Uppercase uppercases the first character of the given string
+func Uppercase(name string) string {
 	return string(unicode.ToUpper(rune(name[0]))) + name[1:]
 }
 
-// ToPrivate lowercases the first character of the given string
-func ToPrivate(name string) string {
+// Lowercase lowercases the first character of the given string
+func Lowercase(name string) string {
 	return string(unicode.ToLower(rune(name[0]))) + name[1:]
 }
 
