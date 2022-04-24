@@ -14,7 +14,6 @@ import (
 	"runtime"
 	"runtime/pprof"
 	"strings"
-	"sync"
 
 	log "github.com/sirupsen/logrus"
 	sitter "github.com/smacker/go-tree-sitter"
@@ -58,6 +57,7 @@ func main() {
 	// All the files to parse
 	fileNames := []string{}
 
+	// Collect all the files
 	for _, file := range flag.Args() {
 		err := filepath.WalkDir(file, fs.WalkDirFunc(func(path string, d fs.DirEntry, err error) error {
 			// Only include java files
@@ -79,9 +79,6 @@ func main() {
 	if len(fileNames) == 0 {
 		log.Warn("No files specified to convert")
 	}
-
-	var wg sync.WaitGroup
-	wg.Add(len(fileNames))
 
 	// Sem determines the number of files parsed in parallel
 	sem := make(chan struct{}, runtime.NumCPU())
@@ -107,7 +104,6 @@ func main() {
 			sem <- struct{}{}
 			// Release the semaphore when done
 			defer func() { <-sem }()
-			defer wg.Done()
 			parser := sitter.NewParser()
 			defer parser.Close()
 			parser.SetLanguage(java.GetLanguage())
@@ -140,6 +136,10 @@ func main() {
 	}
 
 	globalPackages := make(map[string]*PackageScope)
+
+	// Keeps track of the sybol tables so they can be passes into their respective
+	// classes when they are converted, and don't have to be looked up in the global
+	// symbol table
 	classDefinitions := make([]*ClassScope, len(fileNames))
 
 	// Generate symbol tables
@@ -162,6 +162,26 @@ func main() {
 			globalPackages[classDef.Package] = &PackageScope{files: make(map[string]*ClassScope)}
 		}
 		globalPackages[classDef.Package].files[classPackage] = classDef
+	}
+
+	globalScope := &GlobalScope{packages: globalPackages}
+
+	// Go back through the symbol tables and fill in anything that could not be resolved
+	for _, symbolTable := range classDefinitions {
+		for _, field := range symbolTable.Fields {
+			// If the field refers to a type in another class
+			if path, in := symbolTable.Imports[field.Type()]; in {
+				if pack := globalScope.FindPackage(path); pack != nil {
+					field.definitionType = pack.FindClass(field.Type()).FindClass(field.Type()).Type()
+				} else {
+					log.WithFields(log.Fields{
+						"package": path,
+						"type":    field.Type(),
+					}).Warn("Unresolved package")
+				}
+			}
+		}
+		//Methods
 	}
 
 	_ = syncFlag

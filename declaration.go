@@ -16,24 +16,20 @@ func ParseDecls(node *sitter.Node, source []byte, ctx Ctx) []ast.Decl {
 		//"superclass"
 		//"interfaces"
 
-		// All the declarations for the class
+		// The declarations and fields for the class
 		declarations := []ast.Decl{}
+		fields := &ast.FieldList{}
 
 		// Global variables
 		globalVariables := &ast.GenDecl{Tok: token.VAR}
 
-		// Other declarations
-		fields := &ast.FieldList{}
-
-		def := ctx.classScope.FindClass(node.ChildByFieldName("name").Content(source))
-
-		ctx.className = def.Name()
+		ctx.className = ctx.classScope.FindClass(node.ChildByFieldName("name").Content(source)).Name()
 
 		// First, look through the class's body for field declarations
 		for _, child := range Children(node.ChildByFieldName("body")) {
 			if child.Type() == "field_declaration" {
 
-				var publicField, staticField bool
+				var staticField bool
 
 				comments := []*ast.Comment{}
 
@@ -43,8 +39,6 @@ func ParseDecls(node *sitter.Node, source []byte, ctx Ctx) []ast.Decl {
 						switch modifier.Type() {
 						case "static":
 							staticField = true
-						case "public":
-							publicField = true
 						case "marker_annotation", "annotation":
 							comments = append(comments, &ast.Comment{Text: "//" + modifier.Content(source)})
 							if _, in := excludedAnnotations[modifier.Content(source)]; in {
@@ -59,42 +53,25 @@ func ParseDecls(node *sitter.Node, source []byte, ctx Ctx) []ast.Decl {
 				// The field can either be a `Field`, or a `ValueSpec` if it was assigned to a value
 				field := ParseNode(child, source, ctx)
 
+				// The field has a value assigned to it
 				if valueField, hasValue := field.(*ast.ValueSpec); hasValue {
 					if len(comments) > 0 {
 						valueField.Doc = &ast.CommentGroup{List: comments}
 					}
 
 					if staticField {
-						// Add the name of the current class to scope the variable to the current class
-						valueField.Names[0].Name = ctx.className + valueField.Names[0].Name
-
-						if publicField {
-							valueField.Names[0] = CapitalizeIdent(valueField.Names[0])
-						} else {
-							valueField.Names[0] = LowercaseIdent(valueField.Names[0])
-						}
-
 						globalVariables.Specs = append(globalVariables.Specs, valueField)
 					} else {
-						// TODO: If a variable is not static and it is initialized to
-						// a value, the value is thrown away
+						// TODO: If a field has a value, it is discarded instead
 						fields.List = append(fields.List, &ast.Field{Names: valueField.Names, Type: valueField.Type})
 					}
 				} else {
+					// Normal field with no value
 					if len(comments) > 0 {
 						field.(*ast.Field).Doc = &ast.CommentGroup{List: comments}
 					}
 
 					if staticField {
-						// Add the name of the current class to scope the variable to the current class
-						field.(*ast.Field).Names[0].Name = ctx.className + field.(*ast.Field).Names[0].Name
-
-						if publicField {
-							field.(*ast.Field).Names[0] = CapitalizeIdent(field.(*ast.Field).Names[0])
-						} else {
-							field.(*ast.Field).Names[0] = LowercaseIdent(field.(*ast.Field).Names[0])
-						}
-
 						globalVariables.Specs = append(globalVariables.Specs, &ast.ValueSpec{Names: field.(*ast.Field).Names, Type: field.(*ast.Field).Type})
 					} else {
 						fields.List = append(fields.List, field.(*ast.Field))
@@ -103,18 +80,20 @@ func ParseDecls(node *sitter.Node, source []byte, ctx Ctx) []ast.Decl {
 			}
 		}
 
-		// Add everything into the declarations
-
+		// Add the global variables
 		if len(globalVariables.Specs) > 0 {
 			declarations = append(declarations, globalVariables)
 		}
 
+		// Add any type paramters defined in the class
 		if node.ChildByFieldName("type_parameters") != nil {
 			declarations = append(declarations, ParseDecls(node.ChildByFieldName("type_parameters"), source, ctx)...)
 		}
 
+		// Add the struct for the class
 		declarations = append(declarations, GenStruct(ctx.className, fields))
 
+		// Add all the declarations that appear in the class
 		declarations = append(declarations, ParseDecls(node.ChildByFieldName("body"), source, ctx)...)
 
 		return declarations
@@ -152,38 +131,17 @@ func ParseDecls(node *sitter.Node, source []byte, ctx Ctx) []ast.Decl {
 
 		return []ast.Decl{GenInterface(ctx.className, methods)}
 	case "interface_declaration":
-		decls := []ast.Decl{}
+		ctx.className = ctx.classScope.FindClass(node.ChildByFieldName("name").Content(source)).Name()
 
-		for _, c := range Children(node) {
-			switch c.Type() {
-			case "modifiers":
-			case "identifier":
-				ctx.className = c.Content(source)
-			case "interface_body":
-				decls = ParseDecls(c, source, ctx)
-			}
-		}
-
-		return decls
+		return ParseDecls(node.ChildByFieldName("body"), source, ctx)
 	case "enum_declaration":
 		// An enum is treated as both a struct, and a list of values that define
 		// the states that the enum can be in
 
-		//modifiers := ParseNode(node.NamedChild(0), source, ctx)
+		ctx.className = ctx.classScope.FindClass(node.ChildByFieldName("name").Content(source)).Name()
 
-		ctx.className = node.NamedChild(1).Content(source)
-
-		for _, item := range Children(node.NamedChild(2)) {
-			switch item.Type() {
-			case "enum_body_declarations":
-				for _, bodyDecl := range Children(item) {
-					_ = bodyDecl
-				}
-			}
-		}
-
-		// TODO: Fix this to handle an enum correctly
-		//decls := []ast.Decl{GenStruct(ctx.className, fields)}
+		// TODO: Handle an enum correctly
+		//return ParseDecls(node.ChildByFieldName("body"), source, ctx)
 		return []ast.Decl{}
 	case "type_parameters":
 		var declarations []ast.Decl

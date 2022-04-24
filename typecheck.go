@@ -21,6 +21,11 @@ func (gs GlobalScope) String() string {
 	return fmt.Sprintf("Global: [%v]", gs.packages)
 }
 
+// FindPackage looks up a package's path in the global scope, and returns it
+func (gs *GlobalScope) FindPackage(name string) *PackageScope {
+	return gs.packages[name]
+}
+
 // PackageScope represents a single package, which can contain one or more files
 type PackageScope struct {
 	// Maps the file's name to its definitions
@@ -29,6 +34,19 @@ type PackageScope struct {
 
 func (ps PackageScope) String() string {
 	return fmt.Sprintf("Package: [%v]", ps.files)
+}
+
+// FindClass searches for a class in the given package and returns a scope for it
+// the class may be the subclass of another class
+func (ps *PackageScope) FindClass(name string) *ClassScope {
+	for _, fileScope := range ps.files {
+		for _, className := range fileScope.Classes {
+			if className.originalName == name {
+				return fileScope
+			}
+		}
+	}
+	return nil
 }
 
 // ClassScope contains the global and local scopes for a single file
@@ -43,7 +61,10 @@ type ClassScope struct {
 }
 
 func (cs ClassScope) String() string {
-	return fmt.Sprintf("Classes: %v Fields: %v Methods: %v", cs.Classes, cs.Fields, cs.Methods)
+	return fmt.Sprintf("Classes: %v Fields: %v Methods: %v",
+		cs.Classes,
+		cs.Fields,
+		cs.Methods)
 }
 
 // FindMethod looks for a given method by its name in a class definition
@@ -138,12 +159,23 @@ func parseClassScope(root *sitter.Node, source []byte) *ClassScope {
 	if root.Type() != "class_declaration" {
 		return &ClassScope{}
 	}
+
+	var public bool
+	// Rename the type based on the public/static rules
+	if root.NamedChild(0).Type() == "modifiers" {
+		for _, modifier := range UnnamedChildren(root.NamedChild(0)) {
+			if modifier.Type() == "public" {
+				public = true
+			}
+		}
+	}
+
 	className := nodeToStr(ParseExpr(root.ChildByFieldName("name"), source, Ctx{}))
 	scope := &ClassScope{
 		Classes: []*Definition{
 			&Definition{
 				originalName: className,
-				name:         className,
+				name:         HandleExportStatus(public, className),
 			},
 		},
 	}
@@ -153,23 +185,43 @@ func parseClassScope(root *sitter.Node, source []byte) *ClassScope {
 		node = root.ChildByFieldName("body").NamedChild(i)
 		switch node.Type() {
 		case "field_declaration":
+			var public bool
+			// Rename the type based on the public/static rules
+			if node.NamedChild(0).Type() == "modifiers" {
+				for _, modifier := range UnnamedChildren(node.NamedChild(0)) {
+					if modifier.Type() == "public" {
+						public = true
+					}
+				}
+			}
+
 			name := nodeToStr(ParseExpr(node.ChildByFieldName("declarator").ChildByFieldName("name"), source, Ctx{}))
 			scope.Fields = append(scope.Fields, &Definition{
 				originalName:   name,
 				definitionType: nodeToStr(ParseExpr(node.ChildByFieldName("type"), source, Ctx{})),
-				name:           nodeToStr(ParseExpr(node.ChildByFieldName("declarator").ChildByFieldName("name"), source, Ctx{})),
+				name:           HandleExportStatus(public, name),
 			})
 		case "method_declaration", "constructor_declaration":
+			var public bool
+			// Rename the type based on the public/static rules
+			if node.NamedChild(0).Type() == "modifiers" {
+				for _, modifier := range UnnamedChildren(node.NamedChild(0)) {
+					if modifier.Type() == "public" {
+						public = true
+					}
+				}
+			}
+
 			name := nodeToStr(ParseExpr(node.ChildByFieldName("name"), source, Ctx{}))
 			declaration := &Definition{
 				originalName: name,
-				name:         name,
+				name:         HandleExportStatus(public, name),
 			}
 
 			if node.Type() == "method_declaration" {
 				declaration.definitionType = nodeToStr(ParseExpr(node.ChildByFieldName("type"), source, Ctx{}))
 			} else {
-				// A constructor returns itself, so it does not have a type
+				// A constructor returns itself
 				declaration.constructor = true
 			}
 

@@ -59,6 +59,15 @@ func Lowercase(name string) string {
 	return string(unicode.ToLower(rune(name[0]))) + name[1:]
 }
 
+// HandleExportStatus is a convenience method for renaming methods that may be
+// either public or private, and need to be renamed
+func HandleExportStatus(exported bool, name string) string {
+	if exported {
+		return Uppercase(name)
+	}
+	return Lowercase(name)
+}
+
 // A Ctx is passed into the `ParseNode` function and contains any data that is
 // needed down-the-line for parsing, such as the class's name
 type Ctx struct {
