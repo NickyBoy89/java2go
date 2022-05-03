@@ -10,6 +10,38 @@ import (
 	sitter "github.com/smacker/go-tree-sitter"
 )
 
+// ResolveDefinition resolves a given definition's type, given its class's scope
+// as well as its global scope
+// It returns true if the definition was successfully resolved, and false otherwise
+func ResolveDefinition(definition *Definition, classScope *ClassScope, globalScope *GlobalScope) bool {
+	// Look in the class scope first
+	if localClassDef := classScope.FindClass(definition.Type()); localClassDef != nil {
+		// Every type in the local scope is a reference type, so prefix it with a pointer
+		definition.definitionType = "*" + localClassDef.Name()
+		return true
+
+		// Look in the global Scope
+	} else if globalDef, in := classScope.Imports[definition.Type()]; in {
+		if packageDef := globalScope.FindPackage(globalDef); packageDef != nil {
+			definition.definitionType = packageDef.FindClass(definition.Type()).FindClass(definition.Type()).Type()
+		}
+		return true
+	}
+
+	// Unresolved
+	return false
+}
+
+// ResolveChildren recursively resolves a definition and all of its children
+// It returns true if all definitions were resolved correctly, and false otherwise
+func ResolveChildren(definition *Definition, classScope *ClassScope, globalScope *GlobalScope) bool {
+	result := ResolveDefinition(definition, classScope, globalScope)
+	for _, child := range definition.children {
+		result = ResolveChildren(child, classScope, globalScope) && result
+	}
+	return result
+}
+
 // A GlobalScope represents a global look of all the packages that make up the
 // entirety of the parsed input
 type GlobalScope struct {
@@ -39,6 +71,10 @@ func (ps PackageScope) String() string {
 // FindClass searches for a class in the given package and returns a scope for it
 // the class may be the subclass of another class
 func (ps *PackageScope) FindClass(name string) *ClassScope {
+	// If the type is a pointer type, look it up without the asterisk
+	if name[0] == '*' {
+		name = name[1:]
+	}
 	for _, fileScope := range ps.files {
 		for _, className := range fileScope.Classes {
 			if className.originalName == name {
@@ -78,6 +114,10 @@ func (cs *ClassScope) FindMethod(name string) *Definition {
 }
 
 func (cs *ClassScope) FindClass(name string) *Definition {
+	if len(name) > 0 && name[0] == '*' {
+		name = name[1:]
+	}
+
 	for _, class := range cs.Classes {
 		if class.originalName == name {
 			return class

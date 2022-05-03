@@ -168,20 +168,18 @@ func main() {
 
 	// Go back through the symbol tables and fill in anything that could not be resolved
 	for _, symbolTable := range classDefinitions {
+		// Resolve all the fields in that respective class
 		for _, field := range symbolTable.Fields {
-			// If the field refers to a type in another class
-			if path, in := symbolTable.Imports[field.Type()]; in {
-				if pack := globalScope.FindPackage(path); pack != nil {
-					field.definitionType = pack.FindClass(field.Type()).FindClass(field.Type()).Type()
-				} else {
-					log.WithFields(log.Fields{
-						"package": path,
-						"type":    field.Type(),
-					}).Warn("Unresolved package")
-				}
+			ResolveDefinition(field, symbolTable, globalScope)
+		}
+		for _, method := range symbolTable.Methods {
+			// Resolve the return type, as well as the body of the method
+			ResolveChildren(method, symbolTable, globalScope)
+			// Resolve all the paramters of the method
+			for _, param := range method.parameters {
+				ResolveDefinition(param, symbolTable, globalScope)
 			}
 		}
-		//Methods
 	}
 
 	_ = syncFlag
@@ -213,14 +211,15 @@ func main() {
 			}
 
 			// Write the output to another file
-			output, err := os.Create(outputPath)
+			outputFile, err := os.Create(outputPath)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error": err,
 					"file":  outputPath,
 				}).Panic("Error creating output file")
 			}
-			defer output.Close()
+			output = outputFile
+			defer outputFile.Close()
 		} else if *quiet {
 			output = io.Discard
 		}
