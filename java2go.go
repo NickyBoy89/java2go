@@ -90,24 +90,30 @@ func main() {
 
 	asts := make([]*sitter.Node, len(fileNames))
 
+	sources := make([][]byte, len(fileNames))
+
+	// Read all the source files into memory
+	for ind, filePath := range fileNames {
+		sourceCode, err := os.ReadFile(filePath)
+		if err != nil {
+			log.WithFields(log.Fields{
+				"file":  filePath,
+				"error": err,
+			}).Panic("Error reading source file")
+		}
+		sources[ind] = sourceCode
+	}
+
 	// Parse all the files into their tree-sitter representations
 	for ind, filePath := range fileNames {
 		go func(index int, path string) {
-			sourceCode, err := os.ReadFile(path)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"file":  path,
-					"error": err,
-				}).Panic("Error reading source file")
-			}
-
 			sem <- struct{}{}
 			// Release the semaphore when done
 			defer func() { <-sem }()
 			parser := sitter.NewParser()
 			defer parser.Close()
 			parser.SetLanguage(java.GetLanguage())
-			tree, err := parser.ParseCtx(context.Background(), nil, sourceCode)
+			tree, err := parser.ParseCtx(context.Background(), nil, sources[index])
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error": err,
@@ -143,16 +149,8 @@ func main() {
 	classDefinitions := make([]*ClassScope, len(fileNames))
 
 	// Generate symbol tables
-	for ind, filePath := range fileNames {
-		sourceCode, err := os.ReadFile(filePath)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"file":  filePath,
-				"error": err,
-			}).Panic("Error reading source file")
-		}
-
-		classDef := ExtractDefinitions(asts[ind], sourceCode)
+	for ind := range fileNames {
+		classDef := ExtractDefinitions(asts[ind], sources[ind])
 		classDefinitions[ind] = classDef
 		classPackage := classDef.Package
 		if classPackage == "" {
@@ -186,14 +184,6 @@ func main() {
 
 	// Start looking through the files
 	for ind, filePath := range fileNames {
-		sourceCode, err := os.ReadFile(filePath)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"file":  filePath,
-				"error": err,
-			}).Panic("Error reading source file")
-		}
-
 		log.Infof("Converting file \"%s\"", filePath)
 
 		// Write to stdout by default
@@ -225,7 +215,7 @@ func main() {
 		}
 
 		// The converted AST, in Go's AST representation
-		parsed := ParseNode(asts[ind], sourceCode, Ctx{classScope: classDefinitions[ind]}).(ast.Node)
+		parsed := ParseNode(asts[ind], sources[ind], Ctx{classScope: classDefinitions[ind]}).(ast.Node)
 
 		// Print the generated AST
 		if *astFlag {
