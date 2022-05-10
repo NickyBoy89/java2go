@@ -176,16 +176,20 @@ func ParseDecl(node *sitter.Node, source []byte, ctx Ctx) ast.Decl {
 
 		body.List = append(body.List, &ast.ReturnStmt{Results: []ast.Expr{&ast.Ident{Name: ShortName(ctx.className)}}})
 
-		def := ctx.classScope.FindMethod(ParseExpr(node.ChildByFieldName("name"), source, ctx).(*ast.Ident).Name)
+		params := node.ChildByFieldName("parameters")
+		parameters := make([]string, params.NamedChildCount())
+		for ind := 0; ind < int(params.NamedChildCount()); ind++ {
+			parameters[ind] = params.NamedChild(ind).ChildByFieldName("type").Content(source)
+		}
+
+		def := ctx.classScope.FindMethod(ParseExpr(node.ChildByFieldName("name"), source, ctx).(*ast.Ident).Name, parameters)
 
 		return &ast.FuncDecl{
 			Name: &ast.Ident{Name: def.Name()},
 			Type: &ast.FuncType{
 				Params: ParseNode(node.ChildByFieldName("parameters"), source, ctx).(*ast.FieldList),
 				Results: &ast.FieldList{List: []*ast.Field{&ast.Field{
-					Type: &ast.StarExpr{
-						X: &ast.Ident{Name: def.Type()},
-					},
+					Type: &ast.Ident{Name: def.Type()},
 				}}},
 			},
 			Body: body,
@@ -230,7 +234,13 @@ func ParseDecl(node *sitter.Node, source []byte, ctx Ctx) ast.Decl {
 
 		name := ParseExpr(node.ChildByFieldName("name"), source, ctx).(*ast.Ident)
 
-		def := ctx.classScope.FindMethod(name.Name)
+		paramNode := node.ChildByFieldName("parameters")
+		parameters := make([]string, paramNode.NamedChildCount())
+		for ind := 0; ind < int(paramNode.NamedChildCount()); ind++ {
+			parameters[ind] = paramNode.NamedChild(ind).ChildByFieldName("type").Content(source)
+		}
+
+		def := ctx.classScope.FindMethod(name.Name, parameters)
 
 		body := ParseStmt(node.ChildByFieldName("body"), source, ctx).(*ast.BlockStmt)
 		params := ParseNode(node.ChildByFieldName("parameters"), source, ctx).(*ast.FieldList)

@@ -17,13 +17,13 @@ func ResolveDefinition(definition *Definition, classScope *ClassScope, globalSco
 	// Look in the class scope first
 	if localClassDef := classScope.FindClass(definition.Type()); localClassDef != nil {
 		// Every type in the local scope is a reference type, so prefix it with a pointer
-		definition.definitionType = "*" + localClassDef.Name()
+		definition.typ = "*" + localClassDef.Name()
 		return true
 
 		// Look in the global Scope
 	} else if globalDef, in := classScope.Imports[definition.Type()]; in {
 		if packageDef := globalScope.FindPackage(globalDef); packageDef != nil {
-			definition.definitionType = packageDef.FindClass(definition.Type()).FindClass(definition.Type()).Type()
+			definition.typ = packageDef.FindClass(definition.Type()).FindClass(definition.Type()).Type()
 		}
 		return true
 	}
@@ -104,10 +104,27 @@ func (cs ClassScope) String() string {
 }
 
 // FindMethod looks for a given method by its name in a class definition
-func (cs *ClassScope) FindMethod(name string) *Definition {
+func (cs *ClassScope) FindMethod(name string, parameters []string) *Definition {
 	for _, method := range cs.Methods {
 		if method.originalName == name {
-			return method
+			// If the number of parameters and supplied parameters does not match,
+			// reject it immediately
+			if len(method.parameters) != len(parameters) {
+				break
+			}
+
+			var invalid bool
+			// Go through all the parameters and check to see if they are valid
+			for ind, param := range method.parameters {
+				if param.originalType != parameters[ind] {
+					invalid = true
+					break
+				}
+			}
+
+			if !invalid {
+				return method
+			}
 		}
 	}
 	return nil
@@ -132,8 +149,10 @@ type Definition struct {
 	originalName string
 	// The display name, may be different from the original name
 	name string
-	// Type of the object
-	definitionType string
+	// Display type of the object
+	typ string
+	// Original type of the object
+	originalType string
 	// If the definition is a constructor
 	constructor bool
 	// If the object is a function, it has parameters
@@ -147,15 +166,15 @@ func (d Definition) Name() string {
 }
 
 func (d Definition) Type() string {
-	return d.definitionType
+	return d.typ
 }
 
 func (d Definition) String() string {
 	if d.originalName != d.name {
-		return fmt.Sprintf("Name: %s (Was %s) Type: %s", d.name, d.originalName, d.definitionType)
+		return fmt.Sprintf("Name: %s (Was %s) Type: %s", d.name, d.originalName, d.typ)
 
 	}
-	return fmt.Sprintf("Name: %s Type: %s", d.name, d.definitionType)
+	return fmt.Sprintf("Name: %s Type: %s", d.name, d.typ)
 }
 
 // Rename renames a definition for a type so that it can be referenced later with
@@ -237,9 +256,10 @@ func parseClassScope(root *sitter.Node, source []byte) *ClassScope {
 
 			name := nodeToStr(ParseExpr(node.ChildByFieldName("declarator").ChildByFieldName("name"), source, Ctx{}))
 			scope.Fields = append(scope.Fields, &Definition{
-				originalName:   name,
-				definitionType: nodeToStr(ParseExpr(node.ChildByFieldName("type"), source, Ctx{})),
-				name:           HandleExportStatus(public, name),
+				originalName: name,
+				originalType: node.ChildByFieldName("type").Content(source),
+				typ:          nodeToStr(ParseExpr(node.ChildByFieldName("type"), source, Ctx{})),
+				name:         HandleExportStatus(public, name),
 			})
 		case "method_declaration", "constructor_declaration":
 			var public bool
@@ -259,18 +279,21 @@ func parseClassScope(root *sitter.Node, source []byte) *ClassScope {
 			}
 
 			if node.Type() == "method_declaration" {
-				declaration.definitionType = nodeToStr(ParseExpr(node.ChildByFieldName("type"), source, Ctx{}))
+				declaration.originalType = nodeToStr(ParseExpr(node.ChildByFieldName("type"), source, Ctx{}))
 			} else {
 				// A constructor returns itself
 				declaration.constructor = true
+				declaration.originalType = name
 			}
 
-			for _, param := range ParseNode(node.ChildByFieldName("parameters"), source, Ctx{}).(*ast.FieldList).List {
-				name := nodeToStr(param.Names[0])
+			for _, parameter := range Children(node.ChildByFieldName("parameters")) {
+				parsed := ParseNode(parameter, source, Ctx{}).(*ast.Field)
+				name := nodeToStr(parsed.Names[0])
 				declaration.parameters = append(declaration.parameters, &Definition{
-					originalName:   name,
-					definitionType: nodeToStr(param.Type),
-					name:           name,
+					originalName: name,
+					originalType: parameter.ChildByFieldName("type").Content(source),
+					typ:          nodeToStr(parsed.Type),
+					name:         name,
 				})
 			}
 
@@ -302,9 +325,10 @@ func parseScope(root *sitter.Node, source []byte) *Definition {
 		case "local_variable_declaration":
 			name := nodeToStr(ParseExpr(node.ChildByFieldName("declarator").ChildByFieldName("name"), source, Ctx{}))
 			def.children = append(def.children, &Definition{
-				originalName:   name,
-				definitionType: nodeToStr(ParseExpr(node.ChildByFieldName("type"), source, Ctx{})),
-				name:           name,
+				originalName: name,
+				originalType: node.ChildByFieldName("type").Content(source),
+				typ:          nodeToStr(ParseExpr(node.ChildByFieldName("type"), source, Ctx{})),
+				name:         name,
 			})
 		case "for_statement", "enhanced_for_statement", "while_statement", "if_statement":
 			def.children = append(def.children, parseScope(node, source))
