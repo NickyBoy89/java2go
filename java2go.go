@@ -187,7 +187,7 @@ func main() {
 				ResolveDefinition(param, symbolTable, globalScope)
 
 				for i := 0; IsReserved(param.Name()); i++ {
-					param.Rename(method.Name() + strconv.Itoa(i))
+					param.Rename(param.Name() + strconv.Itoa(i))
 				}
 			}
 		}

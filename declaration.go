@@ -170,14 +170,14 @@ func ParseDecl(node *sitter.Node, source []byte, ctx Ctx) ast.Decl {
 			parameterTypes[ind] = params.NamedChild(ind).ChildByFieldName("type").Content(source)
 		}
 
-		def := ctx.classScope.FindMethod(ParseExpr(node.ChildByFieldName("name"), source, ctx).(*ast.Ident).Name, parameterTypes)
+		ctx.localScope = ctx.classScope.FindMethod(ParseExpr(node.ChildByFieldName("name"), source, ctx).(*ast.Ident).Name, parameterTypes)
 
 		return &ast.FuncDecl{
-			Name: &ast.Ident{Name: def.Name()},
+			Name: &ast.Ident{Name: ctx.localScope.Name()},
 			Type: &ast.FuncType{
 				Params: ParseNode(node.ChildByFieldName("parameters"), source, ctx).(*ast.FieldList),
 				Results: &ast.FieldList{List: []*ast.Field{&ast.Field{
-					Type: &ast.Ident{Name: def.Type()},
+					Type: &ast.Ident{Name: ctx.localScope.Type()},
 				}}},
 			},
 			Body: body,
@@ -223,14 +223,15 @@ func ParseDecl(node *sitter.Node, source []byte, ctx Ctx) ast.Decl {
 		name := ParseExpr(node.ChildByFieldName("name"), source, ctx).(*ast.Ident)
 
 		paramNode := node.ChildByFieldName("parameters")
-		parameters := make([]string, paramNode.NamedChildCount())
+		parameterTypes := make([]string, paramNode.NamedChildCount())
 		for ind := 0; ind < int(paramNode.NamedChildCount()); ind++ {
-			parameters[ind] = paramNode.NamedChild(ind).ChildByFieldName("type").Content(source)
+			parameterTypes[ind] = paramNode.NamedChild(ind).ChildByFieldName("type").Content(source)
 		}
 
-		def := ctx.classScope.FindMethod(name.Name, parameters)
+		ctx.localScope = ctx.classScope.FindMethod(name.Name, parameterTypes)
 
 		body := ParseStmt(node.ChildByFieldName("body"), source, ctx).(*ast.BlockStmt)
+
 		params := ParseNode(node.ChildByFieldName("parameters"), source, ctx).(*ast.FieldList)
 
 		// Special case for the main method, because in Java, this method has the
@@ -253,13 +254,13 @@ func ParseDecl(node *sitter.Node, source []byte, ctx Ctx) ast.Decl {
 
 		return &ast.FuncDecl{
 			Doc:  &ast.CommentGroup{List: comments},
-			Name: &ast.Ident{Name: def.Name()},
+			Name: &ast.Ident{Name: ctx.localScope.Name()},
 			Recv: receiver,
 			Type: &ast.FuncType{
 				Params: params,
 				Results: &ast.FieldList{
 					List: []*ast.Field{
-						&ast.Field{Type: &ast.Ident{Name: def.Type()}},
+						&ast.Field{Type: &ast.Ident{Name: ctx.localScope.Type()}},
 					},
 				},
 			},

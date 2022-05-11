@@ -207,6 +207,15 @@ func (d *Definition) Rename(name string) {
 	d.name = name
 }
 
+func (d *Definition) ParameterByName(name string) *Definition {
+	for _, param := range d.parameters {
+		if param.originalName == name {
+			return param
+		}
+	}
+	return nil
+}
+
 func (d Definition) isEmpty() bool {
 	return d.originalName == "" && len(d.children) == 0
 }
