@@ -49,33 +49,21 @@ func ParseDecls(node *sitter.Node, source []byte, ctx Ctx) []ast.Decl {
 					}
 				}
 
-				// Parse the field declaration
-				// The field can either be a `Field`, or a `ValueSpec` if it was assigned to a value
-				field := ParseNode(child, source, ctx)
+				// TODO: If a field is initialized to a value, that value is discarded
 
-				// The field has a value assigned to it
-				if valueField, hasValue := field.(*ast.ValueSpec); hasValue {
-					if len(comments) > 0 {
-						valueField.Doc = &ast.CommentGroup{List: comments}
-					}
+				field := &ast.Field{}
+				if len(comments) > 0 {
+					field.Doc = &ast.CommentGroup{List: comments}
+				}
 
-					if staticField {
-						globalVariables.Specs = append(globalVariables.Specs, valueField)
-					} else {
-						// TODO: If a field has a value, it is discarded instead
-						fields.List = append(fields.List, &ast.Field{Names: valueField.Names, Type: valueField.Type})
-					}
+				fieldDef := ctx.classScope.FindField(child.ChildByFieldName("declarator").ChildByFieldName("name").Content(source))
+
+				field.Names, field.Type = []*ast.Ident{&ast.Ident{Name: fieldDef.Name()}}, &ast.Ident{Name: fieldDef.Type()}
+
+				if staticField {
+					globalVariables.Specs = append(globalVariables.Specs, &ast.ValueSpec{Names: field.Names, Type: field.Type})
 				} else {
-					// Normal field with no value
-					if len(comments) > 0 {
-						field.(*ast.Field).Doc = &ast.CommentGroup{List: comments}
-					}
-
-					if staticField {
-						globalVariables.Specs = append(globalVariables.Specs, &ast.ValueSpec{Names: field.(*ast.Field).Names, Type: field.(*ast.Field).Type})
-					} else {
-						fields.List = append(fields.List, field.(*ast.Field))
-					}
+					fields.List = append(fields.List, field)
 				}
 			}
 		}
@@ -177,12 +165,12 @@ func ParseDecl(node *sitter.Node, source []byte, ctx Ctx) ast.Decl {
 		body.List = append(body.List, &ast.ReturnStmt{Results: []ast.Expr{&ast.Ident{Name: ShortName(ctx.className)}}})
 
 		params := node.ChildByFieldName("parameters")
-		parameters := make([]string, params.NamedChildCount())
+		parameterTypes := make([]string, params.NamedChildCount())
 		for ind := 0; ind < int(params.NamedChildCount()); ind++ {
-			parameters[ind] = params.NamedChild(ind).ChildByFieldName("type").Content(source)
+			parameterTypes[ind] = params.NamedChild(ind).ChildByFieldName("type").Content(source)
 		}
 
-		def := ctx.classScope.FindMethod(ParseExpr(node.ChildByFieldName("name"), source, ctx).(*ast.Ident).Name, parameters)
+		def := ctx.classScope.FindMethod(ParseExpr(node.ChildByFieldName("name"), source, ctx).(*ast.Ident).Name, parameterTypes)
 
 		return &ast.FuncDecl{
 			Name: &ast.Ident{Name: def.Name()},

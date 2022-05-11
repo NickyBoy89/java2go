@@ -10,6 +10,19 @@ import (
 	sitter "github.com/smacker/go-tree-sitter"
 )
 
+// Go reserved keywords that are not Java keywords, and create invalid code
+var reservedKeywords = []string{"chan", "defer", "fallthrough", "func", "go", "map", "range", "select", "struct", "type"}
+
+// IsReserved tests if a given identifier conflicts with a Go reserved keyword
+func IsReserved(name string) bool {
+	for _, keyword := range reservedKeywords {
+		if keyword == name {
+			return true
+		}
+	}
+	return false
+}
+
 // ResolveDefinition resolves a given definition's type, given its class's scope
 // as well as its global scope
 // It returns true if the definition was successfully resolved, and false otherwise
@@ -138,6 +151,17 @@ func (cs *ClassScope) FindClass(name string) *Definition {
 	for _, class := range cs.Classes {
 		if class.originalName == name {
 			return class
+		}
+	}
+	return nil
+}
+
+// FindField searches for a field by its original name, and returns its definition
+// or nil if none was found
+func (cs *ClassScope) FindField(name string) *Definition {
+	for _, field := range cs.Fields {
+		if field.originalName == name {
+			return field
 		}
 	}
 	return nil
@@ -279,11 +303,12 @@ func parseClassScope(root *sitter.Node, source []byte) *ClassScope {
 			}
 
 			if node.Type() == "method_declaration" {
-				declaration.originalType = nodeToStr(ParseExpr(node.ChildByFieldName("type"), source, Ctx{}))
+				declaration.originalType = node.ChildByFieldName("type").Content(source)
+				declaration.typ = nodeToStr(ParseExpr(node.ChildByFieldName("type"), source, Ctx{}))
 			} else {
 				// A constructor returns itself
 				declaration.constructor = true
-				declaration.originalType = name
+				declaration.typ = name
 			}
 
 			for _, parameter := range Children(node.ChildByFieldName("parameters")) {

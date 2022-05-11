@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"runtime/pprof"
+	"strconv"
 	"strings"
 
 	log "github.com/sirupsen/logrus"
@@ -169,13 +170,25 @@ func main() {
 		// Resolve all the fields in that respective class
 		for _, field := range symbolTable.Fields {
 			ResolveDefinition(field, symbolTable, globalScope)
+			// Rename the field if its name conflits with any keyword
+			for i := 0; IsReserved(field.Name()); i++ {
+				field.Rename(field.Name() + strconv.Itoa(i))
+			}
 		}
 		for _, method := range symbolTable.Methods {
 			// Resolve the return type, as well as the body of the method
 			ResolveChildren(method, symbolTable, globalScope)
+
+			for i := 0; IsReserved(method.Name()); i++ {
+				method.Rename(method.Name() + strconv.Itoa(i))
+			}
 			// Resolve all the paramters of the method
 			for _, param := range method.parameters {
 				ResolveDefinition(param, symbolTable, globalScope)
+
+				for i := 0; IsReserved(param.Name()); i++ {
+					param.Rename(method.Name() + strconv.Itoa(i))
+				}
 			}
 		}
 	}

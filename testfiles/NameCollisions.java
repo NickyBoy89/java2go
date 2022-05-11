@@ -11,13 +11,15 @@ public class NameCollisions {
   // `map` is a reserved keyword
   Map<String, Integer> map;
 
+  Map<String, Integer> test = new HashMap<>();
+
   // Since `type` is a reserved keyword in Go, this should fail
   public int getFruit(String type) {
     return this.fruitTypes.get(type);
   }
 
   // This is also a collision, with the keyword `range`
-  public int[] range() {
+  private int[] range() {
     int[] values = new int[this.map.size()];
     int ind = 0;
     for (int val : this.map.values()) {
