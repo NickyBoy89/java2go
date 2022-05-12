@@ -79,6 +79,7 @@ func main() {
 
 	if len(fileNames) == 0 {
 		log.Warn("No files specified to convert")
+		return
 	}
 
 	// Sem determines the number of files parsed in parallel
