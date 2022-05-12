@@ -6,6 +6,6 @@ type Optional[T any] struct {
 }
 
 // Some returns true if a value is present
-func (o Optional) Some() bool {
+func (o Optional[T]) Some() bool {
 	return o.value != nil
 }

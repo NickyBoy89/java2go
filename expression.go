@@ -180,20 +180,29 @@ func TryParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 			Args: ParseNode(node.NamedChild(functionNameInd+1), source, ctx).([]ast.Expr),
 		}
 	case "array_creation_expression":
-		// The type of the array
-		arrayType := ParseExpr(node.NamedChild(0), source, ctx)
-		// The dimensions of the array, which Golang only supports defining one at
-		// a time with the use of the builtin `make`
-		dimensions := []ast.Expr{&ast.ArrayType{Elt: arrayType}}
-		for _, c := range Children(node)[1:] {
-			if c.Type() == "dimensions_expr" {
-				dimensions = append(dimensions, ParseExpr(c, source, ctx))
+		arguments := []ast.Expr{&ast.ArrayType{Elt: ParseExpr(node.ChildByFieldName("type"), source, ctx)}}
+
+		for _, child := range Children(node) {
+			if child.Type() == "dimensions_expr" {
+				arguments = append(arguments, ParseExpr(child, source, ctx))
 			}
 		}
 
+		var methodName string
+		switch len(arguments) - 1 {
+		case 1:
+			methodName = "make"
+		case 2:
+			methodName = "MultiDimensionArray"
+		case 3:
+			methodName = "MultiDimensionArray3"
+		default:
+			panic("Unimplemented number of dimensions in array initializer")
+		}
+
 		return &ast.CallExpr{
-			Fun:  &ast.Ident{Name: "make"},
-			Args: dimensions,
+			Fun:  &ast.Ident{Name: methodName},
+			Args: arguments,
 		}
 	case "instanceof_expression":
 		return &ast.BadExpr{}
