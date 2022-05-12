@@ -207,6 +207,7 @@ func (d *Definition) Rename(name string) {
 	d.name = name
 }
 
+// ParameterByName returns the definition for a parameter, given its original name
 func (d *Definition) ParameterByName(name string) *Definition {
 	for _, param := range d.parameters {
 		if param.originalName == name {
@@ -214,6 +215,15 @@ func (d *Definition) ParameterByName(name string) *Definition {
 		}
 	}
 	return nil
+}
+
+// OriginalParameterTypes returns a list of all the original types of the parameters
+func (d *Definition) OriginalParameterTypes() []string {
+	names := make([]string, len(d.parameters))
+	for ind, param := range d.parameters {
+		names[ind] = param.originalType
+	}
+	return names
 }
 
 func (d Definition) isEmpty() bool {

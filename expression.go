@@ -207,7 +207,7 @@ func TryParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 	case "instanceof_expression":
 		return &ast.BadExpr{}
 	case "dimensions_expr":
-		return &ast.Ident{Name: node.NamedChild(0).Content(source)}
+		return ParseExpr(node.NamedChild(0), source, ctx)
 	case "binary_expression":
 		if node.Child(1).Content(source) == ">>>" {
 			return &ast.CallExpr{
@@ -242,14 +242,26 @@ func TryParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 			Args: args,
 		}
 	case "cast_expression":
+		// TODO: This probably should be a cast function, instead of an assertion
 		return &ast.TypeAssertExpr{
 			X:    ParseExpr(node.NamedChild(1), source, ctx),
 			Type: ParseExpr(node.NamedChild(0), source, ctx),
 		}
 	case "field_access":
+		// X.Sel
+		obj := node.ChildByFieldName("object")
+
+		if obj.Type() == "this" {
+			def := ctx.classScope.FindField(node.ChildByFieldName("field").Content(source))
+
+			return &ast.SelectorExpr{
+				X:   ParseExpr(node.ChildByFieldName("object"), source, ctx),
+				Sel: &ast.Ident{Name: def.Name()},
+			}
+		}
 		return &ast.SelectorExpr{
-			X:   ParseExpr(node.NamedChild(0), source, ctx),
-			Sel: ParseExpr(node.NamedChild(1), source, ctx).(*ast.Ident),
+			X:   ParseExpr(obj, source, ctx),
+			Sel: ParseExpr(node.ChildByFieldName("field"), source, ctx).(*ast.Ident),
 		}
 	case "array_access":
 		return &ast.IndexExpr{
