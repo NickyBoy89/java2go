@@ -104,8 +104,11 @@ func (ps *PackageScope) FindClass(name string) *ClassScope {
 type ClassScope struct {
 	Package string
 	Imports map[string]string
+	// Every class declared within the functio
 	Classes []*Definition
-	Fields  []*Definition
+	// Class fields and static fields
+	Fields []*Definition
+	// Methods and constructors
 	Methods []*Definition
 }
 
@@ -123,7 +126,7 @@ func (cs *ClassScope) FindMethod(name string, parameters []string) *Definition {
 			// If the number of parameters and supplied parameters does not match,
 			// reject it immediately
 			if len(method.parameters) != len(parameters) {
-				break
+				continue
 			}
 
 			var invalid bool
@@ -325,6 +328,7 @@ func parseClassScope(root *sitter.Node, source []byte) *ClassScope {
 				declaration.originalType = node.ChildByFieldName("type").Content(source)
 				declaration.typ = nodeToStr(ParseExpr(node.ChildByFieldName("type"), source, Ctx{}))
 			} else {
+				declaration.Rename(HandleExportStatus(public, "New") + name)
 				// A constructor returns itself
 				declaration.constructor = true
 				declaration.typ = name
