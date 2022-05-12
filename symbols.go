@@ -333,12 +333,21 @@ func parseClassScope(root *sitter.Node, source []byte) *ClassScope {
 			for _, parameter := range Children(node.ChildByFieldName("parameters")) {
 				parsed := ParseNode(parameter, source, Ctx{}).(*ast.Field)
 				name := nodeToStr(parsed.Names[0])
-				declaration.parameters = append(declaration.parameters, &Definition{
-					originalName: name,
-					originalType: parameter.ChildByFieldName("type").Content(source),
-					typ:          nodeToStr(parsed.Type),
-					name:         name,
-				})
+				if parameter.Type() == "spread_parameter" {
+					declaration.parameters = append(declaration.parameters, &Definition{
+						originalName: name,
+						originalType: parameter.NamedChild(0).Content(source),
+						typ:          nodeToStr(parsed.Type),
+						name:         name,
+					})
+				} else {
+					declaration.parameters = append(declaration.parameters, &Definition{
+						originalName: name,
+						originalType: parameter.ChildByFieldName("type").Content(source),
+						typ:          nodeToStr(parsed.Type),
+						name:         name,
+					})
+				}
 			}
 
 			if node.ChildByFieldName("body") != nil {
