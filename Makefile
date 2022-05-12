@@ -1,7 +1,7 @@
 # Helper script for decompiling some files for testing
 
 fernflower = fabric-fernflower-1.4.1+local.jar
-quiltflower = quiltflower-1.7.0+local.jar
+quiltflower = quiltflower-1.8.1+local.jar
 namedjar = 1.16.5-named.jar
 procyon = `curl --silent https://api.github.com/repos/mstrobel/procyon/releases/latest | jq -r .assets[0].name`
 
