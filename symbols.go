@@ -261,10 +261,6 @@ func ExtractDefinitions(root *sitter.Node, source []byte) *ClassScope {
 }
 
 func parseClassScope(root *sitter.Node, source []byte) *ClassScope {
-	if root.Type() != "class_declaration" {
-		return &ClassScope{}
-	}
-
 	var public bool
 	// Rename the type based on the public/static rules
 	if root.NamedChild(0).Type() == "modifiers" {
