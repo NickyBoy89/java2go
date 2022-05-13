@@ -229,7 +229,6 @@ func main() {
 				}).Panic("Error creating output file")
 			}
 			output = outputFile
-			defer outputFile.Close()
 		} else if *quiet {
 			output = io.Discard
 		}
@@ -247,6 +246,10 @@ func main() {
 			log.WithFields(log.Fields{
 				"error": err,
 			}).Panic("Error printing generated code")
+		}
+
+		if *writeFlag {
+			output.(*os.File).Close()
 		}
 	}
 }
