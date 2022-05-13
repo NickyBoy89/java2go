@@ -152,6 +152,12 @@ func main() {
 
 	// Generate symbol tables
 	for ind := range fileNames {
+		if asts[ind].HasError() {
+			log.WithFields(log.Fields{
+				"fileName": fileNames[ind],
+			}).Warn("AST parse error in file, skipping file")
+			continue
+		}
 		classDef := ExtractDefinitions(asts[ind], sources[ind])
 		classDefinitions[ind] = classDef
 		classPackage := classDef.Package

@@ -238,6 +238,12 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 	case "formal_parameter":
 		if ctx.localScope != nil {
 			paramDef := ctx.localScope.ParameterByName(node.ChildByFieldName("name").Content(source))
+			if paramDef == nil {
+				paramDef = &Definition{
+					name: node.ChildByFieldName("name").Content(source),
+					typ:  node.ChildByFieldName("type").Content(source),
+				}
+			}
 			return &ast.Field{
 				Names: []*ast.Ident{&ast.Ident{Name: paramDef.Name()}},
 				Type:  &ast.Ident{Name: paramDef.Type()},

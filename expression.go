@@ -128,8 +128,15 @@ func TryParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 		for _, c := range Children(node) {
 			items = append(items, ParseExpr(c, source, ctx))
 		}
+
+		// If there wasn't a type for the array specified, then use the one that has been defined
+		if _, ok := ctx.lastType.(*ast.ArrayType); ctx.lastType != nil && ok {
+			return &ast.CompositeLit{
+				Type: ctx.lastType.(*ast.ArrayType),
+				Elts: items,
+			}
+		}
 		return &ast.CompositeLit{
-			Type: ctx.lastType.(*ast.ArrayType),
 			Elts: items,
 		}
 	case "method_invocation":
@@ -190,6 +197,12 @@ func TryParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 
 		var methodName string
 		switch len(arguments) - 1 {
+		case 0:
+			expr := ParseExpr(node.ChildByFieldName("value"), source, ctx).(*ast.CompositeLit)
+			expr.Type = &ast.ArrayType{
+				Elt: ParseExpr(node.ChildByFieldName("type"), source, ctx),
+			}
+			return expr
 		case 1:
 			methodName = "make"
 		case 2:
@@ -253,6 +266,13 @@ func TryParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 
 		if obj.Type() == "this" {
 			def := ctx.classScope.FindField(node.ChildByFieldName("field").Content(source))
+			if def == nil {
+				// TODO: This field could not be found in the current class, because it exists in the superclass
+				// definition for the class
+				def = &Definition{
+					name: node.ChildByFieldName("field").Content(source),
+				}
+			}
 
 			return &ast.SelectorExpr{
 				X:   ParseExpr(node.ChildByFieldName("object"), source, ctx),

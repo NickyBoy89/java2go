@@ -36,6 +36,9 @@ func ResolveDefinition(definition *Definition, classScope *ClassScope, globalSco
 		// Look in the global Scope
 	} else if globalDef, in := classScope.Imports[definition.Type()]; in {
 		if packageDef := globalScope.FindPackage(globalDef); packageDef != nil {
+			if packageDef.FindClass(definition.Type()) == nil {
+				return false
+			}
 			definition.typ = packageDef.FindClass(definition.Type()).FindClass(definition.Type()).Type()
 		}
 		return true
@@ -84,10 +87,6 @@ func (ps PackageScope) String() string {
 // FindClass searches for a class in the given package and returns a scope for it
 // the class may be the subclass of another class
 func (ps *PackageScope) FindClass(name string) *ClassScope {
-	// If the type is a pointer type, look it up without the asterisk
-	if name[0] == '*' {
-		name = name[1:]
-	}
 	for _, fileScope := range ps.files {
 		for _, className := range fileScope.Classes {
 			if className.originalName == name {

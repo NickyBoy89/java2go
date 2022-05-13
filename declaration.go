@@ -164,10 +164,14 @@ func ParseDecl(node *sitter.Node, source []byte, ctx Ctx) ast.Decl {
 
 		body.List = append(body.List, &ast.ReturnStmt{Results: []ast.Expr{&ast.Ident{Name: ShortName(ctx.className)}}})
 
-		params := node.ChildByFieldName("parameters")
-		parameterTypes := make([]string, params.NamedChildCount())
-		for ind := 0; ind < int(params.NamedChildCount()); ind++ {
-			parameterTypes[ind] = params.NamedChild(ind).ChildByFieldName("type").Content(source)
+		paramNode := node.ChildByFieldName("parameters")
+		parameterTypes := make([]string, paramNode.NamedChildCount())
+		for ind := 0; ind < int(paramNode.NamedChildCount()); ind++ {
+			if paramNode.NamedChild(ind).Type() == "spread_parameter" {
+				parameterTypes[ind] = paramNode.NamedChild(ind).NamedChild(0).Content(source)
+			} else {
+				parameterTypes[ind] = paramNode.NamedChild(ind).ChildByFieldName("type").Content(source)
+			}
 		}
 
 		ctx.localScope = ctx.classScope.FindMethod(ParseExpr(node.ChildByFieldName("name"), source, ctx).(*ast.Ident).Name, parameterTypes)
@@ -225,10 +229,15 @@ func ParseDecl(node *sitter.Node, source []byte, ctx Ctx) ast.Decl {
 		paramNode := node.ChildByFieldName("parameters")
 		parameterTypes := make([]string, paramNode.NamedChildCount())
 		for ind := 0; ind < int(paramNode.NamedChildCount()); ind++ {
-			parameterTypes[ind] = paramNode.NamedChild(ind).ChildByFieldName("type").Content(source)
+			if paramNode.NamedChild(ind).Type() == "spread_parameter" {
+				parameterTypes[ind] = paramNode.NamedChild(ind).NamedChild(0).Content(source)
+			} else {
+				parameterTypes[ind] = paramNode.NamedChild(ind).ChildByFieldName("type").Content(source)
+			}
 		}
 
 		ctx.localScope = ctx.classScope.FindMethod(name.Name, parameterTypes)
+		// TODO: This can look up a method of the same name and type in another class, and it will display incorrect results
 
 		body := ParseStmt(node.ChildByFieldName("body"), source, ctx).(*ast.BlockStmt)
 
