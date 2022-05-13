@@ -158,33 +158,34 @@ func TryParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 	case "object_creation_expression":
 		// This is called when anything is created with a constructor
 
-		// Usually, this is called in this format:
-		// * The name of the type, this can either be an `identifier` or `generic_type`
-		// * An `argument_list` for the constructor's arguments
+		objectType := node.ChildByFieldName("type")
 
-		// But, when creating a new inner class from an outer class, it can use this format:
-		// outerClass.new InnerClass()
+		// A object can also be created with this format:
+		// parentClass.new NestedClass()
+		if !node.NamedChild(0).Equal(objectType) {
+		}
 
-		// The name of the function will always be the last identifier
-		var functionNameInd int
-		for ind, c := range Children(node) {
-			if c.Type() == "type_identifier" {
-				functionNameInd = ind
+		// Get all the arguments, and look up their types
+		objectArguments := node.ChildByFieldName("arguments")
+		arguments := make([]ast.Expr, objectArguments.NamedChildCount())
+		argumentTypes := make([]string, objectArguments.NamedChildCount())
+		for ind, argument := range Children(objectArguments) {
+			arguments[ind] = ParseExpr(argument, source, ctx)
+			// Look up each argument and find its type
+			if argument.Type() != "identifier" {
+				argumentTypes[ind] = TypeOfLiteral(argument, source)
+			} else {
+				argumentTypes[ind] = ctx.localScope.FindVariable(argument.Content(source)).OriginalType()
 			}
 		}
 
-		var functionName string
-		parsed := ParseExpr(node.NamedChild(functionNameInd), source, ctx)
-		switch parsed.(type) {
-		case *ast.Ident:
-			functionName = parsed.(*ast.Ident).Name
-		case *ast.StarExpr:
-			functionName = parsed.(*ast.StarExpr).X.(*ast.Ident).Name
-		}
+		// NOTE: This may break with generic types
+		// Find the respective constructor, and call it
+		constructor := ctx.classScope.FindMethod(objectType.Content(source), argumentTypes)
 
 		return &ast.CallExpr{
-			Fun:  &ast.Ident{Name: "New" + functionName},
-			Args: ParseNode(node.NamedChild(functionNameInd+1), source, ctx).([]ast.Expr),
+			Fun:  &ast.Ident{Name: constructor.Name()},
+			Args: arguments,
 		}
 	case "array_creation_expression":
 		arguments := []ast.Expr{&ast.ArrayType{Elt: ParseExpr(node.ChildByFieldName("type"), source, ctx)}}

@@ -152,18 +152,6 @@ func ParseDecls(node *sitter.Node, source []byte, ctx Ctx) []ast.Decl {
 func ParseDecl(node *sitter.Node, source []byte, ctx Ctx) ast.Decl {
 	switch node.Type() {
 	case "constructor_declaration":
-		body := ParseStmt(node.ChildByFieldName("body"), source, ctx).(*ast.BlockStmt)
-
-		body.List = append([]ast.Stmt{
-			&ast.AssignStmt{
-				Lhs: []ast.Expr{&ast.Ident{Name: ShortName(ctx.className)}},
-				Tok: token.DEFINE,
-				Rhs: []ast.Expr{&ast.CallExpr{Fun: &ast.Ident{Name: "new"}, Args: []ast.Expr{&ast.Ident{Name: ctx.className}}}},
-			},
-		}, body.List...)
-
-		body.List = append(body.List, &ast.ReturnStmt{Results: []ast.Expr{&ast.Ident{Name: ShortName(ctx.className)}}})
-
 		paramNode := node.ChildByFieldName("parameters")
 		parameterTypes := make([]string, paramNode.NamedChildCount())
 		for ind := 0; ind < int(paramNode.NamedChildCount()); ind++ {
@@ -175,6 +163,18 @@ func ParseDecl(node *sitter.Node, source []byte, ctx Ctx) ast.Decl {
 		}
 
 		ctx.localScope = ctx.classScope.FindMethod(ParseExpr(node.ChildByFieldName("name"), source, ctx).(*ast.Ident).Name, parameterTypes)
+
+		body := ParseStmt(node.ChildByFieldName("body"), source, ctx).(*ast.BlockStmt)
+
+		body.List = append([]ast.Stmt{
+			&ast.AssignStmt{
+				Lhs: []ast.Expr{&ast.Ident{Name: ShortName(ctx.className)}},
+				Tok: token.DEFINE,
+				Rhs: []ast.Expr{&ast.CallExpr{Fun: &ast.Ident{Name: "new"}, Args: []ast.Expr{&ast.Ident{Name: ctx.className}}}},
+			},
+		}, body.List...)
+
+		body.List = append(body.List, &ast.ReturnStmt{Results: []ast.Expr{&ast.Ident{Name: ShortName(ctx.className)}}})
 
 		return &ast.FuncDecl{
 			Name: &ast.Ident{Name: ctx.localScope.Name()},

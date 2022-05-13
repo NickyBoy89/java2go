@@ -23,6 +23,36 @@ func IsReserved(name string) bool {
 	return false
 }
 
+// TypeOfLiteral returns the corresponding definition for a literal type
+func TypeOfLiteral(node *sitter.Node, source []byte) string {
+	var originalType string
+
+	switch node.Type() {
+	case "decimal_integer_literal":
+		switch node.Content(source)[len(node.Content(source))-1] {
+		case 'L':
+			originalType = "long"
+		default:
+			originalType = "int"
+		}
+	case "hex_integer_literal":
+		panic("here")
+	case "decimal_floating_point_literal":
+		switch node.Content(source)[len(node.Content(source))-1] {
+		case 'D':
+			originalType = "double"
+		default:
+			originalType = "float"
+		}
+	case "string_literal":
+		originalType = "String"
+	case "character_literal":
+		originalType = "char"
+	}
+
+	return originalType
+}
+
 // ResolveDefinition resolves a given definition's type, given its class's scope
 // as well as its global scope
 // It returns true if the definition was successfully resolved, and false otherwise
@@ -195,6 +225,10 @@ func (d Definition) Type() string {
 	return d.typ
 }
 
+func (d Definition) OriginalType() string {
+	return d.originalType
+}
+
 func (d Definition) String() string {
 	if d.originalName != d.name {
 		return fmt.Sprintf("Name: %s (Was %s) Type: %s", d.name, d.originalName, d.typ)
@@ -226,6 +260,22 @@ func (d *Definition) OriginalParameterTypes() []string {
 		names[ind] = param.originalType
 	}
 	return names
+}
+
+// FindVariable searches a definition's immediate children and parameters
+// to try and find a given variable by its original name
+func (d *Definition) FindVariable(name string) *Definition {
+	for _, param := range d.parameters {
+		if param.originalName == name {
+			return param
+		}
+	}
+	for _, child := range d.children {
+		if child.originalName == name {
+			return child
+		}
+	}
+	return nil
 }
 
 func (d Definition) isEmpty() bool {
@@ -352,14 +402,18 @@ func parseClassScope(root *sitter.Node, source []byte) *ClassScope {
 			if node.ChildByFieldName("body") != nil {
 				methodScope := parseScope(node.ChildByFieldName("body"), source)
 				if !methodScope.isEmpty() {
-					declaration.children = append(declaration.children, methodScope)
+					declaration.children = append(declaration.children, methodScope.children...)
 				}
 			}
 
 			scope.Methods = append(scope.Methods, declaration)
 		case "class_declaration", "interface_declaration", "enum_declaration":
 			other := parseClassScope(node, source)
-			scope.Classes = append(scope.Classes, other.Classes...)
+			for _, class := range other.Classes {
+				// Any subclasses will be renamed to part of their parent class
+				class.Rename(scope.Classes[0].Name() + class.Name())
+				scope.Classes = append(scope.Classes, class)
+			}
 			scope.Fields = append(scope.Fields, other.Fields...)
 			scope.Methods = append(scope.Methods, other.Methods...)
 		}
