@@ -346,10 +346,22 @@ func parseClassScope(root *sitter.Node, source []byte) *ClassScope {
 			}
 
 			name := nodeToStr(ParseExpr(node.ChildByFieldName("declarator").ChildByFieldName("name"), source, Ctx{}))
+			typeNode := node.ChildByFieldName("type")
+
+			var fieldType string
+			// Scoped type identifiers are in a format such as RemotePackage.ClassName
+			// To handle this, we remove the RemotePackage part, and depend on the later
+			// type resolution to figure things out
+			// TODO: Fix this to allow partial lookups, instead of throwing out this information
+			if typeNode.Type() == "scoped_type_identifier" {
+				fieldType = nodeToStr(ParseExpr(typeNode.NamedChild(int(typeNode.NamedChildCount())-1), source, Ctx{}))
+			} else {
+				fieldType = nodeToStr(ParseExpr(typeNode, source, Ctx{}))
+			}
 			scope.Fields = append(scope.Fields, &Definition{
 				originalName: name,
 				originalType: node.ChildByFieldName("type").Content(source),
-				typ:          nodeToStr(ParseExpr(node.ChildByFieldName("type"), source, Ctx{})),
+				typ:          fieldType,
 				name:         HandleExportStatus(public, name),
 			})
 		case "method_declaration", "constructor_declaration":
