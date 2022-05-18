@@ -175,7 +175,12 @@ func TryParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 			if argument.Type() != "identifier" {
 				argumentTypes[ind] = TypeOfLiteral(argument, source)
 			} else {
-				argumentTypes[ind] = ctx.localScope.FindVariable(argument.Content(source)).OriginalType()
+				if localDef := ctx.localScope.FindVariable(argument.Content(source)); localDef != nil {
+					argumentTypes[ind] = localDef.OriginalType()
+					// Otherwise, a variable may exist as a global variable
+				} else if def := ctx.classScope.FindField(argument.Content(source)); def != nil {
+					argumentTypes[ind] = def.OriginalType()
+				}
 			}
 		}
 

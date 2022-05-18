@@ -276,6 +276,9 @@ func ParseDecl(node *sitter.Node, source []byte, ctx Ctx) ast.Decl {
 			Body: body,
 		}
 	case "static_initializer":
+
+		ctx.localScope = &Definition{}
+
 		// A block of `static`, which is run before the main function
 		return &ast.FuncDecl{
 			Name: &ast.Ident{Name: "init"},
