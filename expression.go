@@ -179,12 +179,25 @@ func TryParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 			}
 		}
 
-		// NOTE: This may break with generic types
+		var constructor *Definition
 		// Find the respective constructor, and call it
-		constructor := ctx.classScope.FindMethod(objectType.Content(source), argumentTypes)
+		if objectType.Type() == "generic_type" {
+			constructor = ctx.classScope.FindMethod(objectType.NamedChild(0).Content(source), argumentTypes)
+		} else {
+			constructor = ctx.classScope.FindMethod(objectType.Content(source), argumentTypes)
+		}
 
+		if constructor != nil {
+			return &ast.CallExpr{
+				Fun:  &ast.Ident{Name: constructor.Name()},
+				Args: arguments,
+			}
+		}
+
+		// It is also possible that a constructor could be unresolved, so we handle
+		// this by calling the type of the type + "Construct" at the beginning
 		return &ast.CallExpr{
-			Fun:  &ast.Ident{Name: constructor.Name()},
+			Fun:  &ast.Ident{Name: "Construct" + objectType.Content(source)},
 			Args: arguments,
 		}
 	case "array_creation_expression":
