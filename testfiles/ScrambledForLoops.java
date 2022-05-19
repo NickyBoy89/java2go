@@ -30,11 +30,11 @@ class ScrambledForLoops {
       i++;
     }
 
-    System.out.println("Multiple declaration")
+    System.out.println("Multiple declaration");
     int e;
     int f;
-    for (e = 1, f = 1; e < 3; i++) {
-      System.out.println(e)
+    for (e = 1, f = 1; e < 3; e++) {
+      System.out.println(e);
     }
   }
 }
