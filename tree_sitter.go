@@ -159,21 +159,14 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 	case "import_declaration":
 		return &ast.ImportSpec{Name: ParseExpr(node.NamedChild(0), source, ctx).(*ast.Ident)}
 	case "method_declaration":
-		var public bool
-
 		comments := []*ast.Comment{}
 
 		if node.NamedChild(0).Type() == "modifiers" {
-			cursor := sitter.NewTreeCursor(node.NamedChild(0))
-			defer cursor.Close()
-			cursor.GoToFirstChild()
-			for cursor.GoToNextSibling() {
-				switch cursor.CurrentNode().Type() {
-				case "public":
-					public = true
+			for _, modifier := range UnnamedChildren(node.NamedChild(0)) {
+				switch modifier.Type() {
 				case "marker_annotation", "annotation":
-					comments = append(comments, &ast.Comment{Text: "//" + cursor.CurrentNode().Content(source)})
-					if _, in := excludedAnnotations[cursor.CurrentNode().Content(source)]; in {
+					comments = append(comments, &ast.Comment{Text: "//" + modifier.Content(source)})
+					if _, in := excludedAnnotations[modifier.Content(source)]; in {
 						// If this entire method is ignored, we return an empty field, which
 						// is handled by the logic that parses a class file
 						return &ast.Field{}
@@ -182,20 +175,29 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 			}
 		}
 
-		name := LowercaseIdent(ParseExpr(node.ChildByFieldName("name"), source, ctx).(*ast.Ident))
+		parameterTypes := []string{}
 
-		if public {
-			name = CapitalizeIdent(name)
+		parameters := &ast.FieldList{}
+
+		for _, param := range Children(node.ChildByFieldName("parameters")) {
+			if param.Type() == "spread_parameter" {
+				parameterTypes = append(parameterTypes, param.NamedChild(0).Content(source))
+			} else {
+				parameterTypes = append(parameterTypes, param.ChildByFieldName("type").Content(source))
+			}
+			parameters.List = append(parameters.List, ParseNode(param, source, ctx).(*ast.Field))
 		}
+
+		def := ctx.classScope.FindMethod(node.ChildByFieldName("name").Content(source), parameterTypes)
 
 		return &ast.Field{
 			Doc:   &ast.CommentGroup{List: comments},
-			Names: []*ast.Ident{name},
+			Names: []*ast.Ident{&ast.Ident{Name: def.Name()}},
 			Type: &ast.FuncType{
-				Params: ParseNode(node.ChildByFieldName("parameters"), source, ctx).(*ast.FieldList),
+				Params: parameters,
 				Results: &ast.FieldList{List: []*ast.Field{
 					&ast.Field{
-						Type: ParseExpr(node.ChildByFieldName("type"), source, ctx),
+						Type: &ast.Ident{Name: def.Type()},
 					},
 				},
 				},
