@@ -186,7 +186,7 @@ func main() {
 			// Resolve the return type, as well as the body of the method
 			ResolveChildren(method, symbolTable, globalScope)
 
-			for i := 0; IsReserved(method.Name()); i++ {
+			for i := 0; IsReserved(method.Name()) || method.ExistsIn(symbolTable); i++ {
 				method.Rename(method.Name() + strconv.Itoa(i))
 			}
 			// Resolve all the paramters of the method

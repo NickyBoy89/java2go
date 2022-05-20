@@ -88,6 +88,17 @@ func ResolveChildren(definition *Definition, classScope *ClassScope, globalScope
 	return result
 }
 
+// Scope represents a lookup table that contains the definitions for everything
+// in a specific context
+type Scope interface {
+	// FindMethod defines a method that searches for some method with the original source definitions
+	FindMethod(name string, parameterTypes []string) *Definition
+	// FindNewMethod defines a method that searches for some method given its name
+	// It uses the types of the parameters to make sure that it won't return the
+	// original definition, and only the first definition that does not match the provided signature
+	FindMethodByName(name string, parameterTypes []string) *Definition
+}
+
 // A GlobalScope represents a global look of all the packages that make up the
 // entirety of the parsed input
 type GlobalScope struct {
@@ -169,6 +180,29 @@ func (cs *ClassScope) FindMethod(name string, parameters []string) *Definition {
 
 			if !invalid {
 				return method
+			}
+		}
+	}
+	return nil
+}
+
+// FindMethodByName searches for a given method by its new name, and returns the definition that is found
+// If parameter types are specified, it will ignore all methods that match the provided paramters types,
+// and return the first definition, or nil if not found
+func (cs *ClassScope) FindMethodByName(name string, parameterTypes []string) *Definition {
+	for _, method := range cs.Methods {
+		// Searches using the display name of the method
+		if method.Name() == name {
+			// If the parameters are nil, then return the first matched method by name
+			if parameterTypes == nil {
+				return method
+			} else if len(method.parameters) != len(parameterTypes) {
+				return method
+			}
+			for ind, param := range method.parameters {
+				if param.originalType != parameterTypes[ind] {
+					return method
+				}
 			}
 		}
 	}
@@ -276,6 +310,16 @@ func (d *Definition) FindVariable(name string) *Definition {
 		}
 	}
 	return nil
+}
+
+// ExistsIn reports whether this definition conflicts with an already existing
+// definition in the given scope
+func (d *Definition) ExistsIn(scope Scope) bool {
+	parameterTypes := []string{}
+	for _, param := range d.parameters {
+		parameterTypes = append(parameterTypes, param.originalType)
+	}
+	return scope.FindMethodByName(d.Name(), parameterTypes) != nil
 }
 
 func (d Definition) isEmpty() bool {
