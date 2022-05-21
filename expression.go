@@ -178,7 +178,7 @@ func TryParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 				if localDef := ctx.localScope.FindVariable(argument.Content(source)); localDef != nil {
 					argumentTypes[ind] = localDef.OriginalType()
 					// Otherwise, a variable may exist as a global variable
-				} else if def := ctx.classScope.FindField(argument.Content(source)); def != nil {
+				} else if def := ctx.classScope.FindFieldByName(argument.Content(source)); def != nil {
 					argumentTypes[ind] = def.OriginalType()
 				}
 			}
@@ -284,7 +284,7 @@ func TryParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 		obj := node.ChildByFieldName("object")
 
 		if obj.Type() == "this" {
-			def := ctx.classScope.FindField(node.ChildByFieldName("field").Content(source))
+			def := ctx.classScope.FindFieldByName(node.ChildByFieldName("field").Content(source))
 			if def == nil {
 				// TODO: This field could not be found in the current class, because it exists in the superclass
 				// definition for the class

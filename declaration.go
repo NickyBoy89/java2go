@@ -56,7 +56,7 @@ func ParseDecls(node *sitter.Node, source []byte, ctx Ctx) []ast.Decl {
 					field.Doc = &ast.CommentGroup{List: comments}
 				}
 
-				fieldDef := ctx.classScope.FindField(child.ChildByFieldName("declarator").ChildByFieldName("name").Content(source))
+				fieldDef := ctx.classScope.FindFieldByName(child.ChildByFieldName("declarator").ChildByFieldName("name").Content(source))
 
 				field.Names, field.Type = []*ast.Ident{&ast.Ident{Name: fieldDef.Name()}}, &ast.Ident{Name: fieldDef.Type()}
 

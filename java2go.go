@@ -176,9 +176,16 @@ func main() {
 	for _, symbolTable := range classDefinitions {
 		// Resolve all the fields in that respective class
 		for _, field := range symbolTable.Fields {
+			// Since a private global variable is able to be accessed in the package, it must be renamed
+			// to avoid conflicts with other global variables
+
+			packageScope := globalScope.FindPackage(symbolTable.Package)
+
 			ResolveDefinition(field, symbolTable, globalScope)
+
 			// Rename the field if its name conflits with any keyword
-			for i := 0; IsReserved(field.Name()); i++ {
+			// TODO: This will break with subclasses, because they will look for things that do not exist within the current class
+			for i := 0; IsReserved(field.Name()) || field.ExistsInPackage(packageScope, symbolTable.Classes[0].Name()); i++ {
 				field.Rename(field.Name() + strconv.Itoa(i))
 			}
 		}
@@ -186,7 +193,7 @@ func main() {
 			// Resolve the return type, as well as the body of the method
 			ResolveChildren(method, symbolTable, globalScope)
 
-			for i := 0; IsReserved(method.Name()) || method.ExistsIn(symbolTable); i++ {
+			for i := 0; IsReserved(method.Name()) || method.MethodExistsIn(symbolTable); i++ {
 				method.Rename(method.Name() + strconv.Itoa(i))
 			}
 			// Resolve all the paramters of the method

@@ -37,6 +37,8 @@ public class NameCollisions {
   public static void main(String[] args) {
     NameCollisions test = new NameCollisions();
 
+    System.out.println(test.map);
+
     // Even more collisions
     Map<String, Integer> map = new HashMap<>();
     map.put("Apple", 1);

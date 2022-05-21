@@ -222,11 +222,20 @@ func (cs *ClassScope) FindClass(name string) *Definition {
 	return nil
 }
 
-// FindField searches for a field by its original name, and returns its definition
+// FindFieldByName searches for a field by its original name, and returns its definition
 // or nil if none was found
-func (cs *ClassScope) FindField(name string) *Definition {
+func (cs *ClassScope) FindFieldByName(name string) *Definition {
 	for _, field := range cs.Fields {
 		if field.originalName == name {
+			return field
+		}
+	}
+	return nil
+}
+
+func (cs *ClassScope) FindFieldByDisplayName(name string) *Definition {
+	for _, field := range cs.Fields {
+		if field.name == name {
 			return field
 		}
 	}
@@ -314,12 +323,31 @@ func (d *Definition) FindVariable(name string) *Definition {
 
 // ExistsIn reports whether this definition conflicts with an already existing
 // definition in the given scope
-func (d *Definition) ExistsIn(scope Scope) bool {
+func (d *Definition) MethodExistsIn(scope Scope) bool {
 	parameterTypes := []string{}
 	for _, param := range d.parameters {
 		parameterTypes = append(parameterTypes, param.originalType)
 	}
 	return scope.FindMethodByName(d.Name(), parameterTypes) != nil
+}
+
+func (d *Definition) ExistsInPackage(packageScope *PackageScope, excludeClass string) bool {
+	for _, classFile := range packageScope.files {
+		var skip bool
+		for _, class := range classFile.Classes {
+			if excludeClass != "" && class.name == excludeClass {
+				skip = true
+				break
+			}
+		}
+		if skip {
+			continue
+		}
+		if classFile.FindFieldByDisplayName(d.Name()) != nil {
+			return true
+		}
+	}
+	return false
 }
 
 func (d Definition) isEmpty() bool {
