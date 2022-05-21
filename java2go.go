@@ -145,7 +145,7 @@ func main() {
 
 	globalPackages := make(map[string]*PackageScope)
 
-	// Keeps track of the sybol tables so they can be passes into their respective
+	// Keeps track of the symbol tables so they can be passed into their respective
 	// classes when they are converted, and don't have to be looked up in the global
 	// symbol table
 	classDefinitions := make([]*ClassScope, len(fileNames))
@@ -159,15 +159,18 @@ func main() {
 			continue
 		}
 		classDef := ExtractDefinitions(asts[ind], sources[ind])
+
 		classDefinitions[ind] = classDef
 		classPackage := classDef.Package
 		if classPackage == "" {
 			classPackage = "main"
 		}
+
 		if _, exist := globalPackages[classDef.Package]; !exist {
 			globalPackages[classDef.Package] = &PackageScope{files: make(map[string]*ClassScope)}
 		}
-		globalPackages[classDef.Package].files[classPackage] = classDef
+
+		globalPackages[classDef.Package].files[classDef.Class.name] = classDef
 	}
 
 	globalScope := &GlobalScope{packages: globalPackages}
@@ -184,8 +187,7 @@ func main() {
 			ResolveDefinition(field, symbolTable, globalScope)
 
 			// Rename the field if its name conflits with any keyword
-			// TODO: This will break with subclasses, because they will look for things that do not exist within the current class
-			for i := 0; IsReserved(field.Name()) || field.ExistsInPackage(packageScope, symbolTable.Classes[0].Name()); i++ {
+			for i := 0; IsReserved(field.Name()) || field.FieldExistsInPackage(packageScope, symbolTable.Class.Name()); i++ {
 				field.Rename(field.Name() + strconv.Itoa(i))
 			}
 		}

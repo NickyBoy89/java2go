@@ -129,8 +129,12 @@ func (ps PackageScope) String() string {
 // the class may be the subclass of another class
 func (ps *PackageScope) FindClass(name string) *ClassScope {
 	for _, fileScope := range ps.files {
-		for _, className := range fileScope.Classes {
-			if className.originalName == name {
+		if fileScope.Class.originalName == name {
+			return fileScope
+		}
+		for _, subclass := range fileScope.Subclasses {
+			class := subclass.FindClass(name)
+			if class != nil {
 				return fileScope
 			}
 		}
@@ -142,21 +146,19 @@ func (ps *PackageScope) FindClass(name string) *ClassScope {
 // if a file contains multiply classes, all the definitions are folded into
 // one ClassScope
 type ClassScope struct {
+	// The package that the source class is located in. Ex: "com.example"
 	Package string
+	// Every external package that is being imported. Formatted as
+	// SomeClass: "com.example"
 	Imports map[string]string
-	// Every class declared within the functio
-	Classes []*Definition
-	// Class fields and static fields
+	// The base class in the file, may have multiple subclasses
+	Class *Definition
+	// Every class that is nested within the base class
+	Subclasses []*ClassScope
+	// Normal fields and static fields / global variables
 	Fields []*Definition
 	// Methods and constructors
 	Methods []*Definition
-}
-
-func (cs ClassScope) String() string {
-	return fmt.Sprintf("Classes: %v Fields: %v Methods: %v",
-		cs.Classes,
-		cs.Fields,
-		cs.Methods)
 }
 
 // FindMethod looks for a given method by its name in a class definition
@@ -209,13 +211,15 @@ func (cs *ClassScope) FindMethodByName(name string, parameterTypes []string) *De
 	return nil
 }
 
+// FindClass searches through a class file and returns the definition for the
+// found class, or nil if none was found
 func (cs *ClassScope) FindClass(name string) *Definition {
-	if len(name) > 0 && name[0] == '*' {
-		name = name[1:]
+	if cs.Class.originalName == name {
+		return cs.Class
 	}
-
-	for _, class := range cs.Classes {
-		if class.originalName == name {
+	for _, subclass := range cs.Subclasses {
+		class := subclass.FindClass(name)
+		if class != nil {
 			return class
 		}
 	}
@@ -331,16 +335,12 @@ func (d *Definition) MethodExistsIn(scope Scope) bool {
 	return scope.FindMethodByName(d.Name(), parameterTypes) != nil
 }
 
-func (d *Definition) ExistsInPackage(packageScope *PackageScope, excludeClass string) bool {
+// FieldExistsInPackage searches for a given field in all the classes in a package
+// This is useful for finding duplicate global variables, as an optional class
+// name can be provided to skip over, meaning that it will not find any duplicates in the same class
+func (d *Definition) FieldExistsInPackage(packageScope *PackageScope, skippedClassName string) bool {
 	for _, classFile := range packageScope.files {
-		var skip bool
-		for _, class := range classFile.Classes {
-			if excludeClass != "" && class.name == excludeClass {
-				skip = true
-				break
-			}
-		}
-		if skip {
+		if classFile.Class.name == skippedClassName {
 			continue
 		}
 		if classFile.FindFieldByDisplayName(d.Name()) != nil {
@@ -394,17 +394,13 @@ func parseClassScope(root *sitter.Node, source []byte) *ClassScope {
 
 	className := nodeToStr(ParseExpr(root.ChildByFieldName("name"), source, Ctx{}))
 	scope := &ClassScope{
-		Classes: []*Definition{
-			&Definition{
-				originalName: className,
-				name:         HandleExportStatus(public, className),
-			},
+		Class: &Definition{
+			originalName: className,
+			name:         HandleExportStatus(public, className),
 		},
 	}
 
-	var node *sitter.Node
-	for i := 0; i < int(root.ChildByFieldName("body").NamedChildCount()); i++ {
-		node = root.ChildByFieldName("body").NamedChild(i)
+	for _, node := range Children(root.ChildByFieldName("body")) {
 		switch node.Type() {
 		case "field_declaration":
 			var public bool
@@ -493,13 +489,9 @@ func parseClassScope(root *sitter.Node, source []byte) *ClassScope {
 			scope.Methods = append(scope.Methods, declaration)
 		case "class_declaration", "interface_declaration", "enum_declaration":
 			other := parseClassScope(node, source)
-			for _, class := range other.Classes {
-				// Any subclasses will be renamed to part of their parent class
-				class.Rename(scope.Classes[0].Name() + class.Name())
-				scope.Classes = append(scope.Classes, class)
-			}
-			scope.Fields = append(scope.Fields, other.Fields...)
-			scope.Methods = append(scope.Methods, other.Methods...)
+			// Any subclasses will be renamed to part of their parent class
+			other.Class.Rename(scope.Class.Name() + other.Class.Name())
+			scope.Subclasses = append(scope.Subclasses, other)
 		}
 	}
 
