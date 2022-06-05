@@ -5,6 +5,7 @@ import (
 	"go/ast"
 	"go/token"
 
+	"github.com/NickyBoy89/java2go/symbol"
 	log "github.com/sirupsen/logrus"
 	sitter "github.com/smacker/go-tree-sitter"
 )
@@ -173,28 +174,28 @@ func TryParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 			arguments[ind] = ParseExpr(argument, source, ctx)
 			// Look up each argument and find its type
 			if argument.Type() != "identifier" {
-				argumentTypes[ind] = TypeOfLiteral(argument, source)
+				argumentTypes[ind] = symbol.TypeOfLiteral(argument, source)
 			} else {
 				if localDef := ctx.localScope.FindVariable(argument.Content(source)); localDef != nil {
-					argumentTypes[ind] = localDef.OriginalType()
+					argumentTypes[ind] = localDef.OriginalType
 					// Otherwise, a variable may exist as a global variable
 				} else if def := ctx.classScope.FindFieldByName(argument.Content(source)); def != nil {
-					argumentTypes[ind] = def.OriginalType()
+					argumentTypes[ind] = def.OriginalType
 				}
 			}
 		}
 
-		var constructor *Definition
+		var constructor *symbol.Definition
 		// Find the respective constructor, and call it
 		if objectType.Type() == "generic_type" {
-			constructor = ctx.classScope.FindMethod(objectType.NamedChild(0).Content(source), argumentTypes)
+			constructor = ctx.classScope.FindMethodByName(objectType.NamedChild(0).Content(source), argumentTypes)
 		} else {
-			constructor = ctx.classScope.FindMethod(objectType.Content(source), argumentTypes)
+			constructor = ctx.classScope.FindMethodByName(objectType.Content(source), argumentTypes)
 		}
 
 		if constructor != nil {
 			return &ast.CallExpr{
-				Fun:  &ast.Ident{Name: constructor.Name()},
+				Fun:  &ast.Ident{Name: constructor.Name},
 				Args: arguments,
 			}
 		}
@@ -288,14 +289,14 @@ func TryParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 			if def == nil {
 				// TODO: This field could not be found in the current class, because it exists in the superclass
 				// definition for the class
-				def = &Definition{
-					name: node.ChildByFieldName("field").Content(source),
+				def = &symbol.Definition{
+					Name: node.ChildByFieldName("field").Content(source),
 				}
 			}
 
 			return &ast.SelectorExpr{
 				X:   ParseExpr(node.ChildByFieldName("object"), source, ctx),
-				Sel: &ast.Ident{Name: def.Name()},
+				Sel: &ast.Ident{Name: def.Name},
 			}
 		}
 		return &ast.SelectorExpr{
@@ -357,7 +358,7 @@ func TryParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 			// Look for the class locally first
 			if localClass := ctx.classScope.FindClass(node.Content(source)); localClass != nil {
 				return &ast.StarExpr{
-					X: &ast.Ident{Name: localClass.Name()},
+					X: &ast.Ident{Name: localClass.Name},
 				}
 			}
 		}

@@ -1,13 +1,34 @@
-package symbol
+package main
 
 import (
 	"bytes"
 	"go/ast"
 	"go/printer"
 	"go/token"
+	"unicode"
 
+	"github.com/NickyBoy89/java2go/symbol"
 	sitter "github.com/smacker/go-tree-sitter"
 )
+
+// Uppercase uppercases the first character of the given string
+func Uppercase(name string) string {
+	return string(unicode.ToUpper(rune(name[0]))) + name[1:]
+}
+
+// Lowercase lowercases the first character of the given string
+func Lowercase(name string) string {
+	return string(unicode.ToLower(rune(name[0]))) + name[1:]
+}
+
+// HandleExportStatus is a convenience method for renaming methods that may be
+// either public or private, and need to be renamed
+func HandleExportStatus(exported bool, name string) string {
+	if exported {
+		return Uppercase(name)
+	}
+	return Lowercase(name)
+}
 
 func nodeToStr(node any) string {
 	var s bytes.Buffer
@@ -19,7 +40,7 @@ func nodeToStr(node any) string {
 }
 
 // ExtractDefinitions generates a symbol table for a single class file.
-func ExtractDefinitions(root *sitter.Node, source []byte) *FileScope {
+func ExtractDefinitions(root *sitter.Node, source []byte) *symbol.FileScope {
 	var pack string
 	imports := make(map[string]string)
 	for i := 0; i < int(root.NamedChildCount()); i++ {
@@ -31,14 +52,14 @@ func ExtractDefinitions(root *sitter.Node, source []byte) *FileScope {
 		}
 	}
 
-	return &FileScope{
+	return &symbol.FileScope{
 		Imports:   imports,
 		Package:   pack,
 		BaseClass: parseClassScope(root.NamedChild(int(root.NamedChildCount())-1), source),
 	}
 }
 
-func parseClassScope(root *sitter.Node, source []byte) *ClassScope {
+func parseClassScope(root *sitter.Node, source []byte) *symbol.ClassScope {
 	var public bool
 	// Rename the type based on the public/static rules
 	if root.NamedChild(0).Type() == "modifiers" {
@@ -54,10 +75,10 @@ func parseClassScope(root *sitter.Node, source []byte) *ClassScope {
 		panic("Assertion failed")
 	}
 	className := root.ChildByFieldName("name").Content(source)
-	scope := &ClassScope{
-		Class: &Definition{
-			originalName: className,
-			name:         HandleExportStatus(public, className),
+	scope := &symbol.ClassScope{
+		Class: &symbol.Definition{
+			OriginalName: className,
+			Name:         HandleExportStatus(public, className),
 		},
 	}
 
@@ -74,7 +95,10 @@ func parseClassScope(root *sitter.Node, source []byte) *ClassScope {
 				}
 			}
 
-			name := nodeToStr(ParseExpr(node.ChildByFieldName("declarator").ChildByFieldName("name"), source, Ctx{}))
+			if node.ChildByFieldName("declarator").ChildByFieldName("name").Type() != "identifier" {
+				panic("Assertion!")
+			}
+			name := node.ChildByFieldName("declarator").ChildByFieldName("name").Content(source)
 			typeNode := node.ChildByFieldName("type")
 
 			var fieldType string
@@ -83,15 +107,21 @@ func parseClassScope(root *sitter.Node, source []byte) *ClassScope {
 			// type resolution to figure things out
 			// TODO: Fix this to allow partial lookups, instead of throwing out this information
 			if typeNode.Type() == "scoped_type_identifier" {
-				fieldType = nodeToStr(ParseExpr(typeNode.NamedChild(int(typeNode.NamedChildCount())-1), source, Ctx{}))
+				if typeNode.NamedChild(int(typeNode.NamedChildCount())-1).Type() != "identifier" {
+					panic("assertion")
+				}
+				fieldType = typeNode.NamedChild(int(typeNode.NamedChildCount()) - 1).Content(source)
 			} else {
-				fieldType = nodeToStr(ParseExpr(typeNode, source, Ctx{}))
+				if typeNode.Type() != "identifier" {
+					panic("Assertion")
+				}
+				fieldType = typeNode.Content(source)
 			}
-			scope.Fields = append(scope.Fields, &Definition{
-				originalName: name,
-				originalType: node.ChildByFieldName("type").Content(source),
-				typ:          fieldType,
-				name:         HandleExportStatus(public, name),
+			scope.Fields = append(scope.Fields, &symbol.Definition{
+				Name:         HandleExportStatus(public, name),
+				OriginalName: name,
+				Type:         fieldType,
+				OriginalType: node.ChildByFieldName("type").Content(source),
 			})
 		case "method_declaration", "constructor_declaration":
 			var public bool
@@ -104,46 +134,52 @@ func parseClassScope(root *sitter.Node, source []byte) *ClassScope {
 				}
 			}
 
-			name := nodeToStr(ParseExpr(node.ChildByFieldName("name"), source, Ctx{}))
-			declaration := &Definition{
-				originalName: name,
-				name:         HandleExportStatus(public, name),
+			if node.ChildByFieldName("name").Type() != "identifier" {
+				panic("Assertion")
+			}
+			name := node.ChildByFieldName("name").Content(source)
+			declaration := &symbol.Definition{
+				Name:         HandleExportStatus(public, name),
+				OriginalName: name,
 			}
 
 			if node.Type() == "method_declaration" {
-				declaration.originalType = node.ChildByFieldName("type").Content(source)
-				declaration.typ = nodeToStr(ParseExpr(node.ChildByFieldName("type"), source, Ctx{}))
+				declaration.OriginalType = node.ChildByFieldName("type").Content(source)
+				if node.ChildByFieldName("type").Type() != "identifier" {
+					panic("Assertion")
+				}
+				declaration.Type = node.ChildByFieldName("type").Content(source)
 			} else {
 				declaration.Rename(HandleExportStatus(public, "New") + name)
 				// A constructor returns itself
-				declaration.constructor = true
-				declaration.typ = name
+				declaration.Constructor = true
+				declaration.Type = name
 			}
 
 			for _, parameter := range Children(node.ChildByFieldName("parameters")) {
 				parsed := ParseNode(parameter, source, Ctx{}).(*ast.Field)
 				name := nodeToStr(parsed.Names[0])
 				if parameter.Type() == "spread_parameter" {
-					declaration.parameters = append(declaration.parameters, &Definition{
-						originalName: name,
-						originalType: parameter.NamedChild(0).Content(source),
-						typ:          nodeToStr(parsed.Type),
-						name:         name,
+					declaration.Parameters = append(declaration.Parameters, &symbol.Definition{
+						OriginalName: name,
+						OriginalType: parameter.NamedChild(0).Content(source),
+						Type:         nodeToStr(parsed.Type),
+						Name:         name,
 					})
 				} else {
-					declaration.parameters = append(declaration.parameters, &Definition{
-						originalName: name,
-						originalType: parameter.ChildByFieldName("type").Content(source),
-						typ:          nodeToStr(parsed.Type),
-						name:         name,
+					declaration.Parameters = append(declaration.Parameters, &symbol.Definition{
+						OriginalName: name,
+						OriginalType: parameter.ChildByFieldName("type").Content(source),
+						Type:         nodeToStr(parsed.Type),
+						Name:         name,
 					})
 				}
 			}
 
 			if node.ChildByFieldName("body") != nil {
 				methodScope := parseScope(node.ChildByFieldName("body"), source)
-				if !methodScope.isEmpty() {
-					declaration.children = append(declaration.children, methodScope.children...)
+				if !methodScope.IsEmpty() {
+					declaration.Children = append(declaration.Children, methodScope.Children...)
 				}
 			}
 
@@ -151,7 +187,7 @@ func parseClassScope(root *sitter.Node, source []byte) *ClassScope {
 		case "class_declaration", "interface_declaration", "enum_declaration":
 			other := parseClassScope(node, source)
 			// Any subclasses will be renamed to part of their parent class
-			other.Class.Rename(scope.Class.Name() + other.Class.Name())
+			other.Class.Rename(scope.Class.Name + other.Class.Name)
 			scope.Subclasses = append(scope.Subclasses, other)
 		}
 	}
@@ -159,22 +195,22 @@ func parseClassScope(root *sitter.Node, source []byte) *ClassScope {
 	return scope
 }
 
-func parseScope(root *sitter.Node, source []byte) *Definition {
-	def := &Definition{}
+func parseScope(root *sitter.Node, source []byte) *symbol.Definition {
+	def := &symbol.Definition{}
 	var node *sitter.Node
 	for i := 0; i < int(root.NamedChildCount()); i++ {
 		node = root.NamedChild(i)
 		switch node.Type() {
 		case "local_variable_declaration":
 			name := nodeToStr(ParseExpr(node.ChildByFieldName("declarator").ChildByFieldName("name"), source, Ctx{}))
-			def.children = append(def.children, &Definition{
-				originalName: name,
-				originalType: node.ChildByFieldName("type").Content(source),
-				typ:          nodeToStr(ParseExpr(node.ChildByFieldName("type"), source, Ctx{})),
-				name:         name,
+			def.Children = append(def.Children, &symbol.Definition{
+				OriginalName: name,
+				OriginalType: node.ChildByFieldName("type").Content(source),
+				Type:         nodeToStr(ParseExpr(node.ChildByFieldName("type"), source, Ctx{})),
+				Name:         name,
 			})
 		case "for_statement", "enhanced_for_statement", "while_statement", "if_statement":
-			def.children = append(def.children, parseScope(node, source))
+			def.Children = append(def.Children, parseScope(node, source))
 		}
 	}
 	return def

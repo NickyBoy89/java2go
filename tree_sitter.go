@@ -3,8 +3,8 @@ package main
 import (
 	"fmt"
 	"go/ast"
-	"unicode"
 
+	"github.com/NickyBoy89/java2go/symbol"
 	log "github.com/sirupsen/logrus"
 	sitter "github.com/smacker/go-tree-sitter"
 )
@@ -49,25 +49,6 @@ func LowercaseIdent(in *ast.Ident) *ast.Ident {
 	return &ast.Ident{Name: Lowercase(in.Name)}
 }
 
-// Uppercase uppercases the first character of the given string
-func Uppercase(name string) string {
-	return string(unicode.ToUpper(rune(name[0]))) + name[1:]
-}
-
-// Lowercase lowercases the first character of the given string
-func Lowercase(name string) string {
-	return string(unicode.ToLower(rune(name[0]))) + name[1:]
-}
-
-// HandleExportStatus is a convenience method for renaming methods that may be
-// either public or private, and need to be renamed
-func HandleExportStatus(exported bool, name string) string {
-	if exported {
-		return Uppercase(name)
-	}
-	return Lowercase(name)
-}
-
 // A Ctx is passed into the `ParseNode` function and contains any data that is
 // needed down-the-line for parsing, such as the class's name
 type Ctx struct {
@@ -75,9 +56,9 @@ type Ctx struct {
 	// of the constructors
 	className string
 	// All the symbols of the file that is currently being parsed
-	classScope *ClassScope
+	classScope *symbol.ClassScope
 	// The symbols of the current scope
-	localScope *Definition
+	localScope *symbol.Definition
 	// Used when generating arrays, because in Java, these are defined as
 	// arrType[] varName = {item, item, item}, and no class name data is defined
 	// Can either be of type `*ast.Ident` or `*ast.StarExpr`
@@ -188,16 +169,16 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 			parameters.List = append(parameters.List, ParseNode(param, source, ctx).(*ast.Field))
 		}
 
-		def := ctx.classScope.FindMethod(node.ChildByFieldName("name").Content(source), parameterTypes)
+		def := ctx.classScope.FindMethodByName(node.ChildByFieldName("name").Content(source), parameterTypes)
 
 		return &ast.Field{
 			Doc:   &ast.CommentGroup{List: comments},
-			Names: []*ast.Ident{&ast.Ident{Name: def.Name()}},
+			Names: []*ast.Ident{&ast.Ident{Name: def.Name}},
 			Type: &ast.FuncType{
 				Params: parameters,
 				Results: &ast.FieldList{List: []*ast.Field{
 					&ast.Field{
-						Type: &ast.Ident{Name: def.Type()},
+						Type: &ast.Ident{Name: def.Type},
 					},
 				},
 				},
@@ -241,14 +222,14 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 		if ctx.localScope != nil {
 			paramDef := ctx.localScope.ParameterByName(node.ChildByFieldName("name").Content(source))
 			if paramDef == nil {
-				paramDef = &Definition{
-					name: node.ChildByFieldName("name").Content(source),
-					typ:  node.ChildByFieldName("type").Content(source),
+				paramDef = &symbol.Definition{
+					Name: node.ChildByFieldName("name").Content(source),
+					Type: node.ChildByFieldName("type").Content(source),
 				}
 			}
 			return &ast.Field{
-				Names: []*ast.Ident{&ast.Ident{Name: paramDef.Name()}},
-				Type:  &ast.Ident{Name: paramDef.Type()},
+				Names: []*ast.Ident{&ast.Ident{Name: paramDef.Name}},
+				Type:  &ast.Ident{Name: paramDef.Type},
 			}
 		}
 		return &ast.Field{

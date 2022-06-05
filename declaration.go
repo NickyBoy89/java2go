@@ -4,6 +4,7 @@ import (
 	"go/ast"
 	"go/token"
 
+	"github.com/NickyBoy89/java2go/symbol"
 	sitter "github.com/smacker/go-tree-sitter"
 )
 
@@ -23,7 +24,7 @@ func ParseDecls(node *sitter.Node, source []byte, ctx Ctx) []ast.Decl {
 		// Global variables
 		globalVariables := &ast.GenDecl{Tok: token.VAR}
 
-		ctx.className = ctx.classScope.FindClass(node.ChildByFieldName("name").Content(source)).Name()
+		ctx.className = ctx.classScope.FindClass(node.ChildByFieldName("name").Content(source)).Name
 
 		// First, look through the class's body for field declarations
 		for _, child := range Children(node.ChildByFieldName("body")) {
@@ -58,7 +59,7 @@ func ParseDecls(node *sitter.Node, source []byte, ctx Ctx) []ast.Decl {
 
 				fieldDef := ctx.classScope.FindFieldByName(child.ChildByFieldName("declarator").ChildByFieldName("name").Content(source))
 
-				field.Names, field.Type = []*ast.Ident{&ast.Ident{Name: fieldDef.Name()}}, &ast.Ident{Name: fieldDef.Type()}
+				field.Names, field.Type = []*ast.Ident{&ast.Ident{Name: fieldDef.Name}}, &ast.Ident{Name: fieldDef.Type}
 
 				if staticField {
 					globalVariables.Specs = append(globalVariables.Specs, &ast.ValueSpec{Names: field.Names, Type: field.Type})
@@ -119,14 +120,14 @@ func ParseDecls(node *sitter.Node, source []byte, ctx Ctx) []ast.Decl {
 
 		return []ast.Decl{GenInterface(ctx.className, methods)}
 	case "interface_declaration":
-		ctx.className = ctx.classScope.FindClass(node.ChildByFieldName("name").Content(source)).Name()
+		ctx.className = ctx.classScope.FindClass(node.ChildByFieldName("name").Content(source)).Name
 
 		return ParseDecls(node.ChildByFieldName("body"), source, ctx)
 	case "enum_declaration":
 		// An enum is treated as both a struct, and a list of values that define
 		// the states that the enum can be in
 
-		ctx.className = ctx.classScope.FindClass(node.ChildByFieldName("name").Content(source)).Name()
+		ctx.className = ctx.classScope.FindClass(node.ChildByFieldName("name").Content(source)).Name
 
 		// TODO: Handle an enum correctly
 		//return ParseDecls(node.ChildByFieldName("body"), source, ctx)
@@ -162,7 +163,7 @@ func ParseDecl(node *sitter.Node, source []byte, ctx Ctx) ast.Decl {
 			}
 		}
 
-		ctx.localScope = ctx.classScope.FindMethod(ParseExpr(node.ChildByFieldName("name"), source, ctx).(*ast.Ident).Name, parameterTypes)
+		ctx.localScope = ctx.classScope.FindMethodByName(ParseExpr(node.ChildByFieldName("name"), source, ctx).(*ast.Ident).Name, parameterTypes)
 
 		body := ParseStmt(node.ChildByFieldName("body"), source, ctx).(*ast.BlockStmt)
 
@@ -177,11 +178,11 @@ func ParseDecl(node *sitter.Node, source []byte, ctx Ctx) ast.Decl {
 		body.List = append(body.List, &ast.ReturnStmt{Results: []ast.Expr{&ast.Ident{Name: ShortName(ctx.className)}}})
 
 		return &ast.FuncDecl{
-			Name: &ast.Ident{Name: ctx.localScope.Name()},
+			Name: &ast.Ident{Name: ctx.localScope.Name},
 			Type: &ast.FuncType{
 				Params: ParseNode(node.ChildByFieldName("parameters"), source, ctx).(*ast.FieldList),
 				Results: &ast.FieldList{List: []*ast.Field{&ast.Field{
-					Type: &ast.Ident{Name: ctx.localScope.Type()},
+					Type: &ast.Ident{Name: ctx.localScope.Type},
 				}}},
 			},
 			Body: body,
@@ -236,7 +237,7 @@ func ParseDecl(node *sitter.Node, source []byte, ctx Ctx) ast.Decl {
 			}
 		}
 
-		ctx.localScope = ctx.classScope.FindMethod(name.Name, parameterTypes)
+		ctx.localScope = ctx.classScope.FindMethodByName(name.Name, parameterTypes)
 		// TODO: This can look up a method of the same name and type in another class, and it will display incorrect results
 
 		body := ParseStmt(node.ChildByFieldName("body"), source, ctx).(*ast.BlockStmt)
@@ -263,13 +264,13 @@ func ParseDecl(node *sitter.Node, source []byte, ctx Ctx) ast.Decl {
 
 		return &ast.FuncDecl{
 			Doc:  &ast.CommentGroup{List: comments},
-			Name: &ast.Ident{Name: ctx.localScope.Name()},
+			Name: &ast.Ident{Name: ctx.localScope.Name},
 			Recv: receiver,
 			Type: &ast.FuncType{
 				Params: params,
 				Results: &ast.FieldList{
 					List: []*ast.Field{
-						&ast.Field{Type: &ast.Ident{Name: ctx.localScope.Type()}},
+						&ast.Field{Type: &ast.Ident{Name: ctx.localScope.Type}},
 					},
 				},
 			},
@@ -277,7 +278,7 @@ func ParseDecl(node *sitter.Node, source []byte, ctx Ctx) ast.Decl {
 		}
 	case "static_initializer":
 
-		ctx.localScope = &Definition{}
+		ctx.localScope = &symbol.Definition{}
 
 		// A block of `static`, which is run before the main function
 		return &ast.FuncDecl{

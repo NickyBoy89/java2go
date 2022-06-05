@@ -52,17 +52,17 @@ func TypeOfLiteral(node *sitter.Node, source []byte) string {
 // ResolveDefinition resolves a given definition for its type
 // given its class scope, as well as the global scope
 // It returns true if the definition was successfully resolved, and false otherwise
-func ResolveDefinition(definition *Definition, classScope *ClassScope, globalScope *GlobalScope) bool {
+func ResolveDefinition(definition *Definition, fileScope *FileScope, globalScope *GlobalScope) bool {
 	// Look in the class scope first
-	if localClassDef := classScope.FindClass(definition.Type()); localClassDef != nil {
+	if localClassDef := fileScope.BaseClass.FindClass(definition.Type); localClassDef != nil {
 		// Every type in the local scope is a reference type, so prefix it with a pointer
-		definition.typ = "*" + localClassDef.Name()
+		definition.Type = "*" + localClassDef.Name
 		return true
 
-	} else if globalDef, in := classScope.Imports[definition.Type()]; in { // Look through the imports
+	} else if globalDef, in := fileScope.Imports[definition.Type]; in { // Look through the imports
 		// Find what package the type is in
 		if packageDef := globalScope.FindPackage(globalDef); packageDef != nil {
-			definition.typ = packageDef.FindClass(definition.Type()).FindClass(definition.Type()).Type()
+			definition.Type = packageDef.FindClass(definition.Type).FindClass(definition.Type).Type
 		}
 		return true
 	}
@@ -73,10 +73,10 @@ func ResolveDefinition(definition *Definition, classScope *ClassScope, globalSco
 
 // ResolveChildren recursively resolves a definition and all of its children
 // It returns true if all definitions were resolved correctly, and false otherwise
-func ResolveChildren(definition *Definition, classScope *ClassScope, globalScope *GlobalScope) bool {
-	result := ResolveDefinition(definition, classScope, globalScope)
-	for _, child := range definition.children {
-		result = ResolveChildren(child, classScope, globalScope) && result
+func ResolveChildren(definition *Definition, fileScope *FileScope, globalScope *GlobalScope) bool {
+	result := ResolveDefinition(definition, fileScope, globalScope)
+	for _, child := range definition.Children {
+		result = ResolveChildren(child, fileScope, globalScope) && result
 	}
 	return result
 }
@@ -90,6 +90,10 @@ type Scope interface {
 type GlobalScope struct {
 	// Every package's path associatedd with its definition
 	packages map[string]*PackageScope
+}
+
+func NewGlobalScope(packages map[string]*PackageScope) *GlobalScope {
+	return &GlobalScope{packages: packages}
 }
 
 func (gs GlobalScope) String() string {
@@ -107,6 +111,14 @@ type PackageScope struct {
 	files map[string]*FileScope
 }
 
+func NewPackageScope() *PackageScope {
+	return &PackageScope{files: make(map[string]*FileScope)}
+}
+
+func (ps *PackageScope) AddFile(packagePath string, file *FileScope) {
+	ps.files[packagePath] = file
+}
+
 func (ps PackageScope) String() string {
 	return fmt.Sprintf("Package: [%v]", ps.files)
 }
@@ -115,13 +127,13 @@ func (ps PackageScope) String() string {
 // the class may be the subclass of another class
 func (ps *PackageScope) FindClass(name string) *ClassScope {
 	for _, fileScope := range ps.files {
-		if fileScope.Class.originalName == name {
-			return fileScope
+		if fileScope.BaseClass.Class.OriginalName == name {
+			return fileScope.BaseClass
 		}
-		for _, subclass := range fileScope.Subclasses {
+		for _, subclass := range fileScope.BaseClass.Subclasses {
 			class := subclass.FindClass(name)
 			if class != nil {
-				return fileScope
+				return fileScope.BaseClass
 			}
 		}
 	}
@@ -156,14 +168,14 @@ type ClassScope struct {
 // If some ignored parameter types are specified as non-nil, it will skip over
 // any function that matches these ignored parameter types exactly
 func (cs *ClassScope) FindMethodByName(name string, ignoredParameterTypes []string) *Definition {
-	return findMethodWithComparison(func(method *Definition) { return method.originalName == name }, ignoredParameterTypes)
+	return cs.findMethodWithComparison(func(method *Definition) bool { return method.OriginalName == name }, ignoredParameterTypes)
 }
 
 // FindMethodByDisplayName searches for a given method by its display name
 // If some ignored parameter types are specified as non-nil, it will skip over
 // any function that matches these ignored parameter types exactly
 func (cs *ClassScope) FindMethodByDisplayName(name string, ignoredParameterTypes []string) *Definition {
-	return findMethodWithComparison(func(method *Definition) { return method.Name() == name }, ignoredParameterTypes)
+	return cs.findMethodWithComparison(func(method *Definition) bool { return method.Name == name }, ignoredParameterTypes)
 }
 
 func (cs *ClassScope) findMethodWithComparison(comparison func(method *Definition) bool, ignoredParameterTypes []string) *Definition {
@@ -172,13 +184,13 @@ func (cs *ClassScope) findMethodWithComparison(comparison func(method *Definitio
 			// If no parameters were specified to ignore, then return the first match
 			if ignoredParameterTypes == nil {
 				return method
-			} else if len(method.parameters) != len(ignoredParameterTypes) { // Size of parameters were not equal, instantly not equal
+			} else if len(method.Parameters) != len(ignoredParameterTypes) { // Size of parameters were not equal, instantly not equal
 				return method
 			}
 
 			// Check the remaining paramters one-by-one
-			for index, parameter := range method.parameters {
-				if param.originalType != ignoredParameterTypes[index] {
+			for index, parameter := range method.Parameters {
+				if parameter.OriginalType != ignoredParameterTypes[index] {
 					return method
 				}
 			}
@@ -192,7 +204,7 @@ func (cs *ClassScope) findMethodWithComparison(comparison func(method *Definitio
 // FindClass searches through a class file and returns the definition for the
 // found class, or nil if none was found
 func (cs *ClassScope) FindClass(name string) *Definition {
-	if cs.Class.originalName == name {
+	if cs.Class.OriginalName == name {
 		return cs.Class
 	}
 	for _, subclass := range cs.Subclasses {
@@ -208,7 +220,7 @@ func (cs *ClassScope) FindClass(name string) *Definition {
 // or nil if none was found
 func (cs *ClassScope) FindFieldByName(name string) *Definition {
 	for _, field := range cs.Fields {
-		if field.originalName == name {
+		if field.OriginalName == name {
 			return field
 		}
 	}
@@ -217,7 +229,7 @@ func (cs *ClassScope) FindFieldByName(name string) *Definition {
 
 func (cs *ClassScope) FindFieldByDisplayName(name string) *Definition {
 	for _, field := range cs.Fields {
-		if field.name == name {
+		if field.Name == name {
 			return field
 		}
 	}

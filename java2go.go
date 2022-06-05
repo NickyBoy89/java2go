@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/NickyBoy89/java2go/symbol"
 	log "github.com/sirupsen/logrus"
 	sitter "github.com/smacker/go-tree-sitter"
 	"github.com/smacker/go-tree-sitter/java"
@@ -143,12 +144,12 @@ func main() {
 		}
 	}
 
-	globalPackages := make(map[string]*PackageScope)
+	globalPackages := make(map[string]*symbol.PackageScope)
 
 	// Keeps track of the symbol tables so they can be passed into their respective
 	// classes when they are converted, and don't have to be looked up in the global
 	// symbol table
-	classDefinitions := make([]*ClassScope, len(fileNames))
+	classDefinitions := make([]*symbol.FileScope, len(fileNames))
 
 	// Generate symbol tables
 	for ind := range fileNames {
@@ -167,43 +168,43 @@ func main() {
 		}
 
 		if _, exist := globalPackages[classDef.Package]; !exist {
-			globalPackages[classDef.Package] = &PackageScope{files: make(map[string]*ClassScope)}
+			globalPackages[classDef.Package] = symbol.NewPackageScope()
 		}
 
-		globalPackages[classDef.Package].files[classDef.Class.name] = classDef
+		globalPackages[classDef.Package].AddFile(classDef.BaseClass.Class.Name, classDef)
 	}
 
-	globalScope := &GlobalScope{packages: globalPackages}
+	globalScope := symbol.NewGlobalScope(globalPackages)
 
 	// Go back through the symbol tables and fill in anything that could not be resolved
 	for _, symbolTable := range classDefinitions {
 		// Resolve all the fields in that respective class
-		for _, field := range symbolTable.Fields {
+		for _, field := range symbolTable.BaseClass.Fields {
 			// Since a private global variable is able to be accessed in the package, it must be renamed
 			// to avoid conflicts with other global variables
 
 			packageScope := globalScope.FindPackage(symbolTable.Package)
 
-			ResolveDefinition(field, symbolTable, globalScope)
+			symbol.ResolveDefinition(field, symbolTable, globalScope)
 
 			// Rename the field if its name conflits with any keyword
-			for i := 0; IsReserved(field.Name()) || field.FieldExistsInPackage(packageScope, symbolTable.Class.Name()); i++ {
-				field.Rename(field.Name() + strconv.Itoa(i))
+			for i := 0; symbol.IsReserved(field.Name) || field.FieldExistsInPackage(packageScope, symbolTable.BaseClass.Class.Name); i++ {
+				field.Rename(field.Name + strconv.Itoa(i))
 			}
 		}
-		for _, method := range symbolTable.Methods {
+		for _, method := range symbolTable.BaseClass.Methods {
 			// Resolve the return type, as well as the body of the method
-			ResolveChildren(method, symbolTable, globalScope)
+			symbol.ResolveChildren(method, symbolTable, globalScope)
 
-			for i := 0; IsReserved(method.Name()) || method.MethodExistsIn(symbolTable); i++ {
-				method.Rename(method.Name() + strconv.Itoa(i))
+			for i := 0; symbol.IsReserved(method.Name) || method.MethodExistsIn(symbolTable.BaseClass); i++ {
+				method.Rename(method.Name + strconv.Itoa(i))
 			}
 			// Resolve all the paramters of the method
-			for _, param := range method.parameters {
-				ResolveDefinition(param, symbolTable, globalScope)
+			for _, param := range method.Parameters {
+				symbol.ResolveDefinition(param, symbolTable, globalScope)
 
-				for i := 0; IsReserved(param.Name()); i++ {
-					param.Rename(param.Name() + strconv.Itoa(i))
+				for i := 0; symbol.IsReserved(param.Name); i++ {
+					param.Rename(param.Name + strconv.Itoa(i))
 				}
 			}
 		}
@@ -243,7 +244,7 @@ func main() {
 		}
 
 		// The converted AST, in Go's AST representation
-		parsed := ParseNode(asts[ind], sources[ind], Ctx{classScope: classDefinitions[ind]}).(ast.Node)
+		parsed := ParseNode(asts[ind], sources[ind], Ctx{classScope: classDefinitions[ind].BaseClass}).(ast.Node)
 
 		// Print the generated AST
 		if *astFlag {
