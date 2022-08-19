@@ -52,7 +52,7 @@ func TypeOfLiteral(node *sitter.Node, source []byte) string {
 // ResolveDefinition resolves a given definition for its type
 // given its class scope, as well as the global scope
 // It returns true if the definition was successfully resolved, and false otherwise
-func ResolveDefinition(definition *Definition, fileScope *FileScope, globalScope *GlobalScope) bool {
+func ResolveDefinition(definition *Definition, fileScope *FileScope, globalScope *GlobalSymbols) bool {
 	// Look in the class scope first
 	if localClassDef := fileScope.BaseClass.FindClass(definition.Type); localClassDef != nil {
 		// Every type in the local scope is a reference type, so prefix it with a pointer
@@ -73,7 +73,7 @@ func ResolveDefinition(definition *Definition, fileScope *FileScope, globalScope
 
 // ResolveChildren recursively resolves a definition and all of its children
 // It returns true if all definitions were resolved correctly, and false otherwise
-func ResolveChildren(definition *Definition, fileScope *FileScope, globalScope *GlobalScope) bool {
+func ResolveChildren(definition *Definition, fileScope *FileScope, globalScope *GlobalSymbols) bool {
 	result := ResolveDefinition(definition, fileScope, globalScope)
 	for _, child := range definition.Children {
 		result = ResolveChildren(child, fileScope, globalScope) && result
@@ -86,23 +86,19 @@ type Scope interface {
 	FindMethodByName(name string, ignoredParameterTypes []string) *Definition
 }
 
-// A GlobalScope represents a global view of all the packages in the parsed source
-type GlobalScope struct {
+// A GlobalSymbols represents a global view of all the packages in the parsed source
+type GlobalSymbols struct {
 	// Every package's path associatedd with its definition
-	packages map[string]*PackageScope
+	Packages map[string]*PackageScope
 }
 
-func NewGlobalScope(packages map[string]*PackageScope) *GlobalScope {
-	return &GlobalScope{packages: packages}
-}
-
-func (gs GlobalScope) String() string {
-	return fmt.Sprintf("Global: [%v]", gs.packages)
+func (gs GlobalSymbols) String() string {
+	return fmt.Sprintf("Global: [%v]", gs.Packages)
 }
 
 // FindPackage looks up a package's path in the global scope, and returns it
-func (gs *GlobalScope) FindPackage(name string) *PackageScope {
-	return gs.packages[name]
+func (gs *GlobalSymbols) FindPackage(name string) *PackageScope {
+	return gs.Packages[name]
 }
 
 // PackageScope represents a single package, which can contain one or more files
@@ -111,12 +107,11 @@ type PackageScope struct {
 	files map[string]*FileScope
 }
 
-func NewPackageScope() *PackageScope {
-	return &PackageScope{files: make(map[string]*FileScope)}
-}
-
-func (ps *PackageScope) AddFile(packagePath string, file *FileScope) {
-	ps.files[packagePath] = file
+func (ps *PackageScope) AddFileSymbols(symbols *FileScope) {
+	if ps == nil {
+		ps = &PackageScope{files: make(map[string]*FileScope)}
+	}
+	ps.files[symbols.BaseClass.Class.Name] = symbols
 }
 
 func (ps PackageScope) String() string {

@@ -15,6 +15,7 @@ import (
 	"runtime/pprof"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/NickyBoy89/java2go/symbol"
 	log "github.com/sirupsen/logrus"
@@ -24,24 +25,41 @@ import (
 
 var (
 	// Stores a global list of Java annotations to exclude from the generated code
-	excludedAnnotations = make(map[string]struct{})
+	excludedAnnotations = make(map[string]bool)
 )
 
+var (
+	writeFiles              bool
+	quiet                   bool
+	displayAST              bool
+	parseFilesSynchronously bool
+	outputDirectory         string
+	ignoredAnnotations      string
+
+	cpuProfile string
+)
+
+type SourceFile struct {
+	Name    string
+	Source  []byte
+	Ast     *sitter.Node
+	Symbols *symbol.FileScope
+}
+
 func main() {
-	writeFlag := flag.Bool("w", false, "Whether to write the files to disk instead of stdout")
-	quiet := flag.Bool("q", false, "Don't write to stdout on successful parse")
-	astFlag := flag.Bool("ast", false, "Print out go's pretty-printed ast, instead of source code")
-	syncFlag := flag.Bool("sync", false, "Parse the files sequentially, instead of multi-threaded")
-	outDirFlag := flag.String("outDir", ".", "Specify a directory for the generated files")
+	flag.BoolVar(&writeFiles, "w", false, "Whether to write the files to disk instead of stdout")
+	flag.BoolVar(&quiet, "q", false, "Don't write to stdout on successful parse")
+	flag.BoolVar(&displayAST, "ast", false, "Print out go's pretty-printed ast, instead of source code")
+	flag.BoolVar(&parseFilesSynchronously, "sync", false, "Parse the files one by one, instead of in parallel")
+	flag.StringVar(&outputDirectory, "outDir", ".", "Specify a directory for the generated files")
+	flag.StringVar(&ignoredAnnotations, "exclude-annotations", "", "A comma-separated list of annotations to exclude from the final code generation")
 
-	var cpuprofile = flag.String("cpuprofile", "", "write cpu profile to `file`")
-
-	excludeAnnotationsFlag := flag.String("exclude-annotations", "", "A comma-separated list of annotations to exclude from the final code generation")
+	flag.StringVar(&cpuProfile, "cpuprofile", "", "write cpu profile to `file`")
 
 	flag.Parse()
 
-	if *cpuprofile != "" {
-		f, err := os.Create(*cpuprofile)
+	if cpuProfile != "" {
+		f, err := os.Create(cpuProfile)
 		if err != nil {
 			log.Fatal("could not create CPU profile: ", err)
 		}
@@ -52,23 +70,38 @@ func main() {
 		defer pprof.StopCPUProfile()
 	}
 
-	for _, annotation := range strings.Split(*excludeAnnotationsFlag, ",") {
-		excludedAnnotations[annotation] = struct{}{}
+	for _, annotation := range strings.Split(ignoredAnnotations, ",") {
+		excludedAnnotations[annotation] = true
 	}
 
 	// All the files to parse
-	fileNames := []string{}
+	files := []SourceFile{}
 
-	// Collect all the files
+	log.Info("Collecting files...")
+
+	// Collect all the files and read them into memory
 	for _, file := range flag.Args() {
-		err := filepath.WalkDir(file, fs.WalkDirFunc(func(path string, d fs.DirEntry, err error) error {
-			// Only include java files
-			if filepath.Ext(path) == ".java" && !d.IsDir() {
-				fileNames = append(fileNames, path)
-			}
+		err := filepath.WalkDir(file, fs.WalkDirFunc(
+			func(path string, d fs.DirEntry, err error) error {
+				// Only include java files
+				if filepath.Ext(path) == ".java" && !d.IsDir() {
+					sourceCode, err := os.ReadFile(path)
+					if err != nil {
+						log.WithFields(log.Fields{
+							"file":  path,
+							"error": err,
+						}).Panic("Error reading source file")
+					}
 
-			return nil
-		}))
+					files = append(files, SourceFile{
+						Name:   path,
+						Source: sourceCode,
+					})
+				}
+
+				return nil
+			},
+		))
 
 		if err != nil {
 			log.WithFields(log.Fields{
@@ -78,130 +111,95 @@ func main() {
 		}
 	}
 
-	if len(fileNames) == 0 {
+	if len(files) == 0 {
 		log.Warn("No files specified to convert")
 		return
 	}
 
-	// Sem determines the number of files parsed in parallel
+	// Parse the ASTs of all the files
+
+	log.Info("Parsing ASTs...")
+
 	sem := make(chan struct{}, runtime.NumCPU())
 
-	parsedAsts := make(chan struct {
-		ast   *sitter.Node
-		index int
-	})
+	var wg sync.WaitGroup
+	wg.Add(len(files))
 
-	asts := make([]*sitter.Node, len(fileNames))
+	for index := range files {
+		sem <- struct{}{}
 
-	sources := make([][]byte, len(fileNames))
-
-	// Read all the source files into memory
-	for ind, filePath := range fileNames {
-		sourceCode, err := os.ReadFile(filePath)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"file":  filePath,
-				"error": err,
-			}).Panic("Error reading source file")
-		}
-		sources[ind] = sourceCode
-	}
-
-	// Parse all the files into their tree-sitter representations
-	for ind, filePath := range fileNames {
-		go func(index int, path string) {
-			sem <- struct{}{}
-			// Release the semaphore when done
-			defer func() { <-sem }()
+		go func(index int) {
 			parser := sitter.NewParser()
-			defer parser.Close()
 			parser.SetLanguage(java.GetLanguage())
-			tree, err := parser.ParseCtx(context.Background(), nil, sources[index])
+			tree, err := parser.ParseCtx(context.Background(), nil, files[index].Source)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error": err,
 				}).Panic("Error parsing tree-sitter AST")
 			}
 
-			var test struct {
-				ast   *sitter.Node
-				index int
-			}
+			parser.Close()
 
-			test.ast = tree.RootNode()
-			test.index = index
+			files[index].Ast = tree.RootNode()
 
-			parsedAsts <- test
-		}(ind, filePath)
+			<-sem
+			wg.Done()
+		}(index)
 	}
 
-	var n int
-	for p := range parsedAsts {
-		asts[p.index] = p.ast
-		n++
-		if n == len(fileNames) {
-			close(parsedAsts)
-		}
-	}
+	// We might still have some parsing jobs, so wait on them
+	wg.Wait()
 
-	globalPackages := make(map[string]*symbol.PackageScope)
+	// Generate the symbol tables for the files
 
-	// Keeps track of the symbol tables so they can be passed into their respective
-	// classes when they are converted, and don't have to be looked up in the global
-	// symbol table
-	classDefinitions := make([]*symbol.FileScope, len(fileNames))
+	log.Info("Generating symbol tables...")
 
-	// Generate symbol tables
-	for ind := range fileNames {
-		if asts[ind].HasError() {
+	for _, file := range files {
+		if file.Ast.HasError() {
 			log.WithFields(log.Fields{
-				"fileName": fileNames[ind],
+				"fileName": file.Name,
 			}).Warn("AST parse error in file, skipping file")
 			continue
 		}
-		classDef := ExtractDefinitions(asts[ind], sources[ind])
 
-		classDefinitions[ind] = classDef
-		classPackage := classDef.Package
-		if classPackage == "" {
-			classPackage = "main"
-		}
+		symbols := symbol.ParseSymbols(file.Ast, file.Source)
 
-		if _, exist := globalPackages[classDef.Package]; !exist {
-			globalPackages[classDef.Package] = symbol.NewPackageScope()
-		}
+		file.Symbols = symbols
 
-		globalPackages[classDef.Package].AddFile(classDef.BaseClass.Class.Name, classDef)
+		symbol.GlobalScope.Packages[symbols.Package].AddFileSymbols(symbols)
 	}
 
-	globalScope := symbol.NewGlobalScope(globalPackages)
-
 	// Go back through the symbol tables and fill in anything that could not be resolved
-	for _, symbolTable := range classDefinitions {
+
+	log.Info("Resolving symbols...")
+
+	for _, file := range files {
+
 		// Resolve all the fields in that respective class
-		for _, field := range symbolTable.BaseClass.Fields {
+		for _, field := range file.Symbols.BaseClass.Fields {
+
 			// Since a private global variable is able to be accessed in the package, it must be renamed
 			// to avoid conflicts with other global variables
 
-			packageScope := globalScope.FindPackage(symbolTable.Package)
+			packageScope := symbol.GlobalScope.FindPackage(file.Symbols.Package)
 
-			symbol.ResolveDefinition(field, symbolTable, globalScope)
+			symbol.ResolveDefinition(field, file.Symbols, symbol.GlobalScope)
 
 			// Rename the field if its name conflits with any keyword
-			for i := 0; symbol.IsReserved(field.Name) || field.FieldExistsInPackage(packageScope, symbolTable.BaseClass.Class.Name); i++ {
+			for i := 0; symbol.IsReserved(field.Name) || field.FieldExistsInPackage(packageScope, file.Symbols.BaseClass.Class.Name); i++ {
 				field.Rename(field.Name + strconv.Itoa(i))
 			}
 		}
-		for _, method := range symbolTable.BaseClass.Methods {
+		for _, method := range file.Symbols.BaseClass.Methods {
 			// Resolve the return type, as well as the body of the method
-			symbol.ResolveChildren(method, symbolTable, globalScope)
+			symbol.ResolveChildren(method, file.Symbols, symbol.GlobalScope)
 
-			for i := 0; symbol.IsReserved(method.Name) || method.MethodExistsIn(symbolTable.BaseClass); i++ {
+			for i := 0; symbol.IsReserved(method.Name) || method.MethodExistsIn(file.Symbols.BaseClass); i++ {
 				method.Rename(method.Name + strconv.Itoa(i))
 			}
 			// Resolve all the paramters of the method
 			for _, param := range method.Parameters {
-				symbol.ResolveDefinition(param, symbolTable, globalScope)
+				symbol.ResolveDefinition(param, file.Symbols, symbol.GlobalScope)
 
 				for i := 0; symbol.IsReserved(param.Name); i++ {
 					param.Rename(param.Name + strconv.Itoa(i))
@@ -210,44 +208,47 @@ func main() {
 		}
 	}
 
-	_ = syncFlag
+	// Transpile the files
 
-	// Start looking through the files
-	for ind, filePath := range fileNames {
-		log.Infof("Converting file \"%s\"", filePath)
+	log.Info("Converting files...")
+
+	for _, file := range files {
+		log.Infof("Converting file \"%s\"", file.Name)
 
 		// Write to stdout by default
 		var output io.Writer = os.Stdout
 
-		outputFile := filePath[:len(filePath)-len(filepath.Ext(filePath))] + ".go"
-		outputPath := *outDirFlag + "/" + outputFile
+		// Write to a `.go` file in the same directory
+		outputFile := file.Name[:len(file.Name)-len(filepath.Ext(file.Name))] + ".go"
+		outputPath := outputDirectory + "/" + outputFile
 
-		if *writeFlag {
-			if err := os.MkdirAll(path.Dir(outputPath), 0755); err != nil {
+		if writeFiles {
+			err := os.MkdirAll(path.Dir(outputPath), 0755)
+			if err != nil {
 				log.WithFields(log.Fields{
 					"error": err,
 					"path":  outputPath,
 				}).Panic("Error creating output directory")
 			}
 
-			// Write the output to another file
-			outputFile, err := os.Create(outputPath)
+			// Write the output to a file
+			output, err = os.Create(outputPath)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error": err,
 					"file":  outputPath,
 				}).Panic("Error creating output file")
 			}
-			output = outputFile
-		} else if *quiet {
+		} else if quiet {
+			// Otherwise, throw away the output
 			output = io.Discard
 		}
 
 		// The converted AST, in Go's AST representation
-		parsed := ParseNode(asts[ind], sources[ind], Ctx{classScope: classDefinitions[ind].BaseClass}).(ast.Node)
+		parsed := ParseNode(file.Ast, file.Source, Ctx{classScope: file.Symbols.BaseClass}).(ast.Node)
 
 		// Print the generated AST
-		if *astFlag {
+		if displayAST {
 			ast.Print(token.NewFileSet(), parsed)
 		}
 
@@ -258,7 +259,7 @@ func main() {
 			}).Panic("Error printing generated code")
 		}
 
-		if *writeFlag {
+		if writeFiles {
 			output.(*os.File).Close()
 		}
 	}
