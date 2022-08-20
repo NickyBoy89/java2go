@@ -5,6 +5,7 @@ import (
 	"go/ast"
 	"go/token"
 
+	"github.com/NickyBoy89/java2go/nodeutil"
 	log "github.com/sirupsen/logrus"
 	sitter "github.com/smacker/go-tree-sitter"
 )
@@ -57,7 +58,7 @@ func TryParseStmt(node *sitter.Node, source []byte, ctx Ctx) ast.Stmt {
 		var containsNull bool
 
 		// Go through the values and see if there is a `null_literal`
-		for _, child := range Children(node.NamedChild(varTypeIndex + 1)) {
+		for _, child := range nodeutil.NamedChildrenOf(node.NamedChild(varTypeIndex + 1)) {
 			if child.Type() == "null_literal" {
 				containsNull = true
 			}
@@ -146,7 +147,7 @@ func TryParseStmt(node *sitter.Node, source []byte, ctx Ctx) ast.Stmt {
 		return &ast.ExprStmt{X: ParseExpr(node, source, ctx)}
 	case "constructor_body", "block":
 		body := &ast.BlockStmt{}
-		for _, line := range Children(node) {
+		for _, line := range nodeutil.NamedChildrenOf(node) {
 			if line.Type() == "comment" {
 				continue
 			}
@@ -272,7 +273,7 @@ func TryParseStmt(node *sitter.Node, source []byte, ctx Ctx) ast.Stmt {
 	case "switch_block":
 		switchBlock := &ast.BlockStmt{}
 		var currentCase *ast.CaseClause
-		for _, c := range Children(node) {
+		for _, c := range nodeutil.NamedChildrenOf(node) {
 			switch c.Type() {
 			case "switch_label":
 				// When a new switch label comes, append it to the switch block

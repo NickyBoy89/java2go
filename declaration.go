@@ -4,6 +4,7 @@ import (
 	"go/ast"
 	"go/token"
 
+	"github.com/NickyBoy89/java2go/nodeutil"
 	"github.com/NickyBoy89/java2go/symbol"
 	sitter "github.com/smacker/go-tree-sitter"
 )
@@ -27,7 +28,7 @@ func ParseDecls(node *sitter.Node, source []byte, ctx Ctx) []ast.Decl {
 		ctx.className = ctx.classScope.FindClass(node.ChildByFieldName("name").Content(source)).Name
 
 		// First, look through the class's body for field declarations
-		for _, child := range Children(node.ChildByFieldName("body")) {
+		for _, child := range nodeutil.NamedChildrenOf(node.ChildByFieldName("body")) {
 			if child.Type() == "field_declaration" {
 
 				var staticField bool
@@ -36,7 +37,7 @@ func ParseDecls(node *sitter.Node, source []byte, ctx Ctx) []ast.Decl {
 
 				// Handle any modifiers that the field might have
 				if child.NamedChild(0).Type() == "modifiers" {
-					for _, modifier := range UnnamedChildren(child.NamedChild(0)) {
+					for _, modifier := range nodeutil.UnnamedChildrenOf(child.NamedChild(0)) {
 						switch modifier.Type() {
 						case "static":
 							staticField = true
@@ -107,7 +108,7 @@ func ParseDecls(node *sitter.Node, source []byte, ctx Ctx) []ast.Decl {
 	case "interface_body":
 		methods := &ast.FieldList{}
 
-		for _, c := range Children(node) {
+		for _, c := range nodeutil.NamedChildrenOf(node) {
 			if c.Type() == "method_declaration" {
 				parsedMethod := ParseNode(c, source, ctx).(*ast.Field)
 				// If the method was ignored with an annotation, it will return a blank
@@ -136,7 +137,7 @@ func ParseDecls(node *sitter.Node, source []byte, ctx Ctx) []ast.Decl {
 		var declarations []ast.Decl
 
 		// A list of generic type parameters
-		for _, param := range Children(node) {
+		for _, param := range nodeutil.NamedChildrenOf(node) {
 			switch param.Type() {
 			case "type_parameter":
 				declarations = append(declarations, GenTypeInterface(param.NamedChild(0).Content(source), []string{"any"}))
@@ -194,7 +195,7 @@ func ParseDecl(node *sitter.Node, source []byte, ctx Ctx) ast.Decl {
 		comments := []*ast.Comment{}
 
 		if node.NamedChild(0).Type() == "modifiers" {
-			for _, modifier := range UnnamedChildren(node.NamedChild(0)) {
+			for _, modifier := range nodeutil.UnnamedChildrenOf(node.NamedChild(0)) {
 				switch modifier.Type() {
 				case "static":
 					static = true

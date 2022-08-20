@@ -4,35 +4,16 @@ import (
 	"fmt"
 	"go/ast"
 
+	"github.com/NickyBoy89/java2go/nodeutil"
 	"github.com/NickyBoy89/java2go/symbol"
 	log "github.com/sirupsen/logrus"
 	sitter "github.com/smacker/go-tree-sitter"
 )
 
-// Children gets all named children of a given node
-func Children(node *sitter.Node) []*sitter.Node {
-	count := int(node.NamedChildCount())
-	children := make([]*sitter.Node, count)
-	for i := 0; i < count; i++ {
-		children[i] = node.NamedChild(i)
-	}
-	return children
-}
-
-// UnnamedChildren gets all the named + unnamed children of a given node
-func UnnamedChildren(node *sitter.Node) []*sitter.Node {
-	count := int(node.ChildCount())
-	children := make([]*sitter.Node, count)
-	for i := 0; i < count; i++ {
-		children[i] = node.Child(i)
-	}
-	return children
-}
-
 // Inspect is a function for debugging that prints out every named child of a
 // given node and the source code for that child
 func Inspect(node *sitter.Node, source []byte) {
-	for _, c := range Children(node) {
+	for _, c := range nodeutil.NamedChildrenOf(node) {
 		fmt.Println(c, c.Content(source))
 	}
 }
@@ -40,13 +21,13 @@ func Inspect(node *sitter.Node, source []byte) {
 // CapitalizeIdent capitalizes the first letter of a `*ast.Ident` to mark the
 // result as a public method or field
 func CapitalizeIdent(in *ast.Ident) *ast.Ident {
-	return &ast.Ident{Name: Uppercase(in.Name)}
+	return &ast.Ident{Name: symbol.Uppercase(in.Name)}
 }
 
 // LowercaseIdent lowercases the first letter of a `*ast.Ident` to mark the
 // result as a private method or field
 func LowercaseIdent(in *ast.Ident) *ast.Ident {
-	return &ast.Ident{Name: Lowercase(in.Name)}
+	return &ast.Ident{Name: symbol.Lowercase(in.Name)}
 }
 
 // A Ctx is passed into the `ParseNode` function and contains any data that is
@@ -82,7 +63,7 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 			Name: &ast.Ident{Name: "main"},
 		}
 
-		for _, c := range Children(node) {
+		for _, c := range nodeutil.NamedChildrenOf(node) {
 			switch c.Type() {
 			case "package_declaration":
 				program.Name = &ast.Ident{Name: c.NamedChild(0).NamedChild(int(c.NamedChild(0).NamedChildCount()) - 1).Content(source)}
@@ -94,42 +75,29 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 		}
 		return program
 	case "field_declaration":
-		var fieldType ast.Expr
-		var fieldName *ast.Ident
-
 		var public bool
 
-		var fieldOffset int
-
-		for ind, c := range Children(node) {
-			switch c.Type() {
-			case "modifiers": // Ignore the modifiers for now
-				for _, modifier := range UnnamedChildren(c) {
-					if modifier.Type() == "public" {
-						public = true
-					}
+		if node.NamedChild(0).Type() == "modifiers" {
+			for _, modifier := range nodeutil.UnnamedChildrenOf(node.NamedChild(0)) {
+				if modifier.Type() == "public" {
+					public = true
 				}
-				fieldOffset = ind + 1
 			}
 		}
 
-		if fieldType == nil {
-			fieldType = ParseExpr(node.NamedChild(fieldOffset), source, ctx)
-			fieldName = ParseExpr(node.NamedChild(fieldOffset+1).NamedChild(0), source, ctx).(*ast.Ident)
-		}
+		fieldType := ParseExpr(node.ChildByFieldName("type"), source, ctx)
+		fieldName := ParseExpr(node.ChildByFieldName("declarator").ChildByFieldName("name"), source, ctx).(*ast.Ident)
+		fieldName.Name = symbol.HandleExportStatus(public, fieldName.Name)
 
-		if public {
-			fieldName = CapitalizeIdent(fieldName)
-		} else {
-			fieldName = LowercaseIdent(fieldName)
-		}
-
-		// If the field had a value associated with it, (ex: variable = NewValue())
-		if node.NamedChild(fieldOffset+1).NamedChildCount() > 1 {
+		// If the field is assigned to a value (ex: int field = 1)
+		fieldAssignmentNode := node.ChildByFieldName("declarator").ChildByFieldName("value")
+		if fieldAssignmentNode != nil {
 			return &ast.ValueSpec{
-				Names:  []*ast.Ident{fieldName},
-				Type:   fieldType,
-				Values: []ast.Expr{ParseExpr(node.NamedChild(fieldOffset+1).NamedChild(1), source, ctx)},
+				Names: []*ast.Ident{fieldName},
+				Type:  fieldType,
+				Values: []ast.Expr{
+					ParseExpr(fieldAssignmentNode, source, ctx),
+				},
 			}
 		}
 
@@ -143,7 +111,7 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 		comments := []*ast.Comment{}
 
 		if node.NamedChild(0).Type() == "modifiers" {
-			for _, modifier := range UnnamedChildren(node.NamedChild(0)) {
+			for _, modifier := range nodeutil.UnnamedChildrenOf(node.NamedChild(0)) {
 				switch modifier.Type() {
 				case "marker_annotation", "annotation":
 					comments = append(comments, &ast.Comment{Text: "//" + modifier.Content(source)})
@@ -160,7 +128,7 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 
 		parameters := &ast.FieldList{}
 
-		for _, param := range Children(node.ChildByFieldName("parameters")) {
+		for _, param := range nodeutil.NamedChildrenOf(node.ChildByFieldName("parameters")) {
 			if param.Type() == "spread_parameter" {
 				parameterTypes = append(parameterTypes, param.NamedChild(0).Content(source))
 			} else {
@@ -207,14 +175,14 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 		return &ast.CaseClause{}
 	case "argument_list":
 		args := []ast.Expr{}
-		for _, c := range Children(node) {
+		for _, c := range nodeutil.NamedChildrenOf(node) {
 			args = append(args, ParseExpr(c, source, ctx))
 		}
 		return args
 
 	case "formal_parameters":
 		params := &ast.FieldList{}
-		for _, param := range Children(node) {
+		for _, param := range nodeutil.NamedChildrenOf(node) {
 			params.List = append(params.List, ParseNode(param, source, ctx).(*ast.Field))
 		}
 		return params
@@ -269,7 +237,7 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 		}
 	case "inferred_parameters":
 		params := &ast.FieldList{}
-		for _, param := range Children(node) {
+		for _, param := range nodeutil.NamedChildrenOf(node) {
 			params.List = append(params.List, &ast.Field{
 				Names: []*ast.Ident{ParseExpr(param, source, ctx).(*ast.Ident)},
 				// When we're not sure what parameters to infer, set them as interface

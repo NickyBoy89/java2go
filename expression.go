@@ -5,19 +5,13 @@ import (
 	"go/ast"
 	"go/token"
 
+	"github.com/NickyBoy89/java2go/nodeutil"
 	"github.com/NickyBoy89/java2go/symbol"
 	log "github.com/sirupsen/logrus"
 	sitter "github.com/smacker/go-tree-sitter"
 )
 
 func ParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
-	if expr := TryParseExpr(node, source, ctx); expr != nil {
-		return expr
-	}
-	panic(fmt.Errorf("Unhandled expr type: %v", node.Type()))
-}
-
-func TryParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 	switch node.Type() {
 	case "ERROR":
 		log.WithFields(log.Fields{
@@ -71,18 +65,22 @@ func TryParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 
 		var lambdaBody *ast.BlockStmt
 
-		if expr := TryParseExpr(node.NamedChild(1), source, ctx); expr != nil {
-			// The body can be a single expression
-			lambdaBody = &ast.BlockStmt{
-				List: []ast.Stmt{
-					&ast.ExprStmt{
-						X: ParseExpr(node.NamedChild(1), source, ctx),
+		panic(node.Type())
+
+		/*
+			if expr := TryParseExpr(node.NamedChild(1), source, ctx); expr != nil {
+				// The body can be a single expression
+				lambdaBody = &ast.BlockStmt{
+					List: []ast.Stmt{
+						&ast.ExprStmt{
+							X: ParseExpr(node.NamedChild(1), source, ctx),
+						},
 					},
-				},
+				}
+			} else {
+				lambdaBody = ParseStmt(node.NamedChild(1), source, ctx).(*ast.BlockStmt)
 			}
-		} else {
-			lambdaBody = ParseStmt(node.NamedChild(1), source, ctx).(*ast.BlockStmt)
-		}
+		*/
 
 		switch node.NamedChild(0).Type() {
 		case "inferred_parameters", "formal_parameters":
@@ -126,7 +124,7 @@ func TryParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 	case "array_initializer":
 		// A literal that initilzes an array, such as `{1, 2, 3}`
 		items := []ast.Expr{}
-		for _, c := range Children(node) {
+		for _, c := range nodeutil.NamedChildrenOf(node) {
 			items = append(items, ParseExpr(c, source, ctx))
 		}
 
@@ -170,7 +168,7 @@ func TryParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 		objectArguments := node.ChildByFieldName("arguments")
 		arguments := make([]ast.Expr, objectArguments.NamedChildCount())
 		argumentTypes := make([]string, objectArguments.NamedChildCount())
-		for ind, argument := range Children(objectArguments) {
+		for ind, argument := range nodeutil.NamedChildrenOf(objectArguments) {
 			arguments[ind] = ParseExpr(argument, source, ctx)
 			// Look up each argument and find its type
 			if argument.Type() != "identifier" {
@@ -209,7 +207,7 @@ func TryParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 	case "array_creation_expression":
 		arguments := []ast.Expr{&ast.ArrayType{Elt: ParseExpr(node.ChildByFieldName("type"), source, ctx)}}
 
-		for _, child := range Children(node) {
+		for _, child := range nodeutil.NamedChildrenOf(node) {
 			if child.Type() == "dimensions_expr" {
 				arguments = append(arguments, ParseExpr(child, source, ctx))
 			}
@@ -267,7 +265,7 @@ func TryParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 		// condition, and returns one of the two values, depending on the condition
 
 		args := []ast.Expr{}
-		for _, c := range Children(node) {
+		for _, c := range nodeutil.NamedChildrenOf(node) {
 			args = append(args, ParseExpr(c, source, ctx))
 		}
 		return &ast.CallExpr{
@@ -314,39 +312,6 @@ func TryParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 		return &ast.Ident{Name: ShortName(ctx.className)}
 	case "identifier":
 		return &ast.Ident{Name: node.Content(source)}
-	case "integral_type":
-		switch node.Child(0).Type() {
-		case "int":
-			return &ast.Ident{Name: "int32"}
-		case "short":
-			return &ast.Ident{Name: "int16"}
-		case "long":
-			return &ast.Ident{Name: "int64"}
-		case "char":
-			return &ast.Ident{Name: "rune"}
-		case "byte":
-			return &ast.Ident{Name: node.Content(source)}
-		}
-
-		panic(fmt.Errorf("Unknown integral type: %v", node.Child(0).Type()))
-	case "floating_point_type": // Can be either `float` or `double`
-		switch node.Child(0).Type() {
-		case "float":
-			return &ast.Ident{Name: "float32"}
-		case "double":
-			return &ast.Ident{Name: "float64"}
-		}
-
-		panic(fmt.Errorf("Unknown float type: %v", node.Child(0).Type()))
-	case "void_type":
-		return &ast.Ident{}
-	case "boolean_type":
-		return &ast.Ident{Name: "bool"}
-	case "generic_type":
-		// A generic type is any type that is of the form GenericType<T>
-		return &ast.Ident{Name: node.NamedChild(0).Content(source)}
-	case "array_type":
-		return &ast.ArrayType{Elt: ParseExpr(node.NamedChild(0), source, ctx)}
 	case "type_identifier": // Any reference type
 		switch node.Content(source) {
 		// Special case for strings, because in Go, these are primitive types
@@ -393,19 +358,6 @@ func TryParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 		return &ast.Ident{Name: node.Content(source)}
 	case "true", "false":
 		return &ast.Ident{Name: node.Content(source)}
-	}
-	return nil
-}
-
-func ParseExprs(node *sitter.Node, source []byte, ctx Ctx) []ast.Expr {
-	if exprs := TryParseExprs(node, source, ctx); exprs != nil {
-		return exprs
-	}
-	panic(fmt.Errorf("Unhandled type for exprs: %v", node.Type()))
-}
-
-func TryParseExprs(node *sitter.Node, source []byte, ctx Ctx) []ast.Expr {
-	switch node.Type() {
 	}
 	return nil
 }
