@@ -52,6 +52,10 @@ func ParseType(node *sitter.Node, source []byte) ast.Expr {
 		return &ast.StarExpr{
 			X: &ast.Ident{Name: node.Content(source)},
 		}
+	case "scoped_type_identifier":
+		// This contains a reference to the type of a nested class
+		// Ex: LinkedList.Node
+		return &ast.StarExpr{X: &ast.Ident{Name: node.Content(source)}}
 	}
 	panic("Unknown type to convert: " + node.Type())
 }

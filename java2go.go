@@ -154,7 +154,7 @@ func main() {
 
 	log.Info("Generating symbol tables...")
 
-	for _, file := range files {
+	for index, file := range files {
 		if file.Ast.HasError() {
 			log.WithFields(log.Fields{
 				"fileName": file.Name,
@@ -164,9 +164,9 @@ func main() {
 
 		symbols := symbol.ParseSymbols(file.Ast, file.Source)
 
-		file.Symbols = symbols
+		files[index].Symbols = symbols
 
-		symbol.GlobalScope.Packages[symbols.Package].AddFileSymbols(symbols)
+		symbol.GlobalScope.Packages[symbols.Package].AddSymbolsFromFile(symbols)
 	}
 
 	// Go back through the symbol tables and fill in anything that could not be resolved
@@ -186,7 +186,7 @@ func main() {
 			symbol.ResolveDefinition(field, file.Symbols, symbol.GlobalScope)
 
 			// Rename the field if its name conflits with any keyword
-			for i := 0; symbol.IsReserved(field.Name) || field.FieldExistsInPackage(packageScope, file.Symbols.BaseClass.Class.Name); i++ {
+			for i := 0; symbol.IsReserved(field.Name) || len(packageScope.FindStaticField().ByName(field.Name)) > 0; i++ {
 				field.Rename(field.Name + strconv.Itoa(i))
 			}
 		}
@@ -194,7 +194,7 @@ func main() {
 			// Resolve the return type, as well as the body of the method
 			symbol.ResolveChildren(method, file.Symbols, symbol.GlobalScope)
 
-			for i := 0; symbol.IsReserved(method.Name) || method.MethodExistsIn(file.Symbols.BaseClass); i++ {
+			for i := 0; symbol.IsReserved(method.Name); /* || method.MethodExistsIn(file.Symbols.BaseClass)*/ i++ {
 				method.Rename(method.Name + strconv.Itoa(i))
 			}
 			// Resolve all the paramters of the method

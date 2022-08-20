@@ -52,10 +52,6 @@ func ParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 				ParseExpr(node.Child(2), source, ctx),
 			},
 		}
-	case "scoped_type_identifier":
-		// This contains a reference to the type of a nested class
-		// Ex: LinkedList.Node
-		return &ast.StarExpr{X: &ast.Ident{Name: node.Content(source)}}
 	case "super":
 		return &ast.BadExpr{}
 	case "lambda_expression":

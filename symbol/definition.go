@@ -63,6 +63,7 @@ func (d *Definition) FindVariable(name string) *Definition {
 
 // ExistsIn reports whether this definition conflicts with an already existing
 // definition in the given scope
+/*
 func (d *Definition) MethodExistsIn(scope Scope) bool {
 	parameterTypes := []string{}
 	for _, param := range d.Parameters {
@@ -70,21 +71,7 @@ func (d *Definition) MethodExistsIn(scope Scope) bool {
 	}
 	return scope.FindMethodByName(d.Name, parameterTypes) != nil
 }
-
-// FieldExistsInPackage searches for a given field in all the classes in a package
-// This is useful for finding duplicate global variables, as an optional class
-// name can be provided to skip over, meaning that it will not find any duplicates in the same class
-func (d *Definition) FieldExistsInPackage(packageScope *PackageScope, skippedClassName string) bool {
-	for _, classFile := range packageScope.files {
-		if classFile.BaseClass.Class.Name == skippedClassName {
-			continue
-		}
-		if classFile.BaseClass.FindFieldByDisplayName(d.Name) != nil {
-			return true
-		}
-	}
-	return false
-}
+*/
 
 func (d Definition) IsEmpty() bool {
 	return d.OriginalName == "" && len(d.Children) == 0
