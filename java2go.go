@@ -28,17 +28,6 @@ var (
 	excludedAnnotations = make(map[string]bool)
 )
 
-var (
-	writeFiles              bool
-	quiet                   bool
-	displayAST              bool
-	parseFilesSynchronously bool
-	outputDirectory         string
-	ignoredAnnotations      string
-
-	cpuProfile string
-)
-
 type SourceFile struct {
 	Name    string
 	Source  []byte
@@ -47,10 +36,17 @@ type SourceFile struct {
 }
 
 func main() {
+	var writeFiles, quiet, displayAST, symbolAware, parseFilesSynchronously bool
+	var outputDirectory, ignoredAnnotations, cpuProfile string
+
 	flag.BoolVar(&writeFiles, "w", false, "Whether to write the files to disk instead of stdout")
 	flag.BoolVar(&quiet, "q", false, "Don't write to stdout on successful parse")
 	flag.BoolVar(&displayAST, "ast", false, "Print out go's pretty-printed ast, instead of source code")
 	flag.BoolVar(&parseFilesSynchronously, "sync", false, "Parse the files one by one, instead of in parallel")
+	flag.BoolVar(&symbolAware, "symbols", true, `Whether the program is aware of the symbols of the parsed code
+Results in better code generation, but can be disabled for a more direct translation
+or to fix crashes with the symbol handling`,
+	)
 	flag.StringVar(&outputDirectory, "outDir", ".", "Specify a directory for the generated files")
 	flag.StringVar(&ignoredAnnotations, "exclude-annotations", "", "A comma-separated list of annotations to exclude from the final code generation")
 
@@ -152,57 +148,59 @@ func main() {
 
 	// Generate the symbol tables for the files
 
-	log.Info("Generating symbol tables...")
+	if symbolAware {
+		log.Info("Generating symbol tables...")
 
-	for index, file := range files {
-		if file.Ast.HasError() {
-			log.WithFields(log.Fields{
-				"fileName": file.Name,
-			}).Warn("AST parse error in file, skipping file")
-			continue
+		for index, file := range files {
+			if file.Ast.HasError() {
+				log.WithFields(log.Fields{
+					"fileName": file.Name,
+				}).Warn("AST parse error in file, skipping file")
+				continue
+			}
+
+			symbols := symbol.ParseSymbols(file.Ast, file.Source)
+
+			files[index].Symbols = symbols
+
+			symbol.GlobalScope.Packages[symbols.Package].AddSymbolsFromFile(symbols)
 		}
 
-		symbols := symbol.ParseSymbols(file.Ast, file.Source)
+		// Go back through the symbol tables and fill in anything that could not be resolved
 
-		files[index].Symbols = symbols
+		log.Info("Resolving symbols...")
 
-		symbol.GlobalScope.Packages[symbols.Package].AddSymbolsFromFile(symbols)
-	}
+		for _, file := range files {
 
-	// Go back through the symbol tables and fill in anything that could not be resolved
+			// Resolve all the fields in that respective class
+			for _, field := range file.Symbols.BaseClass.Fields {
 
-	log.Info("Resolving symbols...")
+				// Since a private global variable is able to be accessed in the package, it must be renamed
+				// to avoid conflicts with other global variables
 
-	for _, file := range files {
+				packageScope := symbol.GlobalScope.FindPackage(file.Symbols.Package)
 
-		// Resolve all the fields in that respective class
-		for _, field := range file.Symbols.BaseClass.Fields {
+				symbol.ResolveDefinition(field, file.Symbols, symbol.GlobalScope)
 
-			// Since a private global variable is able to be accessed in the package, it must be renamed
-			// to avoid conflicts with other global variables
-
-			packageScope := symbol.GlobalScope.FindPackage(file.Symbols.Package)
-
-			symbol.ResolveDefinition(field, file.Symbols, symbol.GlobalScope)
-
-			// Rename the field if its name conflits with any keyword
-			for i := 0; symbol.IsReserved(field.Name) || len(packageScope.FindStaticField().ByName(field.Name)) > 0; i++ {
-				field.Rename(field.Name + strconv.Itoa(i))
+				// Rename the field if its name conflits with any keyword
+				for i := 0; symbol.IsReserved(field.Name) || len(packageScope.FindStaticField().ByName(field.Name)) > 0; i++ {
+					field.Rename(field.Name + strconv.Itoa(i))
+				}
 			}
-		}
-		for _, method := range file.Symbols.BaseClass.Methods {
-			// Resolve the return type, as well as the body of the method
-			symbol.ResolveChildren(method, file.Symbols, symbol.GlobalScope)
+			for _, method := range file.Symbols.BaseClass.Methods {
+				// Resolve the return type, as well as the body of the method
+				symbol.ResolveChildren(method, file.Symbols, symbol.GlobalScope)
 
-			for i := 0; symbol.IsReserved(method.Name); /* || method.MethodExistsIn(file.Symbols.BaseClass)*/ i++ {
-				method.Rename(method.Name + strconv.Itoa(i))
-			}
-			// Resolve all the paramters of the method
-			for _, param := range method.Parameters {
-				symbol.ResolveDefinition(param, file.Symbols, symbol.GlobalScope)
+				for i := 0; symbol.IsReserved(method.Name); /* || method.MethodExistsIn(file.Symbols.BaseClass)*/ i++ {
+					method.Rename(method.Name + strconv.Itoa(i))
+				}
+				// Resolve all the paramters of the method
+				for _, param := range method.Parameters {
+					symbol.ResolveDefinition(param, file.Symbols, symbol.GlobalScope)
 
-				for i := 0; symbol.IsReserved(param.Name); i++ {
-					param.Rename(param.Name + strconv.Itoa(i))
+					for i := 0; symbol.IsReserved(param.Name); i++ {
+						param.Rename(param.Name + strconv.Itoa(i))
+					}
 				}
 			}
 		}
