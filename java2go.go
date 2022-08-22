@@ -243,7 +243,11 @@ or to fix crashes with the symbol handling`,
 		}
 
 		// The converted AST, in Go's AST representation
-		parsed := ParseNode(file.Ast, file.Source, Ctx{classScope: file.Symbols.BaseClass}).(ast.Node)
+		var initialContext Ctx
+		if symbolAware {
+			initialContext.classScope = file.Symbols.BaseClass
+		}
+		parsed := ParseNode(file.Ast, file.Source, initialContext).(ast.Node)
 
 		// Print the generated AST
 		if displayAST {
