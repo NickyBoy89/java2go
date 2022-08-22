@@ -163,6 +163,10 @@ or to fix crashes with the symbol handling`,
 
 			files[index].Symbols = symbols
 
+			if _, exist := symbol.GlobalScope.Packages[symbols.Package]; !exist {
+				symbol.GlobalScope.Packages[symbols.Package] = &symbol.PackageScope{Files: make(map[string]*symbol.FileScope)}
+			}
+
 			symbol.GlobalScope.Packages[symbols.Package].AddSymbolsFromFile(symbols)
 		}
 
@@ -180,23 +184,50 @@ or to fix crashes with the symbol handling`,
 
 				packageScope := symbol.GlobalScope.FindPackage(file.Symbols.Package)
 
-				symbol.ResolveDefinition(field, file.Symbols, symbol.GlobalScope)
+				symbol.ResolveDefinition(field, file.Symbols)
 
 				// Rename the field if its name conflits with any keyword
-				for i := 0; symbol.IsReserved(field.Name) || len(packageScope.FindStaticField().ByName(field.Name)) > 0; i++ {
+				for i := 0; symbol.IsReserved(field.Name) ||
+					len(packageScope.ExcludeFile(file.Symbols.BaseClass.Class.Name).FindStaticField().ByName(field.Name)) > 0; i++ {
 					field.Rename(field.Name + strconv.Itoa(i))
 				}
 			}
 			for _, method := range file.Symbols.BaseClass.Methods {
 				// Resolve the return type, as well as the body of the method
-				symbol.ResolveChildren(method, file.Symbols, symbol.GlobalScope)
+				symbol.ResolveChildren(method, file.Symbols)
 
-				for i := 0; symbol.IsReserved(method.Name); /* || method.MethodExistsIn(file.Symbols.BaseClass)*/ i++ {
+				// Comparison compares the method against the found method
+				// This tests for a method of the same name, but with different
+				// aspects of it, so that it can be identified as a duplicate
+				comparison := func(d *symbol.Definition) bool {
+					// The names must match, but everything else must be different
+					if method.Name != d.Name {
+						return false
+					}
+
+					// Size of parameters do not match
+					if len(method.Parameters) != len(d.Parameters) {
+						return true
+					}
+
+					// Go through the types and check to see if they differ
+					for index, param := range method.Parameters {
+						if param.OriginalType != d.Parameters[index].OriginalType {
+							return true
+						}
+					}
+
+					// Both methods are equal, skip this method since it is likely
+					// the same method that we are trying to find duplicates of
+					return false
+				}
+
+				for i := 0; symbol.IsReserved(method.Name) || len(file.Symbols.BaseClass.FindMethod().By(comparison)) > 0; i++ {
 					method.Rename(method.Name + strconv.Itoa(i))
 				}
 				// Resolve all the paramters of the method
 				for _, param := range method.Parameters {
-					symbol.ResolveDefinition(param, file.Symbols, symbol.GlobalScope)
+					symbol.ResolveDefinition(param, file.Symbols)
 
 					for i := 0; symbol.IsReserved(param.Name); i++ {
 						param.Rename(param.Name + strconv.Itoa(i))

@@ -12,6 +12,35 @@ type ClassScope struct {
 	Methods []*Definition
 }
 
+type ClassMethodFinder ClassScope
+
+func (cs *ClassScope) FindMethod() Finder {
+	cm := ClassMethodFinder(*cs)
+	return &cm
+}
+
+func (cm *ClassMethodFinder) By(criteria func(d *Definition) bool) []*Definition {
+	results := []*Definition{}
+	for _, method := range cm.Methods {
+		if criteria(method) {
+			results = append(results, method)
+		}
+	}
+	return results
+}
+
+func (cm *ClassMethodFinder) ByName(name string) []*Definition {
+	return cm.By(func(d *Definition) bool {
+		return d.Name == name
+	})
+}
+
+func (cm *ClassMethodFinder) ByOriginalName(originalName string) []*Definition {
+	return cm.By(func(d *Definition) bool {
+		return d.Name == originalName
+	})
+}
+
 // FindMethodByDisplayName searches for a given method by its display name
 // If some ignored parameter types are specified as non-nil, it will skip over
 // any function that matches these ignored parameter types exactly

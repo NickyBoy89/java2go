@@ -22,7 +22,7 @@ func ParseSymbols(root *sitter.Node, source []byte) *FileScope {
 			importPath := node.NamedChild(0).ChildByFieldName("scope").Content(source)
 
 			imports[importedItem] = importPath
-		case "class_declaration", "interface_declaration", "enum_declaration":
+		case "class_declaration", "interface_declaration", "enum_declaration", "annotation_type_declaration":
 			baseClass = node
 		}
 	}
@@ -116,6 +116,7 @@ func parseClassScope(root *sitter.Node, source []byte) *ClassScope {
 			declaration := &Definition{
 				Name:         HandleExportStatus(public, name),
 				OriginalName: name,
+				Parameters:   []*Definition{},
 			}
 
 			if node.Type() == "method_declaration" {

@@ -47,11 +47,14 @@ func TypeOfLiteral(node *sitter.Node, source []byte) string {
 	return originalType
 }
 
-// ResolveDefinition resolves a given definition for its type
-// given its class scope, as well as the global scope
-// It returns true if the definition was successfully resolved, and false otherwise
-func ResolveDefinition(definition *Definition, fileScope *FileScope, globalScope *GlobalSymbols) bool {
+// ResolveDefinition resolves a given definition, given its scope in the file
+// It returns `true` on a successful resolution, or `false` otherwise
+//
+// Resolving a definition means that the type of the file is matched up with the type defined
+// in the local scope or otherwise
+func ResolveDefinition(definition *Definition, fileScope *FileScope) bool {
 	// Look in the class scope first
+	//if localClassDef := fileScope.FindClass().ByType(definition.Type); localClassDef != nil {
 	if localClassDef := fileScope.BaseClass.FindClass(definition.Type); localClassDef != nil {
 		// Every type in the local scope is a reference type, so prefix it with a pointer
 		definition.Type = "*" + localClassDef.Name
@@ -59,7 +62,7 @@ func ResolveDefinition(definition *Definition, fileScope *FileScope, globalScope
 
 	} else if globalDef, in := fileScope.Imports[definition.Type]; in { // Look through the imports
 		// Find what package the type is in
-		if packageDef := globalScope.FindPackage(globalDef); packageDef != nil {
+		if packageDef := GlobalScope.FindPackage(globalDef); packageDef != nil {
 			definition.Type = packageDef.FindClass(definition.Type).FindClass(definition.Type).Type
 		}
 		return true
@@ -71,10 +74,10 @@ func ResolveDefinition(definition *Definition, fileScope *FileScope, globalScope
 
 // ResolveChildren recursively resolves a definition and all of its children
 // It returns true if all definitions were resolved correctly, and false otherwise
-func ResolveChildren(definition *Definition, fileScope *FileScope, globalScope *GlobalSymbols) bool {
-	result := ResolveDefinition(definition, fileScope, globalScope)
+func ResolveChildren(definition *Definition, fileScope *FileScope) bool {
+	result := ResolveDefinition(definition, fileScope)
 	for _, child := range definition.Children {
-		result = ResolveChildren(child, fileScope, globalScope) && result
+		result = ResolveChildren(child, fileScope) && result
 	}
 	return result
 }

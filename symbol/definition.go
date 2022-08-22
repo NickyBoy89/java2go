@@ -61,18 +61,6 @@ func (d *Definition) FindVariable(name string) *Definition {
 	return nil
 }
 
-// ExistsIn reports whether this definition conflicts with an already existing
-// definition in the given scope
-/*
-func (d *Definition) MethodExistsIn(scope Scope) bool {
-	parameterTypes := []string{}
-	for _, param := range d.Parameters {
-		parameterTypes = append(parameterTypes, param.OriginalType)
-	}
-	return scope.FindMethodByName(d.Name, parameterTypes) != nil
-}
-*/
-
 func (d Definition) IsEmpty() bool {
 	return d.OriginalName == "" && len(d.Children) == 0
 }

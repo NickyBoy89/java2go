@@ -11,3 +11,7 @@ type FileScope struct {
 	// The base class that is in the file
 	BaseClass *ClassScope
 }
+
+func (fs *FileScope) FindClass(name string) *Definition {
+	return fs.BaseClass.FindClass(name)
+}

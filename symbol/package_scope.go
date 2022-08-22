@@ -6,6 +6,16 @@ type PackageScope struct {
 	Files map[string]*FileScope
 }
 
+func (ps *PackageScope) ExcludeFile(excludedFileName string) *PackageScope {
+	newScope := &PackageScope{Files: make(map[string]*FileScope)}
+	for fileName, fileScope := range ps.Files {
+		if fileName != excludedFileName {
+			newScope.Files[fileName] = fileScope
+		}
+	}
+	return newScope
+}
+
 func (ps *PackageScope) FindStaticField() Finder {
 	pf := PackageFieldFinder(*ps)
 	return &pf
@@ -38,9 +48,6 @@ func (ps *PackageFieldFinder) ByOriginalName(originalName string) []*Definition 
 }
 
 func (ps *PackageScope) AddSymbolsFromFile(symbols *FileScope) {
-	if ps == nil {
-		ps = &PackageScope{Files: make(map[string]*FileScope)}
-	}
 	ps.Files[symbols.BaseClass.Class.Name] = symbols
 }
 
