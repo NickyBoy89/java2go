@@ -61,43 +61,45 @@ func ParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 
 		var lambdaBody *ast.BlockStmt
 
-		panic(node.Type())
+		var lambdaParameters *ast.FieldList
 
-		/*
-			if expr := TryParseExpr(node.NamedChild(1), source, ctx); expr != nil {
-				// The body can be a single expression
-				lambdaBody = &ast.BlockStmt{
-					List: []ast.Stmt{
-						&ast.ExprStmt{
-							X: ParseExpr(node.NamedChild(1), source, ctx),
-						},
+		bodyNode := node.ChildByFieldName("body")
+
+		switch bodyNode.Type() {
+		case "block":
+			lambdaBody = ParseStmt(bodyNode, source, ctx).(*ast.BlockStmt)
+		default:
+			// Lambdas can be called inline without a block expression
+			lambdaBody = &ast.BlockStmt{
+				List: []ast.Stmt{
+					&ast.ExprStmt{
+						X: ParseExpr(bodyNode, source, ctx),
 					},
-				}
-			} else {
-				lambdaBody = ParseStmt(node.NamedChild(1), source, ctx).(*ast.BlockStmt)
-			}
-		*/
-
-		switch node.NamedChild(0).Type() {
-		case "inferred_parameters", "formal_parameters":
-			return &ast.FuncLit{
-				Type: &ast.FuncType{
-					Params: ParseNode(node.NamedChild(0), source, ctx).(*ast.FieldList),
 				},
-				Body: lambdaBody,
+			}
+		}
+
+		paramNode := node.ChildByFieldName("parameters")
+
+		switch paramNode.Type() {
+		case "inferred_parameters", "formal_parameters":
+			lambdaParameters = ParseNode(paramNode, source, ctx).(*ast.FieldList)
+		default:
+			// If we can't identify the types of the parameters, then just set their
+			// types to any
+			lambdaParameters = &ast.FieldList{
+				List: []*ast.Field{
+					&ast.Field{
+						Names: []*ast.Ident{ParseExpr(paramNode, source, ctx).(*ast.Ident)},
+						Type:  &ast.Ident{Name: "any"},
+					},
+				},
 			}
 		}
 
 		return &ast.FuncLit{
 			Type: &ast.FuncType{
-				Params: &ast.FieldList{
-					List: []*ast.Field{
-						&ast.Field{
-							Names: []*ast.Ident{ParseExpr(node.NamedChild(0), source, ctx).(*ast.Ident)},
-							Type:  &ast.Ident{Name: "interface{}"},
-						},
-					},
-				},
+				Params: lambdaParameters,
 			},
 			Body: lambdaBody,
 		}

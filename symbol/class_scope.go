@@ -12,14 +12,21 @@ type ClassScope struct {
 	Methods []*Definition
 }
 
-type ClassMethodFinder ClassScope
-
+// FindMethod searches through the immediate class's methods find a specific method
 func (cs *ClassScope) FindMethod() Finder {
-	cm := ClassMethodFinder(*cs)
+	cm := classMethodFinder(*cs)
 	return &cm
 }
 
-func (cm *ClassMethodFinder) By(criteria func(d *Definition) bool) []*Definition {
+// FindField searches through the immediate class's methods to find a specific method
+func (cs *ClassScope) FindField() Finder {
+	cm := classFieldFinder(*cs)
+	return &cm
+}
+
+type classMethodFinder ClassScope
+
+func (cm *classMethodFinder) By(criteria func(d *Definition) bool) []*Definition {
 	results := []*Definition{}
 	for _, method := range cm.Methods {
 		if criteria(method) {
@@ -29,15 +36,39 @@ func (cm *ClassMethodFinder) By(criteria func(d *Definition) bool) []*Definition
 	return results
 }
 
-func (cm *ClassMethodFinder) ByName(name string) []*Definition {
+func (cm *classMethodFinder) ByName(name string) []*Definition {
 	return cm.By(func(d *Definition) bool {
 		return d.Name == name
 	})
 }
 
-func (cm *ClassMethodFinder) ByOriginalName(originalName string) []*Definition {
+func (cm *classMethodFinder) ByOriginalName(originalName string) []*Definition {
 	return cm.By(func(d *Definition) bool {
-		return d.Name == originalName
+		return d.OriginalName == originalName
+	})
+}
+
+type classFieldFinder ClassScope
+
+func (cm *classFieldFinder) By(criteria func(d *Definition) bool) []*Definition {
+	results := []*Definition{}
+	for _, method := range cm.Fields {
+		if criteria(method) {
+			results = append(results, method)
+		}
+	}
+	return results
+}
+
+func (cm *classFieldFinder) ByName(name string) []*Definition {
+	return cm.By(func(d *Definition) bool {
+		return d.Name == name
+	})
+}
+
+func (cm *classFieldFinder) ByOriginalName(originalName string) []*Definition {
+	return cm.By(func(d *Definition) bool {
+		return d.OriginalName == originalName
 	})
 }
 

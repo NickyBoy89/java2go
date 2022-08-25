@@ -6,6 +6,7 @@ import (
 
 	"github.com/NickyBoy89/java2go/nodeutil"
 	"github.com/NickyBoy89/java2go/symbol"
+	log "github.com/sirupsen/logrus"
 	sitter "github.com/smacker/go-tree-sitter"
 )
 
@@ -58,7 +59,7 @@ func ParseDecls(node *sitter.Node, source []byte, ctx Ctx) []ast.Decl {
 					field.Doc = &ast.CommentGroup{List: comments}
 				}
 
-				fieldDef := ctx.classScope.FindFieldByName(child.ChildByFieldName("declarator").ChildByFieldName("name").Content(source))
+				fieldDef := ctx.classScope.FindField().ByOriginalName(child.ChildByFieldName("declarator").ChildByFieldName("name").Content(source))[0]
 
 				field.Names, field.Type = []*ast.Ident{&ast.Ident{Name: fieldDef.Name}}, &ast.Ident{Name: fieldDef.Type}
 
@@ -200,6 +201,7 @@ func ParseDecl(node *sitter.Node, source []byte, ctx Ctx) ast.Decl {
 				case "static":
 					static = true
 				case "abstract":
+					log.Warn("Unhandled abstract class")
 					// TODO: Handle abstract methods correctly
 					return &ast.BadDecl{}
 				case "marker_annotation", "annotation":
@@ -213,8 +215,9 @@ func ParseDecl(node *sitter.Node, source []byte, ctx Ctx) ast.Decl {
 			}
 		}
 
-		// If a function is non-static, it has a method receiver
 		var receiver *ast.FieldList
+
+		// If a function is non-static, it has a method receiver
 		if !static {
 			receiver = &ast.FieldList{
 				List: []*ast.Field{
@@ -226,20 +229,49 @@ func ParseDecl(node *sitter.Node, source []byte, ctx Ctx) ast.Decl {
 			}
 		}
 
-		name := ParseExpr(node.ChildByFieldName("name"), source, ctx).(*ast.Ident)
+		methodName := ParseExpr(node.ChildByFieldName("name"), source, ctx).(*ast.Ident)
 
-		paramNode := node.ChildByFieldName("parameters")
-		parameterTypes := make([]string, paramNode.NamedChildCount())
-		for ind := 0; ind < int(paramNode.NamedChildCount()); ind++ {
-			if paramNode.NamedChild(ind).Type() == "spread_parameter" {
-				parameterTypes[ind] = paramNode.NamedChild(ind).NamedChild(0).Content(source)
-			} else {
-				parameterTypes[ind] = paramNode.NamedChild(ind).ChildByFieldName("type").Content(source)
+		methodParameters := node.ChildByFieldName("parameters")
+
+		// Find the declaration for the method that we are defining
+
+		// Find a method that is more or less exactly the same
+		comparison := func(d *symbol.Definition) bool {
+			// Throw out any methods that aren't named the same
+			if d.OriginalName != methodName.Name {
+				return false
 			}
+
+			// Now, even though the method might have the same name, it could be overloaded,
+			// so we have to check the parameters as well
+
+			// Number of parameters are not the same, invalid
+			if len(d.Parameters) != int(methodParameters.NamedChildCount()) {
+				return false
+			}
+
+			// Go through the types and check to see if they differ
+			for index, param := range d.Parameters {
+				paramType := methodParameters.NamedChild(index).ChildByFieldName("type").Content(source)
+				if param.OriginalType != paramType {
+					return false
+				}
+			}
+
+			// We found the correct method
+			return true
 		}
 
-		ctx.localScope = ctx.classScope.FindMethodByName(name.Name, parameterTypes)
-		// TODO: This can look up a method of the same name and type in another class, and it will display incorrect results
+		methodDefinition := ctx.classScope.FindMethod().By(comparison)
+
+		// No definition was found
+		if len(methodDefinition) == 0 {
+			log.WithFields(log.Fields{
+				"methodName": methodName.Name,
+			}).Panic("No matching definition found for method")
+		}
+
+		ctx.localScope = methodDefinition[0]
 
 		body := ParseStmt(node.ChildByFieldName("body"), source, ctx).(*ast.BlockStmt)
 
@@ -247,7 +279,7 @@ func ParseDecl(node *sitter.Node, source []byte, ctx Ctx) ast.Decl {
 
 		// Special case for the main method, because in Java, this method has the
 		// command line args passed in as a parameter
-		if name.Name == "main" {
+		if methodName.Name == "main" {
 			params = nil
 			body.List = append([]ast.Stmt{
 				&ast.AssignStmt{
