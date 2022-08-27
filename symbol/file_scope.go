@@ -12,6 +12,16 @@ type FileScope struct {
 	BaseClass *ClassScope
 }
 
+// FindClass searches through a file to find if a given class has been defined
+// at its root class, or within any of the subclasses
 func (fs *FileScope) FindClass(name string) *Definition {
-	return fs.BaseClass.FindClass(name)
+	if def := fs.BaseClass.FindClass(name); def != nil {
+		return def
+	}
+	for _, subclass := range fs.BaseClass.Subclasses {
+		if def := subclass.FindClass(name); def != nil {
+			return def
+		}
+	}
+	return nil
 }

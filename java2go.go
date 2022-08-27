@@ -13,7 +13,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"runtime/pprof"
-	"strconv"
 	"strings"
 	"sync"
 
@@ -175,65 +174,7 @@ or to fix crashes with the symbol handling`,
 		log.Info("Resolving symbols...")
 
 		for _, file := range files {
-
-			// Resolve all the fields in that respective class
-			for _, field := range file.Symbols.BaseClass.Fields {
-
-				// Since a private global variable is able to be accessed in the package, it must be renamed
-				// to avoid conflicts with other global variables
-
-				packageScope := symbol.GlobalScope.FindPackage(file.Symbols.Package)
-
-				symbol.ResolveDefinition(field, file.Symbols)
-
-				// Rename the field if its name conflits with any keyword
-				for i := 0; symbol.IsReserved(field.Name) ||
-					len(packageScope.ExcludeFile(file.Symbols.BaseClass.Class.Name).FindStaticField().ByName(field.Name)) > 0; i++ {
-					field.Rename(field.Name + strconv.Itoa(i))
-				}
-			}
-			for _, method := range file.Symbols.BaseClass.Methods {
-				// Resolve the return type, as well as the body of the method
-				symbol.ResolveChildren(method, file.Symbols)
-
-				// Comparison compares the method against the found method
-				// This tests for a method of the same name, but with different
-				// aspects of it, so that it can be identified as a duplicate
-				comparison := func(d *symbol.Definition) bool {
-					// The names must match, but everything else must be different
-					if method.Name != d.Name {
-						return false
-					}
-
-					// Size of parameters do not match
-					if len(method.Parameters) != len(d.Parameters) {
-						return true
-					}
-
-					// Go through the types and check to see if they differ
-					for index, param := range method.Parameters {
-						if param.OriginalType != d.Parameters[index].OriginalType {
-							return true
-						}
-					}
-
-					// Both methods are equal, skip this method since it is likely
-					// the same method that we are trying to find duplicates of
-					return false
-				}
-
-				for i := 0; symbol.IsReserved(method.Name) || len(file.Symbols.BaseClass.FindMethod().By(comparison)) > 0; i++ {
-					method.Rename(method.Name + strconv.Itoa(i))
-				}
-				// Resolve all the paramters of the method
-				for _, param := range method.Parameters {
-					symbol.ResolveDefinition(param, file.Symbols)
-
-					for i := 0; symbol.IsReserved(param.Name); i++ {
-						param.Rename(param.Name + strconv.Itoa(i))
-					}
-				}
-			}
+			ResolveFile(file)
 		}
 	}
 
@@ -276,8 +217,10 @@ or to fix crashes with the symbol handling`,
 		// The converted AST, in Go's AST representation
 		var initialContext Ctx
 		if symbolAware {
-			initialContext.classScope = file.Symbols.BaseClass
+			initialContext.currentFile = file.Symbols
+			initialContext.currentClass = file.Symbols.BaseClass
 		}
+
 		parsed := ParseNode(file.Ast, file.Source, initialContext).(ast.Node)
 
 		// Print the generated AST

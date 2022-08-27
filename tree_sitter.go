@@ -30,25 +30,42 @@ func LowercaseIdent(in *ast.Ident) *ast.Ident {
 	return &ast.Ident{Name: symbol.Lowercase(in.Name)}
 }
 
-// A Ctx is passed into the `ParseNode` function and contains any data that is
-// needed down-the-line for parsing, such as the class's name
+// A Ctx is all the context that is needed to parse a single source file
 type Ctx struct {
 	// Used to generate the names of all the methods, as well as the names
 	// of the constructors
 	className string
-	// All the symbols of the file that is currently being parsed
-	classScope *symbol.ClassScope
-	// The symbols of the current scope
+
+	// Symbols for the current file being parsed
+	currentFile  *symbol.FileScope
+	currentClass *symbol.ClassScope
+
+	// The symbols of the current
 	localScope *symbol.Definition
+
 	// Used when generating arrays, because in Java, these are defined as
 	// arrType[] varName = {item, item, item}, and no class name data is defined
 	// Can either be of type `*ast.Ident` or `*ast.StarExpr`
 	lastType ast.Expr
 }
 
-// Parses a given tree-sitter node and returns the ast representation for it
-// if called on the root of a tree-sitter node, it will return the entire
-// generated golang ast as a `ast.Node` type
+// Clone performs a shallow copy on a `Ctx`, returning a new Ctx with its pointers
+// pointing at the same things as the previous Ctx
+func (c Ctx) Clone() Ctx {
+	return Ctx{
+		className:    c.className,
+		currentFile:  c.currentFile,
+		currentClass: c.currentClass,
+		localScope:   c.localScope,
+		lastType:     c.lastType,
+	}
+}
+
+// ParseNode parses a given tree-sitter node and returns the ast representation
+//
+// This function is called when the node being parsed might not be a direct
+// expression or statement, as those are parsed with `ParseExpr` and `ParseStmt`
+// respectively
 func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 	switch node.Type() {
 	case "ERROR":
@@ -137,7 +154,7 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 			parameters.List = append(parameters.List, ParseNode(param, source, ctx).(*ast.Field))
 		}
 
-		def := ctx.classScope.FindMethodByName(node.ChildByFieldName("name").Content(source), parameterTypes)
+		def := ctx.currentClass.FindMethodByName(node.ChildByFieldName("name").Content(source), parameterTypes)
 
 		return &ast.Field{
 			Doc:   &ast.CommentGroup{List: comments},

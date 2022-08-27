@@ -26,7 +26,7 @@ func ParseDecls(node *sitter.Node, source []byte, ctx Ctx) []ast.Decl {
 		// Global variables
 		globalVariables := &ast.GenDecl{Tok: token.VAR}
 
-		ctx.className = ctx.classScope.FindClass(node.ChildByFieldName("name").Content(source)).Name
+		ctx.className = ctx.currentFile.FindClass(node.ChildByFieldName("name").Content(source)).Name
 
 		// First, look through the class's body for field declarations
 		for _, child := range nodeutil.NamedChildrenOf(node.ChildByFieldName("body")) {
@@ -59,7 +59,9 @@ func ParseDecls(node *sitter.Node, source []byte, ctx Ctx) []ast.Decl {
 					field.Doc = &ast.CommentGroup{List: comments}
 				}
 
-				fieldDef := ctx.classScope.FindField().ByOriginalName(child.ChildByFieldName("declarator").ChildByFieldName("name").Content(source))[0]
+				fieldName := child.ChildByFieldName("declarator").ChildByFieldName("name").Content(source)
+
+				fieldDef := ctx.currentClass.FindField().ByOriginalName(fieldName)[0]
 
 				field.Names, field.Type = []*ast.Ident{&ast.Ident{Name: fieldDef.Name}}, &ast.Ident{Name: fieldDef.Type}
 
@@ -88,23 +90,34 @@ func ParseDecls(node *sitter.Node, source []byte, ctx Ctx) []ast.Decl {
 		declarations = append(declarations, ParseDecls(node.ChildByFieldName("body"), source, ctx)...)
 
 		return declarations
-	case "class_body":
+	case "class_body": // The body of the currently parsed class
 		decls := []ast.Decl{}
-		var child *sitter.Node
-		for i := 0; i < int(node.NamedChildCount()); i++ {
-			child = node.NamedChild(i)
+
+		// To switch to parsing the subclasses of a class, since we assume that
+		// all the class's subclass definitions are in-order, if we find some number
+		// of subclasses in a class, we can refer to them by index
+		var subclassIndex int
+
+		for _, child := range nodeutil.NamedChildrenOf(node) {
 			switch child.Type() {
 			// Skip fields and comments
 			case "field_declaration", "comment":
 			case "constructor_declaration", "method_declaration", "static_initializer":
 				d := ParseDecl(child, source, ctx)
-				if _, bad := d.(*ast.BadDecl); !bad {
+				// If the declaration is bad, skip it
+				_, bad := d.(*ast.BadDecl)
+				if !bad {
 					decls = append(decls, d)
 				}
+
+			// Subclasses
 			case "class_declaration", "interface_declaration", "enum_declaration":
-				decls = append(decls, ParseDecls(child, source, ctx)...)
+				newCtx := ctx.Clone()
+				newCtx.currentClass = ctx.currentClass.Subclasses[subclassIndex]
+				decls = append(decls, ParseDecls(child, source, newCtx)...)
 			}
 		}
+
 		return decls
 	case "interface_body":
 		methods := &ast.FieldList{}
@@ -122,14 +135,14 @@ func ParseDecls(node *sitter.Node, source []byte, ctx Ctx) []ast.Decl {
 
 		return []ast.Decl{GenInterface(ctx.className, methods)}
 	case "interface_declaration":
-		ctx.className = ctx.classScope.FindClass(node.ChildByFieldName("name").Content(source)).Name
+		ctx.className = ctx.currentFile.FindClass(node.ChildByFieldName("name").Content(source)).Name
 
 		return ParseDecls(node.ChildByFieldName("body"), source, ctx)
 	case "enum_declaration":
 		// An enum is treated as both a struct, and a list of values that define
 		// the states that the enum can be in
 
-		ctx.className = ctx.classScope.FindClass(node.ChildByFieldName("name").Content(source)).Name
+		ctx.className = ctx.currentFile.FindClass(node.ChildByFieldName("name").Content(source)).Name
 
 		// TODO: Handle an enum correctly
 		//return ParseDecls(node.ChildByFieldName("body"), source, ctx)
@@ -165,7 +178,38 @@ func ParseDecl(node *sitter.Node, source []byte, ctx Ctx) ast.Decl {
 			}
 		}
 
-		ctx.localScope = ctx.classScope.FindMethodByName(ParseExpr(node.ChildByFieldName("name"), source, ctx).(*ast.Ident).Name, parameterTypes)
+		parameterName := ParseExpr(node.ChildByFieldName("name"), source, ctx).(*ast.Ident)
+
+		comparison := func(d *symbol.Definition) bool {
+			// The names must match, but everything else must be different
+			if parameterName.Name != d.Name {
+				return false
+			}
+
+			// Size of parameters do not match
+			if int(paramNode.NamedChildCount()) != len(d.Parameters) {
+				return true
+			}
+
+			// Go through the types and check to see if they differ
+			for index, param := range nodeutil.NamedChildrenOf(paramNode) {
+				var paramType string
+				if param.Type() == "spread_parameter" {
+					paramType = param.NamedChild(0).Content(source)
+				} else {
+					paramType = param.ChildByFieldName("type").Content(source)
+				}
+				if paramType != d.Parameters[index].OriginalType {
+					return true
+				}
+			}
+
+			// Both methods are equal, skip this method since it is likely
+			// the same method that we are trying to find duplicates of
+			return false
+		}
+
+		ctx.localScope = ctx.currentClass.FindMethod().By(comparison)[0]
 
 		body := ParseStmt(node.ChildByFieldName("body"), source, ctx).(*ast.BlockStmt)
 
@@ -262,7 +306,7 @@ func ParseDecl(node *sitter.Node, source []byte, ctx Ctx) ast.Decl {
 			return true
 		}
 
-		methodDefinition := ctx.classScope.FindMethod().By(comparison)
+		methodDefinition := ctx.currentClass.FindMethod().By(comparison)
 
 		// No definition was found
 		if len(methodDefinition) == 0 {

@@ -175,7 +175,7 @@ func ParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 				if localDef := ctx.localScope.FindVariable(argument.Content(source)); localDef != nil {
 					argumentTypes[ind] = localDef.OriginalType
 					// Otherwise, a variable may exist as a global variable
-				} else if def := ctx.classScope.FindFieldByName(argument.Content(source)); def != nil {
+				} else if def := ctx.currentClass.FindField().ByOriginalName(argument.Content(source))[0]; def != nil {
 					argumentTypes[ind] = def.OriginalType
 				}
 			}
@@ -184,9 +184,9 @@ func ParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 		var constructor *symbol.Definition
 		// Find the respective constructor, and call it
 		if objectType.Type() == "generic_type" {
-			constructor = ctx.classScope.FindMethodByName(objectType.NamedChild(0).Content(source), argumentTypes)
+			constructor = ctx.currentClass.FindMethodByName(objectType.NamedChild(0).Content(source), argumentTypes)
 		} else {
-			constructor = ctx.classScope.FindMethodByName(objectType.Content(source), argumentTypes)
+			constructor = ctx.currentClass.FindMethodByName(objectType.Content(source), argumentTypes)
 		}
 
 		if constructor != nil {
@@ -281,7 +281,7 @@ func ParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 		obj := node.ChildByFieldName("object")
 
 		if obj.Type() == "this" {
-			def := ctx.classScope.FindFieldByName(node.ChildByFieldName("field").Content(source))
+			def := ctx.currentClass.FindField().ByName(node.ChildByFieldName("field").Content(source))[0]
 			if def == nil {
 				// TODO: This field could not be found in the current class, because it exists in the superclass
 				// definition for the class
@@ -317,9 +317,9 @@ func ParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 			return &ast.Ident{Name: "string"}
 		}
 
-		if ctx.classScope != nil {
+		if ctx.currentFile != nil {
 			// Look for the class locally first
-			if localClass := ctx.classScope.FindClass(node.Content(source)); localClass != nil {
+			if localClass := ctx.currentFile.FindClass(node.Content(source)); localClass != nil {
 				return &ast.StarExpr{
 					X: &ast.Ident{Name: localClass.Name},
 				}
