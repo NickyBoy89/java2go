@@ -29,6 +29,8 @@ It does this through several steps:
 
 * `-ast` pretty-prints the generated ast, in addition to any other options
 
+* `-symbols` (WIP) controls whether the parser uses internal symbol tables to handle things such as name collistions, resulting in better code generation at the cost of increased parser complexity (default: true)
+
 * `-sync` parses the files in sequential order, instead of in parallel
 
 * `-exclude-annotations` specifies a list of annotations on methods and fields that will exclude them from the generated code
