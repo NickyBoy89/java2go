@@ -141,20 +141,43 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 			}
 		}
 
-		parameterTypes := []string{}
-
 		parameters := &ast.FieldList{}
 
 		for _, param := range nodeutil.NamedChildrenOf(node.ChildByFieldName("parameters")) {
-			if param.Type() == "spread_parameter" {
-				parameterTypes = append(parameterTypes, param.NamedChild(0).Content(source))
-			} else {
-				parameterTypes = append(parameterTypes, param.ChildByFieldName("type").Content(source))
-			}
 			parameters.List = append(parameters.List, ParseNode(param, source, ctx).(*ast.Field))
 		}
 
-		def := ctx.currentClass.FindMethodByName(node.ChildByFieldName("name").Content(source), parameterTypes)
+		methodName := node.ChildByFieldName("name").Content(source)
+		methodParameters := node.ChildByFieldName("parameters")
+
+		comparison := func(d *symbol.Definition) bool {
+			// The names must match
+			if methodName != d.OriginalName {
+				return false
+			}
+
+			// Size of parameters must match
+			if int(methodParameters.NamedChildCount()) != len(d.Parameters) {
+				return false
+			}
+
+			// Go through the types and check to see if they differ
+			for index, param := range nodeutil.NamedChildrenOf(methodParameters) {
+				var paramType string
+				if param.Type() == "spread_parameter" {
+					paramType = param.NamedChild(0).Content(source)
+				} else {
+					paramType = param.ChildByFieldName("type").Content(source)
+				}
+				if paramType != d.Parameters[index].OriginalType {
+					return false
+				}
+			}
+
+			return true
+		}
+
+		def := ctx.currentClass.FindMethod().By(comparison)[0]
 
 		return &ast.Field{
 			Doc:   &ast.CommentGroup{List: comments},

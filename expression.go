@@ -281,7 +281,7 @@ func ParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 		obj := node.ChildByFieldName("object")
 
 		if obj.Type() == "this" {
-			def := ctx.currentClass.FindField().ByName(node.ChildByFieldName("field").Content(source))[0]
+			def := ctx.currentClass.FindField().ByOriginalName(node.ChildByFieldName("field").Content(source))[0]
 			if def == nil {
 				// TODO: This field could not be found in the current class, because it exists in the superclass
 				// definition for the class
