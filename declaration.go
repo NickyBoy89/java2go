@@ -114,6 +114,7 @@ func ParseDecls(node *sitter.Node, source []byte, ctx Ctx) []ast.Decl {
 			case "class_declaration", "interface_declaration", "enum_declaration":
 				newCtx := ctx.Clone()
 				newCtx.currentClass = ctx.currentClass.Subclasses[subclassIndex]
+				subclassIndex++
 				decls = append(decls, ParseDecls(child, source, newCtx)...)
 			}
 		}
@@ -169,26 +170,18 @@ func ParseDecl(node *sitter.Node, source []byte, ctx Ctx) ast.Decl {
 	switch node.Type() {
 	case "constructor_declaration":
 		paramNode := node.ChildByFieldName("parameters")
-		parameterTypes := make([]string, paramNode.NamedChildCount())
-		for ind := 0; ind < int(paramNode.NamedChildCount()); ind++ {
-			if paramNode.NamedChild(ind).Type() == "spread_parameter" {
-				parameterTypes[ind] = paramNode.NamedChild(ind).NamedChild(0).Content(source)
-			} else {
-				parameterTypes[ind] = paramNode.NamedChild(ind).ChildByFieldName("type").Content(source)
-			}
-		}
 
-		parameterName := ParseExpr(node.ChildByFieldName("name"), source, ctx).(*ast.Ident)
+		constructorName := node.ChildByFieldName("name").Content(source)
 
 		comparison := func(d *symbol.Definition) bool {
-			// The names must match, but everything else must be different
-			if parameterName.Name != d.Name {
+			// The names must match
+			if constructorName != d.OriginalName {
 				return false
 			}
 
-			// Size of parameters do not match
+			// Size of parameters must match
 			if int(paramNode.NamedChildCount()) != len(d.Parameters) {
-				return true
+				return false
 			}
 
 			// Go through the types and check to see if they differ
@@ -200,15 +193,14 @@ func ParseDecl(node *sitter.Node, source []byte, ctx Ctx) ast.Decl {
 					paramType = param.ChildByFieldName("type").Content(source)
 				}
 				if paramType != d.Parameters[index].OriginalType {
-					return true
+					return false
 				}
 			}
 
-			// Both methods are equal, skip this method since it is likely
-			// the same method that we are trying to find duplicates of
-			return false
+			return true
 		}
 
+		// Search through the current class for the constructor, which is simply labeled as a method
 		ctx.localScope = ctx.currentClass.FindMethod().By(comparison)[0]
 
 		body := ParseStmt(node.ChildByFieldName("body"), source, ctx).(*ast.BlockStmt)
