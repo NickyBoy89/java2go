@@ -5,6 +5,7 @@ import (
 	"go/ast"
 	"go/token"
 
+	"github.com/NickyBoy89/java2go/astutil"
 	"github.com/NickyBoy89/java2go/nodeutil"
 	"github.com/NickyBoy89/java2go/symbol"
 	log "github.com/sirupsen/logrus"
@@ -203,7 +204,7 @@ func ParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 			Args: arguments,
 		}
 	case "array_creation_expression":
-		arguments := []ast.Expr{&ast.ArrayType{Elt: ParseExpr(node.ChildByFieldName("type"), source, ctx)}}
+		arguments := []ast.Expr{&ast.ArrayType{Elt: astutil.ParseType(node.ChildByFieldName("type"), source)}}
 
 		for _, child := range nodeutil.NamedChildrenOf(node) {
 			if child.Type() == "dimensions_expr" {
@@ -216,7 +217,7 @@ func ParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 		case 0:
 			expr := ParseExpr(node.ChildByFieldName("value"), source, ctx).(*ast.CompositeLit)
 			expr.Type = &ast.ArrayType{
-				Elt: ParseExpr(node.ChildByFieldName("type"), source, ctx),
+				Elt: astutil.ParseType(node.ChildByFieldName("type"), source),
 			}
 			return expr
 		case 1:
