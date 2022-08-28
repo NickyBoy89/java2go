@@ -33,7 +33,25 @@ func HashCode(s string) int {
 	var total int
 	n := len(s)
 	for ind, char := range s {
-		total += int(char) * int(math.Pow(float64(31), float64(n - (ind+1))))
+		total += int(char) * int(math.Pow(float64(31), float64(n-(ind+1))))
 	}
 	return total
+}
+
+// MultiDimensionArray constructs an array with two dimensions
+func MultiDimensionArray[T any](val []T, dims ...int) [][]T {
+	arr := make([][]T, dims[0])
+	for ind := range arr {
+		arr[ind] = make([]T, dims[1])
+	}
+	return arr
+}
+
+// MultiDimensionArray3 constructs an array with three dimensions
+func MultiDimensionArray3[T any](val [][]T, dims ...int) [][][]T {
+	arr := make([][][]T, dims[0])
+	for ind := range arr {
+		arr[ind] = MultiDimensionArray([]T{}, dims[1:]...)
+	}
+	return arr
 }

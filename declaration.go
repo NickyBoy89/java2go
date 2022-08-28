@@ -3,8 +3,10 @@ package main
 import (
 	"go/ast"
 	"go/token"
-	"strings"
 
+	"github.com/NickyBoy89/java2go/nodeutil"
+	"github.com/NickyBoy89/java2go/symbol"
+	log "github.com/sirupsen/logrus"
 	sitter "github.com/smacker/go-tree-sitter"
 )
 
@@ -17,47 +19,29 @@ func ParseDecls(node *sitter.Node, source []byte, ctx Ctx) []ast.Decl {
 		//"superclass"
 		//"interfaces"
 
-		// All the declarations for the class
+		// The declarations and fields for the class
 		declarations := []ast.Decl{}
+		fields := &ast.FieldList{}
 
 		// Global variables
 		globalVariables := &ast.GenDecl{Tok: token.VAR}
 
-		// Other declarations
-		fields := &ast.FieldList{}
-
-		var public bool
-
-		if node.NamedChild(0).Type() == "modifiers" {
-			for _, modifier := range UnnamedChildren(node.NamedChild(0)) {
-				if modifier.Type() == "public" {
-					public = true
-				}
-			}
-		}
-
-		if public {
-			ctx.className = ToPublic(node.ChildByFieldName("name").Content(source))
-		} else {
-			ctx.className = ToPrivate(node.ChildByFieldName("name").Content(source))
-		}
+		ctx.className = ctx.currentFile.FindClass(node.ChildByFieldName("name").Content(source)).Name
 
 		// First, look through the class's body for field declarations
-		for _, child := range Children(node.ChildByFieldName("body")) {
+		for _, child := range nodeutil.NamedChildrenOf(node.ChildByFieldName("body")) {
 			if child.Type() == "field_declaration" {
 
-				var publicField, staticField bool
+				var staticField bool
 
 				comments := []*ast.Comment{}
 
 				// Handle any modifiers that the field might have
 				if child.NamedChild(0).Type() == "modifiers" {
-					for _, modifier := range UnnamedChildren(child.NamedChild(0)) {
+					for _, modifier := range nodeutil.UnnamedChildrenOf(child.NamedChild(0)) {
 						switch modifier.Type() {
 						case "static":
 							staticField = true
-						case "public":
-							publicField = true
 						case "marker_annotation", "annotation":
 							comments = append(comments, &ast.Comment{Text: "//" + modifier.Content(source)})
 							if _, in := excludedAnnotations[modifier.Content(source)]; in {
@@ -68,91 +52,78 @@ func ParseDecls(node *sitter.Node, source []byte, ctx Ctx) []ast.Decl {
 					}
 				}
 
-				// Parse the field declaration
-				// The field can either be a `Field`, or a `ValueSpec` if it was assigned to a value
-				field := ParseNode(child, source, ctx)
+				// TODO: If a field is initialized to a value, that value is discarded
 
-				if valueField, hasValue := field.(*ast.ValueSpec); hasValue {
-					if len(comments) > 0 {
-						valueField.Doc = &ast.CommentGroup{List: comments}
-					}
+				field := &ast.Field{}
+				if len(comments) > 0 {
+					field.Doc = &ast.CommentGroup{List: comments}
+				}
 
-					if staticField {
-						// Add the name of the current class to scope the variable to the current class
-						valueField.Names[0].Name = ctx.className + valueField.Names[0].Name
+				fieldName := child.ChildByFieldName("declarator").ChildByFieldName("name").Content(source)
 
-						if publicField {
-							valueField.Names[0] = CapitalizeIdent(valueField.Names[0])
-						} else {
-							valueField.Names[0] = LowercaseIdent(valueField.Names[0])
-						}
+				fieldDef := ctx.currentClass.FindField().ByOriginalName(fieldName)[0]
 
-						globalVariables.Specs = append(globalVariables.Specs, valueField)
-					} else {
-						// TODO: If a variable is not static and it is initialized to
-						// a value, the value is thrown away
-						fields.List = append(fields.List, &ast.Field{Names: valueField.Names, Type: valueField.Type})
-					}
+				field.Names, field.Type = []*ast.Ident{&ast.Ident{Name: fieldDef.Name}}, &ast.Ident{Name: fieldDef.Type}
+
+				if staticField {
+					globalVariables.Specs = append(globalVariables.Specs, &ast.ValueSpec{Names: field.Names, Type: field.Type})
 				} else {
-					if len(comments) > 0 {
-						field.(*ast.Field).Doc = &ast.CommentGroup{List: comments}
-					}
-
-					if staticField {
-						// Add the name of the current class to scope the variable to the current class
-						field.(*ast.Field).Names[0].Name = ctx.className + field.(*ast.Field).Names[0].Name
-
-						if publicField {
-							field.(*ast.Field).Names[0] = CapitalizeIdent(field.(*ast.Field).Names[0])
-						} else {
-							field.(*ast.Field).Names[0] = LowercaseIdent(field.(*ast.Field).Names[0])
-						}
-
-						globalVariables.Specs = append(globalVariables.Specs, &ast.ValueSpec{Names: field.(*ast.Field).Names, Type: field.(*ast.Field).Type})
-					} else {
-						fields.List = append(fields.List, field.(*ast.Field))
-					}
+					fields.List = append(fields.List, field)
 				}
 			}
 		}
 
-		// Add everything into the declarations
-
+		// Add the global variables
 		if len(globalVariables.Specs) > 0 {
 			declarations = append(declarations, globalVariables)
 		}
 
+		// Add any type paramters defined in the class
 		if node.ChildByFieldName("type_parameters") != nil {
 			declarations = append(declarations, ParseDecls(node.ChildByFieldName("type_parameters"), source, ctx)...)
 		}
 
+		// Add the struct for the class
 		declarations = append(declarations, GenStruct(ctx.className, fields))
 
+		// Add all the declarations that appear in the class
 		declarations = append(declarations, ParseDecls(node.ChildByFieldName("body"), source, ctx)...)
 
 		return declarations
-	case "class_body":
+	case "class_body": // The body of the currently parsed class
 		decls := []ast.Decl{}
-		var child *sitter.Node
-		for i := 0; i < int(node.NamedChildCount()); i++ {
-			child = node.NamedChild(i)
+
+		// To switch to parsing the subclasses of a class, since we assume that
+		// all the class's subclass definitions are in-order, if we find some number
+		// of subclasses in a class, we can refer to them by index
+		var subclassIndex int
+
+		for _, child := range nodeutil.NamedChildrenOf(node) {
 			switch child.Type() {
 			// Skip fields and comments
 			case "field_declaration", "comment":
 			case "constructor_declaration", "method_declaration", "static_initializer":
 				d := ParseDecl(child, source, ctx)
-				if _, bad := d.(*ast.BadDecl); !bad {
+				// If the declaration is bad, skip it
+				_, bad := d.(*ast.BadDecl)
+				if !bad {
 					decls = append(decls, d)
 				}
+
+			// Subclasses
 			case "class_declaration", "interface_declaration", "enum_declaration":
-				decls = append(decls, ParseDecls(child, source, ctx)...)
+				newCtx := ctx.Clone()
+				newCtx.currentClass = ctx.currentClass.Subclasses[subclassIndex]
+				subclassIndex++
+				decls = append(decls, ParseDecls(child, source, newCtx)...)
 			}
 		}
+
 		return decls
 	case "interface_body":
 		methods := &ast.FieldList{}
 
-		for _, c := range Children(node) {
+		for _, c := range nodeutil.NamedChildrenOf(node) {
 			if c.Type() == "method_declaration" {
 				parsedMethod := ParseNode(c, source, ctx).(*ast.Field)
 				// If the method was ignored with an annotation, it will return a blank
@@ -165,44 +136,23 @@ func ParseDecls(node *sitter.Node, source []byte, ctx Ctx) []ast.Decl {
 
 		return []ast.Decl{GenInterface(ctx.className, methods)}
 	case "interface_declaration":
-		decls := []ast.Decl{}
+		ctx.className = ctx.currentFile.FindClass(node.ChildByFieldName("name").Content(source)).Name
 
-		for _, c := range Children(node) {
-			switch c.Type() {
-			case "modifiers":
-			case "identifier":
-				ctx.className = c.Content(source)
-			case "interface_body":
-				decls = ParseDecls(c, source, ctx)
-			}
-		}
-
-		return decls
+		return ParseDecls(node.ChildByFieldName("body"), source, ctx)
 	case "enum_declaration":
 		// An enum is treated as both a struct, and a list of values that define
 		// the states that the enum can be in
 
-		//modifiers := ParseNode(node.NamedChild(0), source, ctx)
+		ctx.className = ctx.currentFile.FindClass(node.ChildByFieldName("name").Content(source)).Name
 
-		ctx.className = node.NamedChild(1).Content(source)
-
-		for _, item := range Children(node.NamedChild(2)) {
-			switch item.Type() {
-			case "enum_body_declarations":
-				for _, bodyDecl := range Children(item) {
-					_ = bodyDecl
-				}
-			}
-		}
-
-		// TODO: Fix this to handle an enum correctly
-		//decls := []ast.Decl{GenStruct(ctx.className, fields)}
+		// TODO: Handle an enum correctly
+		//return ParseDecls(node.ChildByFieldName("body"), source, ctx)
 		return []ast.Decl{}
 	case "type_parameters":
 		var declarations []ast.Decl
 
 		// A list of generic type parameters
-		for _, param := range Children(node) {
+		for _, param := range nodeutil.NamedChildrenOf(node) {
 			switch param.Type() {
 			case "type_parameter":
 				declarations = append(declarations, GenTypeInterface(param.NamedChild(0).Content(source), []string{"any"}))
@@ -219,137 +169,160 @@ func ParseDecls(node *sitter.Node, source []byte, ctx Ctx) []ast.Decl {
 func ParseDecl(node *sitter.Node, source []byte, ctx Ctx) ast.Decl {
 	switch node.Type() {
 	case "constructor_declaration":
-		var body *ast.BlockStmt
-		var name *ast.Ident
-		var params *ast.FieldList
+		paramNode := node.ChildByFieldName("parameters")
 
-		for _, c := range Children(node) {
-			switch c.Type() {
-			case "identifier":
-				name = ParseExpr(c, source, ctx).(*ast.Ident)
-			case "formal_parameters":
-				params = ParseNode(c, source, ctx).(*ast.FieldList)
-			case "constructor_body":
-				body = ParseStmt(c, source, ctx).(*ast.BlockStmt)
+		constructorName := node.ChildByFieldName("name").Content(source)
+
+		comparison := func(d *symbol.Definition) bool {
+			// The names must match
+			if constructorName != d.OriginalName {
+				return false
 			}
+
+			// Size of parameters must match
+			if int(paramNode.NamedChildCount()) != len(d.Parameters) {
+				return false
+			}
+
+			// Go through the types and check to see if they differ
+			for index, param := range nodeutil.NamedChildrenOf(paramNode) {
+				var paramType string
+				if param.Type() == "spread_parameter" {
+					paramType = param.NamedChild(0).Content(source)
+				} else {
+					paramType = param.ChildByFieldName("type").Content(source)
+				}
+				if paramType != d.Parameters[index].OriginalType {
+					return false
+				}
+			}
+
+			return true
 		}
 
-		// Create the object to construct in the constructor
-		body.List = append([]ast.Stmt{&ast.AssignStmt{
-			Lhs: []ast.Expr{&ast.Ident{Name: ShortName(ctx.className)}},
-			Tok: token.DEFINE,
-			Rhs: []ast.Expr{&ast.CallExpr{Fun: &ast.Ident{Name: "new"}, Args: []ast.Expr{&ast.Ident{Name: ctx.className}}}},
-		}}, body.List...)
-		// Return the created object
+		// Search through the current class for the constructor, which is simply labeled as a method
+		ctx.localScope = ctx.currentClass.FindMethod().By(comparison)[0]
+
+		body := ParseStmt(node.ChildByFieldName("body"), source, ctx).(*ast.BlockStmt)
+
+		body.List = append([]ast.Stmt{
+			&ast.AssignStmt{
+				Lhs: []ast.Expr{&ast.Ident{Name: ShortName(ctx.className)}},
+				Tok: token.DEFINE,
+				Rhs: []ast.Expr{&ast.CallExpr{Fun: &ast.Ident{Name: "new"}, Args: []ast.Expr{&ast.Ident{Name: ctx.className}}}},
+			},
+		}, body.List...)
+
 		body.List = append(body.List, &ast.ReturnStmt{Results: []ast.Expr{&ast.Ident{Name: ShortName(ctx.className)}}})
 
 		return &ast.FuncDecl{
-			Name: &ast.Ident{Name: "New" + name.Name},
+			Name: &ast.Ident{Name: ctx.localScope.Name},
 			Type: &ast.FuncType{
-				Params: params,
+				Params: ParseNode(node.ChildByFieldName("parameters"), source, ctx).(*ast.FieldList),
 				Results: &ast.FieldList{List: []*ast.Field{&ast.Field{
-					Type: &ast.StarExpr{
-						X: name,
-					},
+					Type: &ast.Ident{Name: ctx.localScope.Type},
 				}}},
 			},
 			Body: body,
 		}
 	case "method_declaration":
-		var public, static bool
-
-		// The return type comes as the second node, after the modifiers
-		// however, if the method is generic, this gets pushed down one
-		returnTypeIndex := 1
-		if node.NamedChild(1).Type() == "type_parameters" {
-			returnTypeIndex++
-		}
-
-		returnType := ParseExpr(node.NamedChild(returnTypeIndex), source, ctx)
-
-		var methodName *ast.Ident
-
-		var params *ast.FieldList
+		var static bool
 
 		// Store the annotations as comments on the method
 		comments := []*ast.Comment{}
 
-		for _, c := range Children(node) {
-			switch c.Type() {
-			case "modifiers":
-				for _, mod := range UnnamedChildren(c) {
-					switch mod.Type() {
-					case "public":
-						public = true
-					case "static":
-						static = true
-					case "abstract":
-						// TODO: Handle abstract methods correctly
+		if node.NamedChild(0).Type() == "modifiers" {
+			for _, modifier := range nodeutil.UnnamedChildrenOf(node.NamedChild(0)) {
+				switch modifier.Type() {
+				case "static":
+					static = true
+				case "abstract":
+					log.Warn("Unhandled abstract class")
+					// TODO: Handle abstract methods correctly
+					return &ast.BadDecl{}
+				case "marker_annotation", "annotation":
+					comments = append(comments, &ast.Comment{Text: "//" + modifier.Content(source)})
+					// If the annotation was on the list of ignored annotations, don't
+					// parse the method
+					if _, in := excludedAnnotations[modifier.Content(source)]; in {
 						return &ast.BadDecl{}
-					case "marker_annotation", "annotation":
-						comments = append(comments, &ast.Comment{Text: "//" + mod.Content(source)})
-						// If the annotation was on the list of ignored annotations, don't
-						// parse the method
-						if _, in := excludedAnnotations[mod.Content(source)]; in {
-							return &ast.BadDecl{}
-						}
 					}
-				}
-			case "type_parameters": // For generic types
-			case "formal_parameters":
-				params = ParseNode(c, source, ctx).(*ast.FieldList)
-			case "identifier":
-				if returnType == nil {
-					continue
-				}
-				// The next two identifiers determine the return type and name of the method
-				if public {
-					methodName = CapitalizeIdent(ParseExpr(c, source, ctx).(*ast.Ident))
-				} else {
-					methodName = LowercaseIdent(ParseExpr(c, source, ctx).(*ast.Ident))
 				}
 			}
 		}
 
-		var methodRecv *ast.FieldList
+		var receiver *ast.FieldList
 
-		// If the method is not static, define it as a struct's method
+		// If a function is non-static, it has a method receiver
 		if !static {
-			methodRecv = &ast.FieldList{List: []*ast.Field{
-				&ast.Field{
-					Names: []*ast.Ident{&ast.Ident{Name: ShortName(ctx.className)}},
-					Type:  &ast.StarExpr{X: &ast.Ident{Name: ctx.className}},
+			receiver = &ast.FieldList{
+				List: []*ast.Field{
+					&ast.Field{
+						Names: []*ast.Ident{&ast.Ident{Name: ShortName(ctx.className)}},
+						Type:  &ast.StarExpr{X: &ast.Ident{Name: ctx.className}},
+					},
 				},
-			}}
+			}
 		}
 
-		// If the methodName is nil, then the printer will panic
-		if methodName == nil {
-			panic("Method's name is nil")
+		methodName := ParseExpr(node.ChildByFieldName("name"), source, ctx).(*ast.Ident)
+
+		methodParameters := node.ChildByFieldName("parameters")
+
+		// Find the declaration for the method that we are defining
+
+		// Find a method that is more or less exactly the same
+		comparison := func(d *symbol.Definition) bool {
+			// Throw out any methods that aren't named the same
+			if d.OriginalName != methodName.Name {
+				return false
+			}
+
+			// Now, even though the method might have the same name, it could be overloaded,
+			// so we have to check the parameters as well
+
+			// Number of parameters are not the same, invalid
+			if len(d.Parameters) != int(methodParameters.NamedChildCount()) {
+				return false
+			}
+
+			// Go through the types and check to see if they differ
+			for index, param := range nodeutil.NamedChildrenOf(methodParameters) {
+				var paramType string
+				if param.Type() == "spread_parameter" {
+					paramType = param.NamedChild(0).Content(source)
+				} else {
+					paramType = param.ChildByFieldName("type").Content(source)
+				}
+				if d.Parameters[index].OriginalType != paramType {
+					return false
+				}
+			}
+
+			// We found the correct method
+			return true
 		}
 
-		method := &ast.FuncDecl{
-			Doc:  &ast.CommentGroup{List: comments},
-			Name: methodName,
-			Recv: methodRecv,
-			Type: &ast.FuncType{
-				Params: params,
-				Results: &ast.FieldList{List: []*ast.Field{
-					&ast.Field{Type: returnType},
-				}},
-			},
-			Body: ParseStmt(node.NamedChild(int(node.NamedChildCount()-1)), source, ctx).(*ast.BlockStmt),
+		methodDefinition := ctx.currentClass.FindMethod().By(comparison)
+
+		// No definition was found
+		if len(methodDefinition) == 0 {
+			log.WithFields(log.Fields{
+				"methodName": methodName.Name,
+			}).Panic("No matching definition found for method")
 		}
 
-		// Special case for the main method, since this should always be lowercase,
-		// and per java rules, have an array of args defined with it
-		if strings.ToLower(methodName.Name) == "main" {
-			methodName.Name = "main"
-			// Remove all of its parameters
-			method.Type.Params = nil
-			// Add a new variable for the args
-			// args := os.Args
-			method.Body.List = append([]ast.Stmt{
+		ctx.localScope = methodDefinition[0]
+
+		body := ParseStmt(node.ChildByFieldName("body"), source, ctx).(*ast.BlockStmt)
+
+		params := ParseNode(node.ChildByFieldName("parameters"), source, ctx).(*ast.FieldList)
+
+		// Special case for the main method, because in Java, this method has the
+		// command line args passed in as a parameter
+		if methodName.Name == "main" {
+			params = nil
+			body.List = append([]ast.Stmt{
 				&ast.AssignStmt{
 					Lhs: []ast.Expr{&ast.Ident{Name: "args"}},
 					Tok: token.DEFINE,
@@ -360,11 +333,27 @@ func ParseDecl(node *sitter.Node, source []byte, ctx Ctx) ast.Decl {
 						},
 					},
 				},
-			}, method.Body.List...)
+			}, body.List...)
 		}
 
-		return method
+		return &ast.FuncDecl{
+			Doc:  &ast.CommentGroup{List: comments},
+			Name: &ast.Ident{Name: ctx.localScope.Name},
+			Recv: receiver,
+			Type: &ast.FuncType{
+				Params: params,
+				Results: &ast.FieldList{
+					List: []*ast.Field{
+						&ast.Field{Type: &ast.Ident{Name: ctx.localScope.Type}},
+					},
+				},
+			},
+			Body: body,
+		}
 	case "static_initializer":
+
+		ctx.localScope = &symbol.Definition{}
+
 		// A block of `static`, which is run before the main function
 		return &ast.FuncDecl{
 			Name: &ast.Ident{Name: "init"},

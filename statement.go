@@ -5,6 +5,8 @@ import (
 	"go/ast"
 	"go/token"
 
+	"github.com/NickyBoy89/java2go/astutil"
+	"github.com/NickyBoy89/java2go/nodeutil"
 	log "github.com/sirupsen/logrus"
 	sitter "github.com/smacker/go-tree-sitter"
 )
@@ -27,39 +29,38 @@ func TryParseStmt(node *sitter.Node, source []byte, ctx Ctx) ast.Stmt {
 	case "comment":
 		return &ast.BadStmt{}
 	case "local_variable_declaration":
-		var varTypeIndex int
+		variableType := astutil.ParseType(node.ChildByFieldName("type"), source)
+		variableDeclarator := node.ChildByFieldName("declarator")
 
-		// The first child can either be modifiers e.g `final int var = 1`, or
-		// just the variable's type
-		if node.NamedChild(0).Type() == "modifiers" {
-			varTypeIndex = 1
-		}
-
-		// The variable declarator does not have a value (ex: int value;)
-		if node.NamedChild(varTypeIndex+1).NamedChildCount() == 1 {
+		// If a variable is being declared, but not set to a value
+		// Ex: `int value;`
+		if variableDeclarator.NamedChildCount() == 1 {
 			return &ast.DeclStmt{
 				Decl: &ast.GenDecl{
 					Tok: token.VAR,
 					Specs: []ast.Spec{
 						&ast.ValueSpec{
-							Names: []*ast.Ident{ParseExpr(node.NamedChild(varTypeIndex+1).NamedChild(0), source, ctx).(*ast.Ident)},
-							Type:  ParseExpr(node.NamedChild(varTypeIndex), source, ctx),
+							Names: []*ast.Ident{ParseExpr(variableDeclarator.ChildByFieldName("name"), source, ctx).(*ast.Ident)},
+							Type:  variableType,
 						},
 					},
 				},
 			}
 		}
 
-		ctx.lastType = ParseExpr(node.NamedChild(varTypeIndex), source, ctx)
+		ctx.lastType = variableType
 
-		declaration := ParseStmt(node.NamedChild(varTypeIndex+1), source, ctx).(*ast.AssignStmt)
+		declaration := ParseStmt(variableDeclarator, source, ctx).(*ast.AssignStmt)
 
+		// Now, if a variable is assigned to `null`, we can't infer its type, so
+		// don't throw out the type information associated with it
 		var containsNull bool
 
 		// Go through the values and see if there is a `null_literal`
-		for _, child := range Children(node.NamedChild(varTypeIndex + 1)) {
+		for _, child := range nodeutil.NamedChildrenOf(variableDeclarator) {
 			if child.Type() == "null_literal" {
 				containsNull = true
+				break
 			}
 		}
 
@@ -77,7 +78,7 @@ func TryParseStmt(node *sitter.Node, source []byte, ctx Ctx) ast.Stmt {
 					Specs: []ast.Spec{
 						&ast.ValueSpec{
 							Names:  names,
-							Type:   ParseExpr(node.NamedChild(varTypeIndex), source, ctx),
+							Type:   variableType,
 							Values: declaration.Rhs,
 						},
 					},
@@ -146,7 +147,7 @@ func TryParseStmt(node *sitter.Node, source []byte, ctx Ctx) ast.Stmt {
 		return &ast.ExprStmt{X: ParseExpr(node, source, ctx)}
 	case "constructor_body", "block":
 		body := &ast.BlockStmt{}
-		for _, line := range Children(node) {
+		for _, line := range nodeutil.NamedChildrenOf(node) {
 			if line.Type() == "comment" {
 				continue
 			}
@@ -272,7 +273,7 @@ func TryParseStmt(node *sitter.Node, source []byte, ctx Ctx) ast.Stmt {
 	case "switch_block":
 		switchBlock := &ast.BlockStmt{}
 		var currentCase *ast.CaseClause
-		for _, c := range Children(node) {
+		for _, c := range nodeutil.NamedChildrenOf(node) {
 			switch c.Type() {
 			case "switch_label":
 				// When a new switch label comes, append it to the switch block

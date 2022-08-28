@@ -5,18 +5,14 @@ import (
 	"go/ast"
 	"go/token"
 
+	"github.com/NickyBoy89/java2go/astutil"
+	"github.com/NickyBoy89/java2go/nodeutil"
+	"github.com/NickyBoy89/java2go/symbol"
 	log "github.com/sirupsen/logrus"
 	sitter "github.com/smacker/go-tree-sitter"
 )
 
 func ParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
-	if expr := TryParseExpr(node, source, ctx); expr != nil {
-		return expr
-	}
-	panic(fmt.Errorf("Unhandled expr type: %v", node.Type()))
-}
-
-func TryParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 	switch node.Type() {
 	case "ERROR":
 		log.WithFields(log.Fields{
@@ -57,10 +53,6 @@ func TryParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 				ParseExpr(node.Child(2), source, ctx),
 			},
 		}
-	case "scoped_type_identifier":
-		// This contains a reference to the type of a nested class
-		// Ex: LinkedList.Node
-		return &ast.StarExpr{X: &ast.Ident{Name: node.Content(source)}}
 	case "super":
 		return &ast.BadExpr{}
 	case "lambda_expression":
@@ -70,39 +62,45 @@ func TryParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 
 		var lambdaBody *ast.BlockStmt
 
-		if expr := TryParseExpr(node.NamedChild(1), source, ctx); expr != nil {
-			// The body can be a single expression
+		var lambdaParameters *ast.FieldList
+
+		bodyNode := node.ChildByFieldName("body")
+
+		switch bodyNode.Type() {
+		case "block":
+			lambdaBody = ParseStmt(bodyNode, source, ctx).(*ast.BlockStmt)
+		default:
+			// Lambdas can be called inline without a block expression
 			lambdaBody = &ast.BlockStmt{
 				List: []ast.Stmt{
 					&ast.ExprStmt{
-						X: ParseExpr(node.NamedChild(1), source, ctx),
+						X: ParseExpr(bodyNode, source, ctx),
 					},
 				},
 			}
-		} else {
-			lambdaBody = ParseStmt(node.NamedChild(1), source, ctx).(*ast.BlockStmt)
 		}
 
-		switch node.NamedChild(0).Type() {
+		paramNode := node.ChildByFieldName("parameters")
+
+		switch paramNode.Type() {
 		case "inferred_parameters", "formal_parameters":
-			return &ast.FuncLit{
-				Type: &ast.FuncType{
-					Params: ParseNode(node.NamedChild(0), source, ctx).(*ast.FieldList),
+			lambdaParameters = ParseNode(paramNode, source, ctx).(*ast.FieldList)
+		default:
+			// If we can't identify the types of the parameters, then just set their
+			// types to any
+			lambdaParameters = &ast.FieldList{
+				List: []*ast.Field{
+					&ast.Field{
+						Names: []*ast.Ident{ParseExpr(paramNode, source, ctx).(*ast.Ident)},
+						Type:  &ast.Ident{Name: "any"},
+					},
 				},
-				Body: lambdaBody,
 			}
 		}
 
 		return &ast.FuncLit{
 			Type: &ast.FuncType{
-				Params: &ast.FieldList{
-					List: []*ast.Field{
-						&ast.Field{
-							Names: []*ast.Ident{ParseExpr(node.NamedChild(0), source, ctx).(*ast.Ident)},
-							Type:  &ast.Ident{Name: "interface{}"},
-						},
-					},
-				},
+				Params: lambdaParameters,
 			},
 			Body: lambdaBody,
 		}
@@ -125,11 +123,18 @@ func TryParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 	case "array_initializer":
 		// A literal that initilzes an array, such as `{1, 2, 3}`
 		items := []ast.Expr{}
-		for _, c := range Children(node) {
+		for _, c := range nodeutil.NamedChildrenOf(node) {
 			items = append(items, ParseExpr(c, source, ctx))
 		}
+
+		// If there wasn't a type for the array specified, then use the one that has been defined
+		if _, ok := ctx.lastType.(*ast.ArrayType); ctx.lastType != nil && ok {
+			return &ast.CompositeLit{
+				Type: ctx.lastType.(*ast.ArrayType),
+				Elts: items,
+			}
+		}
 		return &ast.CompositeLit{
-			Type: ctx.lastType.(*ast.ArrayType),
 			Elts: items,
 		}
 	case "method_invocation":
@@ -151,54 +156,89 @@ func TryParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 	case "object_creation_expression":
 		// This is called when anything is created with a constructor
 
-		// Usually, this is called in this format:
-		// * The name of the type, this can either be an `identifier` or `generic_type`
-		// * An `argument_list` for the constructor's arguments
+		objectType := node.ChildByFieldName("type")
 
-		// But, when creating a new inner class from an outer class, it can use this format:
-		// outerClass.new InnerClass()
+		// A object can also be created with this format:
+		// parentClass.new NestedClass()
+		if !node.NamedChild(0).Equal(objectType) {
+		}
 
-		// The name of the function will always be the last identifier
-		var functionNameInd int
-		for ind, c := range Children(node) {
-			if c.Type() == "type_identifier" {
-				functionNameInd = ind
+		// Get all the arguments, and look up their types
+		objectArguments := node.ChildByFieldName("arguments")
+		arguments := make([]ast.Expr, objectArguments.NamedChildCount())
+		argumentTypes := make([]string, objectArguments.NamedChildCount())
+		for ind, argument := range nodeutil.NamedChildrenOf(objectArguments) {
+			arguments[ind] = ParseExpr(argument, source, ctx)
+
+			// Look up each argument and find its type
+			if argument.Type() != "identifier" {
+				argumentTypes[ind] = symbol.TypeOfLiteral(argument, source)
+			} else {
+				if localDef := ctx.localScope.FindVariable(argument.Content(source)); localDef != nil {
+					argumentTypes[ind] = localDef.OriginalType
+					// Otherwise, a variable may exist as a global variable
+				} else if def := ctx.currentFile.FindField().ByOriginalName(argument.Content(source)); len(def) > 0 {
+					argumentTypes[ind] = def[0].OriginalType
+				}
 			}
 		}
 
-		var functionName string
-		parsed := ParseExpr(node.NamedChild(functionNameInd), source, ctx)
-		switch parsed.(type) {
-		case *ast.Ident:
-			functionName = parsed.(*ast.Ident).Name
-		case *ast.StarExpr:
-			functionName = parsed.(*ast.StarExpr).X.(*ast.Ident).Name
+		var constructor *symbol.Definition
+		// Find the respective constructor, and call it
+		if objectType.Type() == "generic_type" {
+			constructor = ctx.currentClass.FindMethodByName(objectType.NamedChild(0).Content(source), argumentTypes)
+		} else {
+			constructor = ctx.currentClass.FindMethodByName(objectType.Content(source), argumentTypes)
 		}
 
+		if constructor != nil {
+			return &ast.CallExpr{
+				Fun:  &ast.Ident{Name: constructor.Name},
+				Args: arguments,
+			}
+		}
+
+		// It is also possible that a constructor could be unresolved, so we handle
+		// this by calling the type of the type + "Construct" at the beginning
 		return &ast.CallExpr{
-			Fun:  &ast.Ident{Name: "New" + functionName},
-			Args: ParseNode(node.NamedChild(functionNameInd+1), source, ctx).([]ast.Expr),
+			Fun:  &ast.Ident{Name: "Construct" + objectType.Content(source)},
+			Args: arguments,
 		}
 	case "array_creation_expression":
-		// The type of the array
-		arrayType := ParseExpr(node.NamedChild(0), source, ctx)
-		// The dimensions of the array, which Golang only supports defining one at
-		// a time with the use of the builtin `make`
-		dimensions := []ast.Expr{&ast.ArrayType{Elt: arrayType}}
-		for _, c := range Children(node)[1:] {
-			if c.Type() == "dimensions_expr" {
-				dimensions = append(dimensions, ParseExpr(c, source, ctx))
+		arguments := []ast.Expr{&ast.ArrayType{Elt: astutil.ParseType(node.ChildByFieldName("type"), source)}}
+
+		for _, child := range nodeutil.NamedChildrenOf(node) {
+			if child.Type() == "dimensions_expr" {
+				arguments = append(arguments, ParseExpr(child, source, ctx))
 			}
 		}
 
+		var methodName string
+		switch len(arguments) - 1 {
+		case 0:
+			expr := ParseExpr(node.ChildByFieldName("value"), source, ctx).(*ast.CompositeLit)
+			expr.Type = &ast.ArrayType{
+				Elt: astutil.ParseType(node.ChildByFieldName("type"), source),
+			}
+			return expr
+		case 1:
+			methodName = "make"
+		case 2:
+			methodName = "MultiDimensionArray"
+		case 3:
+			methodName = "MultiDimensionArray3"
+		default:
+			panic("Unimplemented number of dimensions in array initializer")
+		}
+
 		return &ast.CallExpr{
-			Fun:  &ast.Ident{Name: "make"},
-			Args: dimensions,
+			Fun:  &ast.Ident{Name: methodName},
+			Args: arguments,
 		}
 	case "instanceof_expression":
 		return &ast.BadExpr{}
 	case "dimensions_expr":
-		return &ast.Ident{Name: node.NamedChild(0).Content(source)}
+		return ParseExpr(node.NamedChild(0), source, ctx)
 	case "binary_expression":
 		if node.Child(1).Content(source) == ">>>" {
 			return &ast.CallExpr{
@@ -225,7 +265,7 @@ func TryParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 		// condition, and returns one of the two values, depending on the condition
 
 		args := []ast.Expr{}
-		for _, c := range Children(node) {
+		for _, c := range nodeutil.NamedChildrenOf(node) {
 			args = append(args, ParseExpr(c, source, ctx))
 		}
 		return &ast.CallExpr{
@@ -233,14 +273,33 @@ func TryParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 			Args: args,
 		}
 	case "cast_expression":
+		// TODO: This probably should be a cast function, instead of an assertion
 		return &ast.TypeAssertExpr{
 			X:    ParseExpr(node.NamedChild(1), source, ctx),
-			Type: ParseExpr(node.NamedChild(0), source, ctx),
+			Type: astutil.ParseType(node.NamedChild(0), source),
 		}
 	case "field_access":
+		// X.Sel
+		obj := node.ChildByFieldName("object")
+
+		if obj.Type() == "this" {
+			def := ctx.currentClass.FindField().ByOriginalName(node.ChildByFieldName("field").Content(source))
+			if len(def) == 0 {
+				// TODO: This field could not be found in the current class, because it exists in the superclass
+				// definition for the class
+				def = []*symbol.Definition{&symbol.Definition{
+					Name: node.ChildByFieldName("field").Content(source),
+				}}
+			}
+
+			return &ast.SelectorExpr{
+				X:   ParseExpr(node.ChildByFieldName("object"), source, ctx),
+				Sel: &ast.Ident{Name: def[0].Name},
+			}
+		}
 		return &ast.SelectorExpr{
-			X:   ParseExpr(node.NamedChild(0), source, ctx),
-			Sel: ParseExpr(node.NamedChild(1), source, ctx).(*ast.Ident),
+			X:   ParseExpr(obj, source, ctx),
+			Sel: ParseExpr(node.ChildByFieldName("field"), source, ctx).(*ast.Ident),
 		}
 	case "array_access":
 		return &ast.IndexExpr{
@@ -253,45 +312,22 @@ func TryParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 		return &ast.Ident{Name: ShortName(ctx.className)}
 	case "identifier":
 		return &ast.Ident{Name: node.Content(source)}
-	case "integral_type":
-		switch node.Child(0).Type() {
-		case "int":
-			return &ast.Ident{Name: "int32"}
-		case "short":
-			return &ast.Ident{Name: "int16"}
-		case "long":
-			return &ast.Ident{Name: "int64"}
-		case "char":
-			return &ast.Ident{Name: "rune"}
-		case "byte":
-			return &ast.Ident{Name: node.Content(source)}
-		}
-
-		panic(fmt.Errorf("Unknown integral type: %v", node.Child(0).Type()))
-	case "floating_point_type": // Can be either `float` or `double`
-		switch node.Child(0).Type() {
-		case "float":
-			return &ast.Ident{Name: "float32"}
-		case "double":
-			return &ast.Ident{Name: "float64"}
-		}
-
-		panic(fmt.Errorf("Unknown float type: %v", node.Child(0).Type()))
-	case "void_type":
-		return &ast.Ident{}
-	case "boolean_type":
-		return &ast.Ident{Name: "bool"}
-	case "generic_type":
-		// A generic type is any type that is of the form GenericType<T>
-		return &ast.Ident{Name: node.NamedChild(0).Content(source)}
-	case "array_type":
-		return &ast.ArrayType{Elt: ParseExpr(node.NamedChild(0), source, ctx)}
 	case "type_identifier": // Any reference type
 		switch node.Content(source) {
 		// Special case for strings, because in Go, these are primitive types
 		case "String":
 			return &ast.Ident{Name: "string"}
 		}
+
+		if ctx.currentFile != nil {
+			// Look for the class locally first
+			if localClass := ctx.currentFile.FindClass(node.Content(source)); localClass != nil {
+				return &ast.StarExpr{
+					X: &ast.Ident{Name: localClass.Name},
+				}
+			}
+		}
+
 		return &ast.StarExpr{
 			X: &ast.Ident{Name: node.Content(source)},
 		}
@@ -323,18 +359,5 @@ func TryParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 	case "true", "false":
 		return &ast.Ident{Name: node.Content(source)}
 	}
-	return nil
-}
-
-func ParseExprs(node *sitter.Node, source []byte, ctx Ctx) []ast.Expr {
-	if exprs := TryParseExprs(node, source, ctx); exprs != nil {
-		return exprs
-	}
-	panic(fmt.Errorf("Unhandled type for exprs: %v", node.Type()))
-}
-
-func TryParseExprs(node *sitter.Node, source []byte, ctx Ctx) []ast.Expr {
-	switch node.Type() {
-	}
-	return nil
+	panic("Unhandled expression: " + node.Type())
 }
