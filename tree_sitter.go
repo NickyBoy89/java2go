@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"go/ast"
 
+	"github.com/NickyBoy89/java2go/astutil"
 	"github.com/NickyBoy89/java2go/nodeutil"
 	"github.com/NickyBoy89/java2go/symbol"
 	log "github.com/sirupsen/logrus"
@@ -242,37 +243,19 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 		}
 		return &ast.Field{
 			Names: []*ast.Ident{ParseExpr(node.ChildByFieldName("name"), source, ctx).(*ast.Ident)},
-			Type:  ParseExpr(node.ChildByFieldName("type"), source, ctx),
+			Type:  astutil.ParseType(node.ChildByFieldName("type"), source),
 		}
 	case "spread_parameter":
 		// The spread paramater takes a list and separates it into multiple elements
 		// Ex: addElements([]int elements...)
 
-		switch ParseExpr(node.NamedChild(0), source, ctx).(type) {
-		case *ast.StarExpr:
-			// If the parameter is a reference type (ex: ...[]*Test), then the type is
-			// a `StarExpr`, which is passed into the ellipsis
-			return &ast.Field{
-				Names: []*ast.Ident{ParseExpr(node.NamedChild(1).NamedChild(0), source, ctx).(*ast.Ident)},
-				Type: &ast.Ellipsis{
-					Elt: ParseExpr(node.NamedChild(0), source, ctx),
-				},
-			}
-		case *ast.ArrayType:
-			// Represents something such as `byte[]... name`
-			return &ast.Field{
-				Names: []*ast.Ident{ParseExpr(node.NamedChild(1).NamedChild(0), source, ctx).(*ast.Ident)},
-				Type: &ast.Ellipsis{
-					Elt: ParseExpr(node.NamedChild(0), source, ctx),
-				},
-			}
-		}
+		spreadType := node.NamedChild(0)
+		spreadDeclarator := node.NamedChild(1)
 
 		return &ast.Field{
-			Names: []*ast.Ident{ParseExpr(node.NamedChild(0), source, ctx).(*ast.Ident)},
+			Names: []*ast.Ident{ParseExpr(spreadDeclarator.ChildByFieldName("name"), source, ctx).(*ast.Ident)},
 			Type: &ast.Ellipsis{
-				// This comes as a variable declarator, but we only need need the identifier for the type
-				Elt: ParseExpr(node.NamedChild(1).NamedChild(0), source, ctx),
+				Elt: astutil.ParseType(spreadType, source),
 			},
 		}
 	case "inferred_parameters":

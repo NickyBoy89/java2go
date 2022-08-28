@@ -18,7 +18,7 @@ func (cs *ClassScope) FindMethod() Finder {
 	return &cm
 }
 
-// FindField searches through the immediate class's methods to find a specific method
+// FindField searches through the immediate class's fields to find a specific field
 func (cs *ClassScope) FindField() Finder {
 	cm := classFieldFinder(*cs)
 	return &cm

@@ -287,9 +287,14 @@ func ParseDecl(node *sitter.Node, source []byte, ctx Ctx) ast.Decl {
 			}
 
 			// Go through the types and check to see if they differ
-			for index, param := range d.Parameters {
-				paramType := methodParameters.NamedChild(index).ChildByFieldName("type").Content(source)
-				if param.OriginalType != paramType {
+			for index, param := range nodeutil.NamedChildrenOf(methodParameters) {
+				var paramType string
+				if param.Type() == "spread_parameter" {
+					paramType = param.NamedChild(0).Content(source)
+				} else {
+					paramType = param.ChildByFieldName("type").Content(source)
+				}
+				if d.Parameters[index].OriginalType != paramType {
 					return false
 				}
 			}

@@ -25,3 +25,36 @@ func (fs *FileScope) FindClass(name string) *Definition {
 	}
 	return nil
 }
+
+// FindField searches through all of the classes in a file and determines if a
+// field exists
+func (cs *FileScope) FindField() Finder {
+	cm := fileFieldFinder(*cs)
+	return &cm
+}
+
+type fileFieldFinder FileScope
+
+func findFieldsInClass(class *ClassScope, criteria func(d *Definition) bool) []*Definition {
+	defs := class.FindField().By(criteria)
+	for _, subclass := range class.Subclasses {
+		defs = append(defs, findFieldsInClass(subclass, criteria)...)
+	}
+	return defs
+}
+
+func (ff *fileFieldFinder) By(criteria func(d *Definition) bool) []*Definition {
+	return findFieldsInClass(ff.BaseClass, criteria)
+}
+
+func (ff *fileFieldFinder) ByName(name string) []*Definition {
+	return ff.By(func(d *Definition) bool {
+		return d.Name == name
+	})
+}
+
+func (ff *fileFieldFinder) ByOriginalName(originalName string) []*Definition {
+	return ff.By(func(d *Definition) bool {
+		return d.OriginalName == originalName
+	})
+}

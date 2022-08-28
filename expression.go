@@ -169,6 +169,7 @@ func ParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 		argumentTypes := make([]string, objectArguments.NamedChildCount())
 		for ind, argument := range nodeutil.NamedChildrenOf(objectArguments) {
 			arguments[ind] = ParseExpr(argument, source, ctx)
+
 			// Look up each argument and find its type
 			if argument.Type() != "identifier" {
 				argumentTypes[ind] = symbol.TypeOfLiteral(argument, source)
@@ -176,8 +177,8 @@ func ParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 				if localDef := ctx.localScope.FindVariable(argument.Content(source)); localDef != nil {
 					argumentTypes[ind] = localDef.OriginalType
 					// Otherwise, a variable may exist as a global variable
-				} else if def := ctx.currentClass.FindField().ByOriginalName(argument.Content(source))[0]; def != nil {
-					argumentTypes[ind] = def.OriginalType
+				} else if def := ctx.currentFile.FindField().ByOriginalName(argument.Content(source)); len(def) > 0 {
+					argumentTypes[ind] = def[0].OriginalType
 				}
 			}
 		}
@@ -275,25 +276,25 @@ func ParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 		// TODO: This probably should be a cast function, instead of an assertion
 		return &ast.TypeAssertExpr{
 			X:    ParseExpr(node.NamedChild(1), source, ctx),
-			Type: ParseExpr(node.NamedChild(0), source, ctx),
+			Type: astutil.ParseType(node.NamedChild(0), source),
 		}
 	case "field_access":
 		// X.Sel
 		obj := node.ChildByFieldName("object")
 
 		if obj.Type() == "this" {
-			def := ctx.currentClass.FindField().ByOriginalName(node.ChildByFieldName("field").Content(source))[0]
-			if def == nil {
+			def := ctx.currentClass.FindField().ByOriginalName(node.ChildByFieldName("field").Content(source))
+			if len(def) == 0 {
 				// TODO: This field could not be found in the current class, because it exists in the superclass
 				// definition for the class
-				def = &symbol.Definition{
+				def = []*symbol.Definition{&symbol.Definition{
 					Name: node.ChildByFieldName("field").Content(source),
-				}
+				}}
 			}
 
 			return &ast.SelectorExpr{
 				X:   ParseExpr(node.ChildByFieldName("object"), source, ctx),
-				Sel: &ast.Ident{Name: def.Name},
+				Sel: &ast.Ident{Name: def[0].Name},
 			}
 		}
 		return &ast.SelectorExpr{
@@ -358,5 +359,5 @@ func ParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 	case "true", "false":
 		return &ast.Ident{Name: node.Content(source)}
 	}
-	return nil
+	panic("Unhandled expression: " + node.Type())
 }
