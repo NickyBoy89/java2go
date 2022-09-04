@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"go/ast"
 	"go/token"
+	"strconv"
 	"unicode"
 )
 
@@ -134,6 +135,103 @@ func GenInterface(name string, methods *ast.FieldList) ast.Decl {
 					Methods: methods,
 				},
 			},
+		},
+	}
+}
+
+func GenMultiDimArray(arrayType string, dimensions []ast.Expr) ast.Expr {
+	if len(dimensions) == 1 {
+		return &ast.CallExpr{
+			Fun:  &ast.Ident{Name: "make"},
+			Args: append([]ast.Expr{&ast.Ident{Name: arrayType}}, dimensions...),
+		}
+	}
+
+	// arr := make([][][]int, 2)
+	base := &ast.AssignStmt{
+		Tok: token.DEFINE,
+		Lhs: []ast.Expr{&ast.Ident{Name: "arr"}},
+		Rhs: []ast.Expr{
+			makeExpression(genArrayType(arrayType, len(dimensions)), dimensions[0]),
+		},
+	}
+
+	indexes := []string{"ind"}
+
+	var body, currentDimension *ast.RangeStmt
+
+	for offset := range dimensions[1:] {
+		nextDim := &ast.RangeStmt{
+			Key: &ast.Ident{Name: indexes[len(indexes)-1]},
+			Tok: token.DEFINE,
+			X:   multiArrayAccess("arr", indexes[:len(indexes)-1]),
+			Body: &ast.BlockStmt{
+				List: []ast.Stmt{
+					&ast.AssignStmt{
+						Tok: token.ASSIGN,
+						Lhs: []ast.Expr{multiArrayAccess("arr", indexes)},
+						Rhs: []ast.Expr{makeExpression(genArrayType(arrayType, len(dimensions)-(offset+1)), dimensions[offset+1])},
+					},
+				},
+			},
+		}
+
+		if body == nil {
+			body = nextDim
+			currentDimension = body
+		} else {
+			currentDimension.Body.List = append(currentDimension.Body.List, nextDim)
+			currentDimension = currentDimension.Body.List[len(currentDimension.Body.List)-1].(*ast.RangeStmt)
+		}
+
+		indexes = append(indexes, indexes[len(indexes)-1]+strconv.Itoa(offset))
+	}
+
+	return &ast.CallExpr{
+		Fun: &ast.FuncLit{
+			Type: &ast.FuncType{
+				Results: &ast.FieldList{
+					List: []*ast.Field{
+						&ast.Field{
+							Type: genArrayType(arrayType, len(dimensions)),
+						},
+					},
+				},
+			},
+			Body: &ast.BlockStmt{
+				List: []ast.Stmt{
+					base,
+					body,
+					&ast.ReturnStmt{Results: []ast.Expr{&ast.Ident{Name: "arr"}}},
+				},
+			},
+		},
+	}
+}
+
+func multiArrayAccess(arrName string, dims []string) ast.Expr {
+	var arr ast.Expr = &ast.Ident{Name: arrName}
+	for _, dim := range dims {
+		arr = &ast.IndexExpr{X: arr, Index: &ast.Ident{Name: dim}}
+	}
+	return arr
+}
+
+func genArrayType(arrayType string, depth int) ast.Expr {
+	var arrayDims ast.Expr = &ast.Ident{Name: arrayType}
+	for i := 0; i < depth; i++ {
+		arrayDims = &ast.ArrayType{Elt: arrayDims}
+	}
+	return arrayDims
+}
+
+// makeExpression constructs an array with the `make` keyword
+func makeExpression(dims, expr ast.Expr) *ast.CallExpr {
+	return &ast.CallExpr{
+		Fun: &ast.Ident{Name: "make"},
+		Args: []ast.Expr{
+			dims,
+			expr,
 		},
 	}
 }

@@ -35,3 +35,7 @@ func nodeToStr(node any) string {
 	}
 	return s.String()
 }
+
+func NodeToStr(node any) string {
+	return nodeToStr(node)
+}

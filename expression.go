@@ -205,36 +205,16 @@ func ParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 			Args: arguments,
 		}
 	case "array_creation_expression":
-		arguments := []ast.Expr{&ast.ArrayType{Elt: astutil.ParseType(node.ChildByFieldName("type"), source)}}
+		dimensions := []ast.Expr{}
+		arrayType := astutil.ParseType(node.ChildByFieldName("type"), source)
 
 		for _, child := range nodeutil.NamedChildrenOf(node) {
 			if child.Type() == "dimensions_expr" {
-				arguments = append(arguments, ParseExpr(child, source, ctx))
+				dimensions = append(dimensions, ParseExpr(child, source, ctx))
 			}
 		}
 
-		var methodName string
-		switch len(arguments) - 1 {
-		case 0:
-			expr := ParseExpr(node.ChildByFieldName("value"), source, ctx).(*ast.CompositeLit)
-			expr.Type = &ast.ArrayType{
-				Elt: astutil.ParseType(node.ChildByFieldName("type"), source),
-			}
-			return expr
-		case 1:
-			methodName = "make"
-		case 2:
-			methodName = "MultiDimensionArray"
-		case 3:
-			methodName = "MultiDimensionArray3"
-		default:
-			panic("Unimplemented number of dimensions in array initializer")
-		}
-
-		return &ast.CallExpr{
-			Fun:  &ast.Ident{Name: methodName},
-			Args: arguments,
-		}
+		return GenMultiDimArray(symbol.NodeToStr(arrayType), dimensions)
 	case "instanceof_expression":
 		return &ast.BadExpr{}
 	case "dimensions_expr":
