@@ -203,9 +203,18 @@ func TryParseStmt(node *sitter.Node, source []byte, ctx Ctx) ast.Stmt {
 		if node.ChildByFieldName("alternative") != nil {
 			other = ParseStmt(node.ChildByFieldName("alternative"), source, ctx)
 		}
+
+		// If the `if` statement is inline, replace the line with a full block
+		var body ast.Stmt = ParseStmt(node.ChildByFieldName("consequence"), source, ctx)
+		if _, ok := body.(*ast.BlockStmt); !ok {
+			body = &ast.BlockStmt{List: []ast.Stmt{
+				body,
+			}}
+		}
+
 		return &ast.IfStmt{
 			Cond: ParseExpr(node.ChildByFieldName("condition"), source, ctx),
-			Body: ParseStmt(node.ChildByFieldName("consequence"), source, ctx).(*ast.BlockStmt),
+			Body: body.(*ast.BlockStmt),
 			Else: other,
 		}
 	case "enhanced_for_statement":
