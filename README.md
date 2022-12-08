@@ -11,6 +11,22 @@ It does this through several steps:
 
 3. Use Golang's builtin [AST printer](https://pkg.go.dev/go/printer) to print out the generated code
 
+## Issues
+
+Note: Java2go is still in development, and as such, please expect many bug
+
+Currently, the following features are not implemented
+
+* Enum classes (Fully)
+* Generic types
+* Any type of inheritance
+    * Abstract classes
+    * Lambda interfaces
+    * Inheritance
+* Decorators
+* Anything that checks `instanceof`
+* Types for lambda expressions
+
 ## Usage
 
 * Clone the repo
