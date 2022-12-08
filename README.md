@@ -13,7 +13,7 @@ It does this through several steps:
 
 ## Issues
 
-Note: Java2go is still in development, and as such, please expect many bug
+Note: Java2go is still in development, and as such, please expect many bugs
 
 Currently, the following features are not implemented
 
