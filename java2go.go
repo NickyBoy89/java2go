@@ -78,6 +78,12 @@ or to fix crashes with the symbol handling`,
 	for _, file := range flag.Args() {
 		err := filepath.WalkDir(file, fs.WalkDirFunc(
 			func(path string, d fs.DirEntry, err error) error {
+				if d == nil {
+					log.WithFields(log.Fields{
+						"path": path,
+					}).Warn("File does not exist, skipping")
+					return os.ErrNotExist
+				}
 				// Only include java files
 				if filepath.Ext(path) == ".java" && !d.IsDir() {
 					sourceCode, err := os.ReadFile(path)

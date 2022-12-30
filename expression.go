@@ -214,6 +214,12 @@ func ParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 			}
 		}
 
+		// TODO: Fix this to handle arrays that are declared with types,
+		// i.e `new int[] {1, 2, 3};`
+		if len(dimensions) == 0 {
+			panic("Array had zero dimensions")
+		}
+
 		return GenMultiDimArray(symbol.NodeToStr(arrayType), dimensions)
 	case "instanceof_expression":
 		return &ast.BadExpr{}
