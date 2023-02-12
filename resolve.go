@@ -3,17 +3,18 @@ package main
 import (
 	"strconv"
 
+	"github.com/NickyBoy89/java2go/parsing"
 	"github.com/NickyBoy89/java2go/symbol"
 )
 
-func ResolveFile(file SourceFile) {
+func ResolveFile(file parsing.SourceFile) {
 	ResolveClass(file.Symbols.BaseClass, file)
 	for _, subclass := range file.Symbols.BaseClass.Subclasses {
 		ResolveClass(subclass, file)
 	}
 }
 
-func ResolveClass(class *symbol.ClassScope, file SourceFile) {
+func ResolveClass(class *symbol.ClassScope, file parsing.SourceFile) {
 	// Resolve all the fields in that respective class
 	for _, field := range class.Fields {
 

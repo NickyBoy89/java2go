@@ -39,7 +39,7 @@ Currently, the following features are not implemented
 
 * `-w` writes the files directly to their corresponding `.go` files, instead of `stdout`
 
-* `-outDir` specifies an alternate directory for the generated files. Defaults to putting them next to their source files by default
+* `-output` specifies an alternate directory for the generated files. Defaults to putting them next to their source files by default
 
 * `-q` prevents the outputs of the parsed files from appearing on `stdout`, if not being written
 

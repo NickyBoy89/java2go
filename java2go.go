@@ -1,158 +1,107 @@
 package main
 
 import (
-	"context"
 	"flag"
+	"fmt"
 	"go/ast"
 	"go/printer"
 	"go/token"
 	"io"
-	"io/fs"
 	"os"
-	"path"
 	"path/filepath"
-	"runtime"
-	"runtime/pprof"
 	"strings"
 	"sync"
 
+	"github.com/NickyBoy89/java2go/parsing"
 	"github.com/NickyBoy89/java2go/symbol"
 	log "github.com/sirupsen/logrus"
-	sitter "github.com/smacker/go-tree-sitter"
-	"github.com/smacker/go-tree-sitter/java"
+)
+
+// Stores a global list of Java annotations to exclude from the generated code
+var excludedAnnotations = make(map[string]bool)
+
+// Command-line arguments
+var (
+	writeFiles              bool
+	dryRun                  bool
+	displayAST              bool
+	symbolAware             bool
+	parseFilesSynchronously bool
 )
 
 var (
-	// Stores a global list of Java annotations to exclude from the generated code
-	excludedAnnotations = make(map[string]bool)
+	outputDirectory    string
+	ignoredAnnotations string
 )
 
-type SourceFile struct {
-	Name    string
-	Source  []byte
-	Ast     *sitter.Node
-	Symbols *symbol.FileScope
-}
-
 func main() {
-	var writeFiles, quiet, displayAST, symbolAware, parseFilesSynchronously bool
-	var outputDirectory, ignoredAnnotations, cpuProfile string
-
 	flag.BoolVar(&writeFiles, "w", false, "Whether to write the files to disk instead of stdout")
-	flag.BoolVar(&quiet, "q", false, "Don't write to stdout on successful parse")
+	flag.BoolVar(&dryRun, "q", false, "Don't write to stdout on successful parse")
 	flag.BoolVar(&displayAST, "ast", false, "Print out go's pretty-printed ast, instead of source code")
 	flag.BoolVar(&parseFilesSynchronously, "sync", false, "Parse the files one by one, instead of in parallel")
 	flag.BoolVar(&symbolAware, "symbols", true, `Whether the program is aware of the symbols of the parsed code
 Results in better code generation, but can be disabled for a more direct translation
 or to fix crashes with the symbol handling`,
 	)
-	flag.StringVar(&outputDirectory, "outDir", ".", "Specify a directory for the generated files")
+	flag.StringVar(&outputDirectory, "output", ".", "Specify a directory for the generated files")
 	flag.StringVar(&ignoredAnnotations, "exclude-annotations", "", "A comma-separated list of annotations to exclude from the final code generation")
 
-	flag.StringVar(&cpuProfile, "cpuprofile", "", "write cpu profile to `file`")
-
 	flag.Parse()
-
-	if cpuProfile != "" {
-		f, err := os.Create(cpuProfile)
-		if err != nil {
-			log.Fatal("could not create CPU profile: ", err)
-		}
-		defer f.Close()
-		if err := pprof.StartCPUProfile(f); err != nil {
-			log.Fatal("could not start CPU profile: ", err)
-		}
-		defer pprof.StopCPUProfile()
-	}
 
 	for _, annotation := range strings.Split(ignoredAnnotations, ",") {
 		excludedAnnotations[annotation] = true
 	}
 
 	// All the files to parse
-	files := []SourceFile{}
+	var files []parsing.SourceFile
 
 	log.Info("Collecting files...")
 
 	// Collect all the files and read them into memory
-	for _, file := range flag.Args() {
-		err := filepath.WalkDir(file, fs.WalkDirFunc(
-			func(path string, d fs.DirEntry, err error) error {
-				if d == nil {
-					log.WithFields(log.Fields{
-						"path": path,
-					}).Warn("File does not exist, skipping")
-					return os.ErrNotExist
-				}
-				// Only include java files
-				if filepath.Ext(path) == ".java" && !d.IsDir() {
-					sourceCode, err := os.ReadFile(path)
-					if err != nil {
-						log.WithFields(log.Fields{
-							"file":  path,
-							"error": err,
-						}).Panic("Error reading source file")
-					}
-
-					files = append(files, SourceFile{
-						Name:   path,
-						Source: sourceCode,
-					})
-				}
-
-				return nil
-			},
-		))
-
+	for _, dirName := range flag.Args() {
+		sources, err := parsing.ReadSourcesInDir(dirName)
 		if err != nil {
-			log.WithFields(log.Fields{
-				"file":  file,
-				"error": err,
-			}).Fatal("Error walking directory or file")
+			log.WithField("error", err).Fatal("Error reading directory")
 		}
+		files = append(files, sources...)
 	}
 
 	if len(files) == 0 {
 		log.Warn("No files specified to convert")
-		return
 	}
 
 	// Parse the ASTs of all the files
 
 	log.Info("Parsing ASTs...")
 
-	sem := make(chan struct{}, runtime.NumCPU())
-
 	var wg sync.WaitGroup
 	wg.Add(len(files))
 
 	for index := range files {
-		sem <- struct{}{}
-
-		go func(index int) {
-			parser := sitter.NewParser()
-			parser.SetLanguage(java.GetLanguage())
-			tree, err := parser.ParseCtx(context.Background(), nil, files[index].Source)
-			if err != nil {
-				log.WithFields(log.Fields{
-					"error": err,
-				}).Panic("Error parsing tree-sitter AST")
+		parseFunc := func(ind int) {
+			if err := files[ind].ParseAST(); err != nil {
+				log.WithField("error", err).Error("Error parsing AST")
 			}
-
-			parser.Close()
-
-			files[index].Ast = tree.RootNode()
-
-			<-sem
 			wg.Done()
-		}(index)
+		}
+
+		if parseFilesSynchronously {
+			parseFunc(index)
+		} else {
+			go parseFunc(index)
+		}
 	}
 
 	// We might still have some parsing jobs, so wait on them
 	wg.Wait()
 
-	// Generate the symbol tables for the files
+	for _, file := range files {
+		if file.Ast == nil {
+			panic("Not all files have asts")
+		}
+	}
 
+	// Generate the symbol tables for the files
 	if symbolAware {
 		log.Info("Generating symbol tables...")
 
@@ -180,7 +129,9 @@ or to fix crashes with the symbol handling`,
 		log.Info("Resolving symbols...")
 
 		for _, file := range files {
-			ResolveFile(file)
+			if !file.Ast.HasError() {
+				ResolveFile(file)
+			}
 		}
 	}
 
@@ -189,35 +140,38 @@ or to fix crashes with the symbol handling`,
 	log.Info("Converting files...")
 
 	for _, file := range files {
+		if dryRun {
+			log.Infof("Not converting file \"%s\"", file.Name)
+			continue
+		}
+
 		log.Infof("Converting file \"%s\"", file.Name)
 
 		// Write to stdout by default
 		var output io.Writer = os.Stdout
-
-		// Write to a `.go` file in the same directory
-		outputFile := file.Name[:len(file.Name)-len(filepath.Ext(file.Name))] + ".go"
-		outputPath := outputDirectory + "/" + outputFile
-
 		if writeFiles {
-			err := os.MkdirAll(path.Dir(outputPath), 0755)
+			// Write to a `.go` file in the same directory
+			outputFile := fmt.Sprintf("%s/%s",
+				outputDirectory,
+				strings.TrimSuffix(file.Name, filepath.Ext(file.Name))+".go",
+			)
+
+			err := os.MkdirAll(outputDirectory, 0755)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error": err,
-					"path":  outputPath,
+					"path":  outputFile,
 				}).Panic("Error creating output directory")
 			}
 
 			// Write the output to a file
-			output, err = os.Create(outputPath)
+			output, err = os.Create(outputFile)
 			if err != nil {
 				log.WithFields(log.Fields{
 					"error": err,
-					"file":  outputPath,
+					"file":  outputFile,
 				}).Panic("Error creating output file")
 			}
-		} else if quiet {
-			// Otherwise, throw away the output
-			output = io.Discard
 		}
 
 		// The converted AST, in Go's AST representation

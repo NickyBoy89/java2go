@@ -6,7 +6,7 @@ namedjar = 1.16.5-named.jar
 procyon = `curl --silent https://api.github.com/repos/mstrobel/procyon/releases/latest | jq -r .assets[0].name`
 
 decompile: quiltflower
-	go run . -outDir=out -exclude-annotations="@Environment(EnvType.CLIENT)" -w quiltflower/
+	go run . --output=out --exclude-annotations="@Environment(EnvType.CLIENT)" -w quiltflower/
 
 clean:
 	# Build files

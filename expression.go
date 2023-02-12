@@ -12,6 +12,7 @@ import (
 	sitter "github.com/smacker/go-tree-sitter"
 )
 
+// ParseExpr parses an expression type
 func ParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 	switch node.Type() {
 	case "ERROR":
