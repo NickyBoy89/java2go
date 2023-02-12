@@ -6,6 +6,12 @@ type PackageScope struct {
 	Files map[string]*FileScope
 }
 
+func NewPackageScope() *PackageScope {
+	return &PackageScope{
+		Files: make(map[string]*FileScope),
+	}
+}
+
 func (ps *PackageScope) ExcludeFile(excludedFileName string) *PackageScope {
 	newScope := &PackageScope{Files: make(map[string]*FileScope)}
 	for fileName, fileScope := range ps.Files {

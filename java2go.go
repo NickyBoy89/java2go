@@ -113,15 +113,9 @@ or to fix crashes with the symbol handling`,
 				continue
 			}
 
-			symbols := symbol.ParseSymbols(file.Ast, file.Source)
-
-			files[index].Symbols = symbols
-
-			if _, exist := symbol.GlobalScope.Packages[symbols.Package]; !exist {
-				symbol.GlobalScope.Packages[symbols.Package] = &symbol.PackageScope{Files: make(map[string]*symbol.FileScope)}
-			}
-
-			symbol.GlobalScope.Packages[symbols.Package].AddSymbolsFromFile(symbols)
+			symbols := files[index].ParseSymbols()
+			// Add the symbols to the global symbol table
+			symbol.AddSymbolsToPackage(symbols)
 		}
 
 		// Go back through the symbol tables and fill in anything that could not be resolved

@@ -32,6 +32,8 @@ func (file *SourceFile) ParseAST() error {
 	return nil
 }
 
-func (file *SourceFile) ParseSymbols() {
-	file.Symbols = symbol.ParseSymbols(file.Ast, file.Source)
+func (file *SourceFile) ParseSymbols() *symbol.FileScope {
+	symbols := symbol.ParseSymbols(file.Ast, file.Source)
+	file.Symbols = symbols
+	return symbols
 }
