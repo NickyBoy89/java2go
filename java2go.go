@@ -22,11 +22,11 @@ var excludedAnnotations = make(map[string]bool)
 
 // Command-line arguments
 var (
-	writeFiles              bool
-	dryRun                  bool
-	displayAST              bool
-	symbolAware             bool
-	parseFilesSynchronously bool
+	writeFiles  bool
+	dryRun      bool
+	displayAST  bool
+	symbolAware bool
+	parseAsync  bool
 )
 
 var (
@@ -38,7 +38,7 @@ func main() {
 	flag.BoolVar(&writeFiles, "w", false, "Whether to write the files to disk instead of stdout")
 	flag.BoolVar(&dryRun, "q", false, "Don't write to stdout on successful parse")
 	flag.BoolVar(&displayAST, "ast", false, "Print out go's pretty-printed ast, instead of source code")
-	flag.BoolVar(&parseFilesSynchronously, "sync", false, "Parse the files one by one, instead of in parallel")
+	flag.BoolVar(&parseAsync, "sync", true, "Parse the files one by one, instead of in parallel")
 	flag.BoolVar(&symbolAware, "symbols", true, `Whether the program is aware of the symbols of the parsed code
 Results in better code generation, but can be disabled for a more direct translation
 or to fix crashes with the symbol handling`,
@@ -79,16 +79,14 @@ or to fix crashes with the symbol handling`,
 
 	for index := range files {
 		parseFunc := func(ind int) {
-			if err := files[ind].ParseAST(); err != nil {
-				log.WithField("error", err).Error("Error parsing AST")
-			}
+			files[ind].ParseAST()
 			wg.Done()
 		}
 
-		if parseFilesSynchronously {
-			parseFunc(index)
-		} else {
+		if parseAsync {
 			go parseFunc(index)
+		} else {
+			parseFunc(index)
 		}
 	}
 

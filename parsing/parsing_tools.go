@@ -39,7 +39,3 @@ func ReadSourcesInDir(directoryName string) ([]SourceFile, error) {
 
 	return sources, nil
 }
-
-func ParseASTs(file SourceFile) {
-
-}

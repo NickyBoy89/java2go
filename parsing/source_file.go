@@ -20,13 +20,11 @@ func (file SourceFile) String() string {
 	return fmt.Sprintf("SourceFile { Name: %s, Ast: %v, Symbols: %v }", file.Name, file.Ast, file.Symbols)
 }
 
-func (file *SourceFile) ParseAST() error {
+func (file *SourceFile) ParseAST() {
 	parser := sitter.NewParser()
 	parser.SetLanguage(sitter.NewLanguage(java.Language()))
 	tree := parser.ParseCtx(context.Background(), file.Source, nil)
-
 	file.Ast = tree.RootNode()
-	return nil
 }
 
 func (file *SourceFile) ParseSymbols() *symbol.FileScope {
