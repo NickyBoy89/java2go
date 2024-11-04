@@ -7,13 +7,13 @@ import (
 	"github.com/NickyBoy89/java2go/nodeutil"
 	"github.com/NickyBoy89/java2go/symbol"
 	log "github.com/sirupsen/logrus"
-	sitter "github.com/smacker/go-tree-sitter"
+	sitter "github.com/tree-sitter/go-tree-sitter"
 )
 
 // ParseDecls represents any type that returns a list of top-level declarations,
 // this is any class, interface, or enum declaration
 func ParseDecls(node *sitter.Node, source []byte, ctx Ctx) []ast.Decl {
-	switch node.Type() {
+	switch node.Kind() {
 	case "class_declaration":
 		// TODO: Currently ignores implements and extends with the following tags:
 		//"superclass"
@@ -26,25 +26,25 @@ func ParseDecls(node *sitter.Node, source []byte, ctx Ctx) []ast.Decl {
 		// Global variables
 		globalVariables := &ast.GenDecl{Tok: token.VAR}
 
-		ctx.className = ctx.currentFile.FindClass(node.ChildByFieldName("name").Content(source)).Name
+		ctx.className = ctx.currentFile.FindClass(node.ChildByFieldName("name").Utf8Text(source)).Name
 
 		// First, look through the class's body for field declarations
 		for _, child := range nodeutil.NamedChildrenOf(node.ChildByFieldName("body")) {
-			if child.Type() == "field_declaration" {
+			if child.Kind() == "field_declaration" {
 
 				var staticField bool
 
 				comments := []*ast.Comment{}
 
 				// Handle any modifiers that the field might have
-				if child.NamedChild(0).Type() == "modifiers" {
+				if child.NamedChild(0).Kind() == "modifiers" {
 					for _, modifier := range nodeutil.UnnamedChildrenOf(child.NamedChild(0)) {
-						switch modifier.Type() {
+						switch modifier.Kind() {
 						case "static":
 							staticField = true
 						case "marker_annotation", "annotation":
-							comments = append(comments, &ast.Comment{Text: "//" + modifier.Content(source)})
-							if _, in := excludedAnnotations[modifier.Content(source)]; in {
+							comments = append(comments, &ast.Comment{Text: "//" + modifier.Utf8Text(source)})
+							if _, in := excludedAnnotations[modifier.Utf8Text(source)]; in {
 								// Skip this field if there is an ignored annotation
 								continue
 							}
@@ -59,7 +59,7 @@ func ParseDecls(node *sitter.Node, source []byte, ctx Ctx) []ast.Decl {
 					field.Doc = &ast.CommentGroup{List: comments}
 				}
 
-				fieldName := child.ChildByFieldName("declarator").ChildByFieldName("name").Content(source)
+				fieldName := child.ChildByFieldName("declarator").ChildByFieldName("name").Utf8Text(source)
 
 				fieldDef := ctx.currentClass.FindField().ByOriginalName(fieldName)[0]
 
@@ -99,7 +99,7 @@ func ParseDecls(node *sitter.Node, source []byte, ctx Ctx) []ast.Decl {
 		var subclassIndex int
 
 		for _, child := range nodeutil.NamedChildrenOf(node) {
-			switch child.Type() {
+			switch child.Kind() {
 			// Skip fields and comments
 			case "field_declaration", "comment":
 			case "constructor_declaration", "method_declaration", "static_initializer":
@@ -124,7 +124,7 @@ func ParseDecls(node *sitter.Node, source []byte, ctx Ctx) []ast.Decl {
 		methods := &ast.FieldList{}
 
 		for _, c := range nodeutil.NamedChildrenOf(node) {
-			if c.Type() == "method_declaration" {
+			if c.Kind() == "method_declaration" {
 				parsedMethod := ParseNode(c, source, ctx).(*ast.Field)
 				// If the method was ignored with an annotation, it will return a blank
 				// field, so ignore that
@@ -136,14 +136,14 @@ func ParseDecls(node *sitter.Node, source []byte, ctx Ctx) []ast.Decl {
 
 		return []ast.Decl{GenInterface(ctx.className, methods)}
 	case "interface_declaration":
-		ctx.className = ctx.currentFile.FindClass(node.ChildByFieldName("name").Content(source)).Name
+		ctx.className = ctx.currentFile.FindClass(node.ChildByFieldName("name").Utf8Text(source)).Name
 
 		return ParseDecls(node.ChildByFieldName("body"), source, ctx)
 	case "enum_declaration":
 		// An enum is treated as both a struct, and a list of values that define
 		// the states that the enum can be in
 
-		ctx.className = ctx.currentFile.FindClass(node.ChildByFieldName("name").Content(source)).Name
+		ctx.className = ctx.currentFile.FindClass(node.ChildByFieldName("name").Utf8Text(source)).Name
 
 		// TODO: Handle an enum correctly
 		//return ParseDecls(node.ChildByFieldName("body"), source, ctx)
@@ -153,25 +153,25 @@ func ParseDecls(node *sitter.Node, source []byte, ctx Ctx) []ast.Decl {
 
 		// A list of generic type parameters
 		for _, param := range nodeutil.NamedChildrenOf(node) {
-			switch param.Type() {
+			switch param.Kind() {
 			case "type_parameter":
-				declarations = append(declarations, GenTypeInterface(param.NamedChild(0).Content(source), []string{"any"}))
+				declarations = append(declarations, GenTypeInterface(param.NamedChild(0).Utf8Text(source), []string{"any"}))
 			}
 		}
 
 		return declarations
 	}
-	panic("Unknown type to parse for decls: " + node.Type())
+	panic("Unknown type to parse for decls: " + node.Kind())
 }
 
 // ParseDecl parses a top-level declaration within a source file, including
 // but not limited to fields and methods
 func ParseDecl(node *sitter.Node, source []byte, ctx Ctx) ast.Decl {
-	switch node.Type() {
+	switch node.Kind() {
 	case "constructor_declaration":
 		paramNode := node.ChildByFieldName("parameters")
 
-		constructorName := node.ChildByFieldName("name").Content(source)
+		constructorName := node.ChildByFieldName("name").Utf8Text(source)
 
 		comparison := func(d *symbol.Definition) bool {
 			// The names must match
@@ -187,10 +187,10 @@ func ParseDecl(node *sitter.Node, source []byte, ctx Ctx) ast.Decl {
 			// Go through the types and check to see if they differ
 			for index, param := range nodeutil.NamedChildrenOf(paramNode) {
 				var paramType string
-				if param.Type() == "spread_parameter" {
-					paramType = param.NamedChild(0).Content(source)
+				if param.Kind() == "spread_parameter" {
+					paramType = param.NamedChild(0).Utf8Text(source)
 				} else {
-					paramType = param.ChildByFieldName("type").Content(source)
+					paramType = param.ChildByFieldName("type").Utf8Text(source)
 				}
 				if paramType != d.Parameters[index].OriginalType {
 					return false
@@ -231,9 +231,9 @@ func ParseDecl(node *sitter.Node, source []byte, ctx Ctx) ast.Decl {
 		// Store the annotations as comments on the method
 		comments := []*ast.Comment{}
 
-		if node.NamedChild(0).Type() == "modifiers" {
+		if node.NamedChild(0).Kind() == "modifiers" {
 			for _, modifier := range nodeutil.UnnamedChildrenOf(node.NamedChild(0)) {
-				switch modifier.Type() {
+				switch modifier.Kind() {
 				case "static":
 					static = true
 				case "abstract":
@@ -241,10 +241,10 @@ func ParseDecl(node *sitter.Node, source []byte, ctx Ctx) ast.Decl {
 					// TODO: Handle abstract methods correctly
 					return &ast.BadDecl{}
 				case "marker_annotation", "annotation":
-					comments = append(comments, &ast.Comment{Text: "//" + modifier.Content(source)})
+					comments = append(comments, &ast.Comment{Text: "//" + modifier.Utf8Text(source)})
 					// If the annotation was on the list of ignored annotations, don't
 					// parse the method
-					if _, in := excludedAnnotations[modifier.Content(source)]; in {
+					if _, in := excludedAnnotations[modifier.Utf8Text(source)]; in {
 						return &ast.BadDecl{}
 					}
 				}
@@ -289,10 +289,10 @@ func ParseDecl(node *sitter.Node, source []byte, ctx Ctx) ast.Decl {
 			// Go through the types and check to see if they differ
 			for index, param := range nodeutil.NamedChildrenOf(methodParameters) {
 				var paramType string
-				if param.Type() == "spread_parameter" {
-					paramType = param.NamedChild(0).Content(source)
+				if param.Kind() == "spread_parameter" {
+					paramType = param.NamedChild(0).Utf8Text(source)
 				} else {
-					paramType = param.ChildByFieldName("type").Content(source)
+					paramType = param.ChildByFieldName("type").Utf8Text(source)
 				}
 				if d.Parameters[index].OriginalType != paramType {
 					return false
@@ -364,5 +364,5 @@ func ParseDecl(node *sitter.Node, source []byte, ctx Ctx) ast.Decl {
 		}
 	}
 
-	panic("Unknown node type for declaration: " + node.Type())
+	panic("Unknown node type for declaration: " + node.Kind())
 }

@@ -8,21 +8,21 @@ import (
 	"github.com/NickyBoy89/java2go/astutil"
 	"github.com/NickyBoy89/java2go/nodeutil"
 	log "github.com/sirupsen/logrus"
-	sitter "github.com/smacker/go-tree-sitter"
+	sitter "github.com/tree-sitter/go-tree-sitter"
 )
 
 func ParseStmt(node *sitter.Node, source []byte, ctx Ctx) ast.Stmt {
 	if stmt := TryParseStmt(node, source, ctx); stmt != nil {
 		return stmt
 	}
-	panic(fmt.Errorf("Unhandled stmt type: %v", node.Type()))
+	panic(fmt.Errorf("Unhandled stmt type: %v", node.Kind()))
 }
 
 func TryParseStmt(node *sitter.Node, source []byte, ctx Ctx) ast.Stmt {
-	switch node.Type() {
+	switch node.Kind() {
 	case "ERROR":
 		log.WithFields(log.Fields{
-			"parsed":    node.Content(source),
+			"parsed":    node.Utf8Text(source),
 			"className": ctx.className,
 		}).Warn("Statement parse error")
 		return &ast.BadStmt{}
@@ -58,7 +58,7 @@ func TryParseStmt(node *sitter.Node, source []byte, ctx Ctx) ast.Stmt {
 
 		// Go through the values and see if there is a `null_literal`
 		for _, child := range nodeutil.NamedChildrenOf(variableDeclarator) {
-			if child.Type() == "null_literal" {
+			if child.Kind() == "null_literal" {
 				containsNull = true
 				break
 			}
@@ -96,7 +96,7 @@ func TryParseStmt(node *sitter.Node, source []byte, ctx Ctx) ast.Stmt {
 		}
 
 		// Loop through every pair of name and value
-		for ind := 0; ind < int(node.NamedChildCount())-1; ind += 2 {
+		for ind := uint(0); ind < node.NamedChildCount()-1; ind += 2 {
 			names = append(names, ParseExpr(node.NamedChild(ind), source, ctx))
 			values = append(values, ParseExpr(node.NamedChild(ind+1), source, ctx))
 		}
@@ -107,7 +107,7 @@ func TryParseStmt(node *sitter.Node, source []byte, ctx Ctx) ast.Stmt {
 		assignVal := ParseExpr(node.Child(2), source, ctx)
 
 		// Unsigned right shift
-		if node.Child(1).Content(source) == ">>>=" {
+		if node.Child(1).Utf8Text(source) == ">>>=" {
 			return &ast.ExprStmt{X: &ast.CallExpr{
 				Fun:  &ast.Ident{Name: "UnsignedRightShiftAssignment"},
 				Args: []ast.Expr{assignVar, assignVal},
@@ -116,26 +116,27 @@ func TryParseStmt(node *sitter.Node, source []byte, ctx Ctx) ast.Stmt {
 
 		return &ast.AssignStmt{
 			Lhs: []ast.Expr{assignVar},
-			Tok: StrToToken(node.Child(1).Content(source)),
+			Tok: StrToToken(node.Child(1).Utf8Text(source)),
 			Rhs: []ast.Expr{assignVal},
 		}
 	case "update_expression":
 		if node.Child(0).IsNamed() {
 			return &ast.IncDecStmt{
 				X:   ParseExpr(node.Child(0), source, ctx),
-				Tok: StrToToken(node.Child(1).Content(source)),
+				Tok: StrToToken(node.Child(1).Utf8Text(source)),
 			}
 		}
 
 		return &ast.IncDecStmt{
 			X:   ParseExpr(node.Child(1), source, ctx),
-			Tok: StrToToken(node.Child(0).Content(source)),
+			Tok: StrToToken(node.Child(0).Utf8Text(source)),
 		}
 	case "resource_specification":
 		return ParseStmt(node.NamedChild(0), source, ctx)
 	case "resource":
-		var offset int
-		if node.NamedChild(0).Type() == "modifiers" {
+		// TODO: Refactor this to not use offsets
+		var offset uint
+		if node.NamedChild(0).Kind() == "modifiers" {
 			offset = 1
 		}
 		return &ast.AssignStmt{
@@ -148,7 +149,7 @@ func TryParseStmt(node *sitter.Node, source []byte, ctx Ctx) ast.Stmt {
 	case "constructor_body", "block":
 		body := &ast.BlockStmt{}
 		for _, line := range nodeutil.NamedChildrenOf(node) {
-			if line.Type() == "comment" {
+			if line.Kind() == "comment" {
 				continue
 			}
 			if stmt := TryParseStmt(line, source, ctx); stmt != nil {
@@ -223,7 +224,7 @@ func TryParseStmt(node *sitter.Node, source []byte, ctx Ctx) ast.Stmt {
 		// then the expression that is being ranged over
 		// and finally, the block of the expression
 
-		total := int(node.NamedChildCount())
+		total := node.NamedChildCount()
 
 		return &ast.RangeStmt{
 			// We don't need the type of the variable for the range expression
@@ -283,7 +284,7 @@ func TryParseStmt(node *sitter.Node, source []byte, ctx Ctx) ast.Stmt {
 		switchBlock := &ast.BlockStmt{}
 		var currentCase *ast.CaseClause
 		for _, c := range nodeutil.NamedChildrenOf(node) {
-			switch c.Type() {
+			switch c.Kind() {
 			case "switch_label":
 				// When a new switch label comes, append it to the switch block
 				if currentCase != nil {
@@ -308,11 +309,11 @@ func ParseStmts(node *sitter.Node, source []byte, ctx Ctx) []ast.Stmt {
 	if stmts := TryParseStmts(node, source, ctx); stmts != nil {
 		return stmts
 	}
-	panic(fmt.Errorf("Unhandled stmts type: %v", node.Type()))
+	panic(fmt.Errorf("Unhandled stmts type: %v", node.Kind()))
 }
 
 func TryParseStmts(node *sitter.Node, source []byte, ctx Ctx) []ast.Stmt {
-	switch node.Type() {
+	switch node.Kind() {
 	case "assignment_expression":
 		if stmts, ok := ParseNode(node, source, ctx).([]ast.Stmt); ok {
 			return stmts

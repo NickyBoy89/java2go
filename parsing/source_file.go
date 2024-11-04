@@ -5,8 +5,8 @@ import (
 	"fmt"
 
 	"github.com/NickyBoy89/java2go/symbol"
-	sitter "github.com/smacker/go-tree-sitter"
-	"github.com/smacker/go-tree-sitter/java"
+	sitter "github.com/tree-sitter/go-tree-sitter"
+	java "github.com/tree-sitter/tree-sitter-java/bindings/go"
 )
 
 type SourceFile struct {
@@ -22,11 +22,8 @@ func (file SourceFile) String() string {
 
 func (file *SourceFile) ParseAST() error {
 	parser := sitter.NewParser()
-	parser.SetLanguage(java.GetLanguage())
-	tree, err := parser.ParseCtx(context.Background(), nil, file.Source)
-	if err != nil {
-		return err
-	}
+	parser.SetLanguage(sitter.NewLanguage(java.Language()))
+	tree := parser.ParseCtx(context.Background(), file.Source, nil)
 
 	file.Ast = tree.RootNode()
 	return nil

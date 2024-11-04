@@ -1,7 +1,7 @@
 package symbol
 
 import (
-	sitter "github.com/smacker/go-tree-sitter"
+	sitter "github.com/tree-sitter/go-tree-sitter"
 )
 
 // Go reserved keywords that are not Java keywords, and create invalid code
@@ -21,9 +21,9 @@ func IsReserved(name string) bool {
 func TypeOfLiteral(node *sitter.Node, source []byte) string {
 	var originalType string
 
-	switch node.Type() {
+	switch node.Kind() {
 	case "decimal_integer_literal":
-		switch node.Content(source)[len(node.Content(source))-1] {
+		switch node.Utf8Text(source)[len(node.Utf8Text(source))-1] {
 		case 'L':
 			originalType = "long"
 		default:
@@ -32,7 +32,7 @@ func TypeOfLiteral(node *sitter.Node, source []byte) string {
 	case "hex_integer_literal":
 		panic("here")
 	case "decimal_floating_point_literal":
-		switch node.Content(source)[len(node.Content(source))-1] {
+		switch node.Utf8Text(source)[len(node.Utf8Text(source))-1] {
 		case 'D':
 			originalType = "double"
 		default:

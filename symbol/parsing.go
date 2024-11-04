@@ -3,7 +3,7 @@ package symbol
 import (
 	"github.com/NickyBoy89/java2go/astutil"
 	"github.com/NickyBoy89/java2go/nodeutil"
-	sitter "github.com/smacker/go-tree-sitter"
+	sitter "github.com/tree-sitter/go-tree-sitter"
 )
 
 // ParseSymbols generates a symbol table for a single class file.
@@ -14,12 +14,12 @@ func ParseSymbols(root *sitter.Node, source []byte) *FileScope {
 
 	imports := make(map[string]string)
 	for _, node := range nodeutil.NamedChildrenOf(root) {
-		switch node.Type() {
+		switch node.Kind() {
 		case "package_declaration":
-			filePackage = node.NamedChild(0).Content(source)
+			filePackage = node.NamedChild(0).Utf8Text(source)
 		case "import_declaration":
-			importedItem := node.NamedChild(0).ChildByFieldName("name").Content(source)
-			importPath := node.NamedChild(0).ChildByFieldName("scope").Content(source)
+			importedItem := node.NamedChild(0).ChildByFieldName("name").Utf8Text(source)
+			importPath := node.NamedChild(0).ChildByFieldName("scope").Utf8Text(source)
 
 			imports[importedItem] = importPath
 		case "class_declaration", "interface_declaration", "enum_declaration", "annotation_type_declaration":
@@ -37,9 +37,9 @@ func ParseSymbols(root *sitter.Node, source []byte) *FileScope {
 func parseClassScope(root *sitter.Node, source []byte) *ClassScope {
 	var public bool
 	// Rename the type based on the public/static rules
-	if root.NamedChild(0).Type() == "modifiers" {
+	if root.NamedChild(0).Kind() == "modifiers" {
 		for _, node := range nodeutil.UnnamedChildrenOf(root.NamedChild(0)) {
-			if node.Type() == "public" {
+			if node.Kind() == "public" {
 				public = true
 			}
 		}
@@ -49,7 +49,7 @@ func parseClassScope(root *sitter.Node, source []byte) *ClassScope {
 
 	// Parse the main class in the file
 
-	className := root.ChildByFieldName("name").Content(source)
+	className := root.ChildByFieldName("name").Utf8Text(source)
 	scope := &ClassScope{
 		Class: &Definition{
 			OriginalName: className,
@@ -61,13 +61,13 @@ func parseClassScope(root *sitter.Node, source []byte) *ClassScope {
 
 	for _, node := range nodeutil.NamedChildrenOf(root.ChildByFieldName("body")) {
 
-		switch node.Type() {
+		switch node.Kind() {
 		case "field_declaration":
 			var public bool
 			// Rename the type based on the public/static rules
-			if node.NamedChild(0).Type() == "modifiers" {
+			if node.NamedChild(0).Kind() == "modifiers" {
 				for _, modifier := range nodeutil.UnnamedChildrenOf(node.NamedChild(0)) {
-					if modifier.Type() == "public" {
+					if modifier.Kind() == "public" {
 						public = true
 					}
 				}
@@ -85,26 +85,26 @@ func parseClassScope(root *sitter.Node, source []byte) *ClassScope {
 			typeNode := node.ChildByFieldName("type")
 
 			// If the field is being assigned to a value
-			if typeNode.Type() == "scoped_type_identifier" {
-				typeNode = typeNode.NamedChild(int(typeNode.NamedChildCount()) - 1)
+			if typeNode.Kind() == "scoped_type_identifier" {
+				typeNode = typeNode.NamedChild(typeNode.NamedChildCount() - 1)
 			}
 
 			// The converted name and type of the field
-			fieldName := fieldNameNode.Content(source)
+			fieldName := fieldNameNode.Utf8Text(source)
 			fieldType := nodeToStr(astutil.ParseType(typeNode, source))
 
 			scope.Fields = append(scope.Fields, &Definition{
 				Name:         HandleExportStatus(public, fieldName),
 				OriginalName: fieldName,
 				Type:         fieldType,
-				OriginalType: typeNode.Content(source),
+				OriginalType: typeNode.Utf8Text(source),
 			})
 		case "method_declaration", "constructor_declaration":
 			var public bool
 			// Rename the type based on the public/static rules
-			if node.NamedChild(0).Type() == "modifiers" {
+			if node.NamedChild(0).Kind() == "modifiers" {
 				for _, modifier := range nodeutil.UnnamedChildrenOf(node.NamedChild(0)) {
-					if modifier.Type() == "public" {
+					if modifier.Kind() == "public" {
 						public = true
 					}
 				}
@@ -112,16 +112,16 @@ func parseClassScope(root *sitter.Node, source []byte) *ClassScope {
 
 			nodeutil.AssertTypeIs(node.ChildByFieldName("name"), "identifier")
 
-			name := node.ChildByFieldName("name").Content(source)
+			name := node.ChildByFieldName("name").Utf8Text(source)
 			declaration := &Definition{
 				Name:         HandleExportStatus(public, name),
 				OriginalName: name,
 				Parameters:   []*Definition{},
 			}
 
-			if node.Type() == "method_declaration" {
+			if node.Kind() == "method_declaration" {
 				declaration.Type = nodeToStr(astutil.ParseType(node.ChildByFieldName("type"), source))
-				declaration.OriginalType = node.ChildByFieldName("type").Content(source)
+				declaration.OriginalType = node.ChildByFieldName("type").Utf8Text(source)
 			} else {
 				// A constructor declaration returns the type being constructed
 
@@ -143,11 +143,11 @@ func parseClassScope(root *sitter.Node, source []byte) *ClassScope {
 
 				// If this is a spread parameter, then it will be in the format:
 				// (type) (variable_declarator name: (name))
-				if parameter.Type() == "spread_parameter" {
-					paramName = parameter.NamedChild(1).ChildByFieldName("name").Content(source)
+				if parameter.Kind() == "spread_parameter" {
+					paramName = parameter.NamedChild(1).ChildByFieldName("name").Utf8Text(source)
 					paramType = parameter.NamedChild(0)
 				} else {
-					paramName = parameter.ChildByFieldName("name").Content(source)
+					paramName = parameter.ChildByFieldName("name").Utf8Text(source)
 					paramType = parameter.ChildByFieldName("type")
 				}
 
@@ -155,7 +155,7 @@ func parseClassScope(root *sitter.Node, source []byte) *ClassScope {
 					Name:         paramName,
 					OriginalName: paramName,
 					Type:         nodeToStr(astutil.ParseType(paramType, source)),
-					OriginalType: paramType.Content(source),
+					OriginalType: paramType.Utf8Text(source),
 				})
 			}
 
@@ -181,13 +181,13 @@ func parseClassScope(root *sitter.Node, source []byte) *ClassScope {
 func parseScope(root *sitter.Node, source []byte) *Definition {
 	def := &Definition{}
 	for _, node := range nodeutil.NamedChildrenOf(root) {
-		switch node.Type() {
+		switch node.Kind() {
 		case "local_variable_declaration":
 			/*
 				name := nodeToStr(ParseExpr(node.ChildByFieldName("declarator").ChildByFieldName("name"), source, Ctx{}))
 				def.Children = append(def.Children, &symbol.Definition{
 					OriginalName: name,
-					OriginalType: node.ChildByFieldName("type").Content(source),
+					OriginalType: node.ChildByFieldName("type").Utf8Text(source),
 					Type:         nodeToStr(ParseExpr(node.ChildByFieldName("type"), source, Ctx{})),
 					Name:         name,
 				})

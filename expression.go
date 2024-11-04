@@ -9,15 +9,15 @@ import (
 	"github.com/NickyBoy89/java2go/nodeutil"
 	"github.com/NickyBoy89/java2go/symbol"
 	log "github.com/sirupsen/logrus"
-	sitter "github.com/smacker/go-tree-sitter"
+	sitter "github.com/tree-sitter/go-tree-sitter"
 )
 
 // ParseExpr parses an expression type
 func ParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
-	switch node.Type() {
+	switch node.Kind() {
 	case "ERROR":
 		log.WithFields(log.Fields{
-			"parsed":    node.Content(source),
+			"parsed":    node.Utf8Text(source),
 			"className": ctx.className,
 		}).Warn("Expression parse error")
 		return &ast.BadExpr{}
@@ -50,7 +50,7 @@ func ParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 			Fun: &ast.Ident{Name: "AssignmentExpression"},
 			Args: []ast.Expr{
 				ParseExpr(node.Child(0), source, ctx),
-				&ast.BasicLit{Kind: token.STRING, Value: fmt.Sprintf("\"%s\"", node.Child(1).Content(source))},
+				&ast.BasicLit{Kind: token.STRING, Value: fmt.Sprintf("\"%s\"", node.Child(1).Utf8Text(source))},
 				ParseExpr(node.Child(2), source, ctx),
 			},
 		}
@@ -67,7 +67,7 @@ func ParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 
 		bodyNode := node.ChildByFieldName("body")
 
-		switch bodyNode.Type() {
+		switch bodyNode.Kind() {
 		case "block":
 			lambdaBody = ParseStmt(bodyNode, source, ctx).(*ast.BlockStmt)
 		default:
@@ -83,7 +83,7 @@ func ParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 
 		paramNode := node.ChildByFieldName("parameters")
 
-		switch paramNode.Type() {
+		switch paramNode.Kind() {
 		case "inferred_parameters", "formal_parameters":
 			lambdaParameters = ParseNode(paramNode, source, ctx).(*ast.FieldList)
 		default:
@@ -161,7 +161,7 @@ func ParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 
 		// A object can also be created with this format:
 		// parentClass.new NestedClass()
-		if !node.NamedChild(0).Equal(objectType) {
+		if !nodeutil.Equals(node.NamedChild(0), objectType) {
 		}
 
 		// Get all the arguments, and look up their types
@@ -172,13 +172,13 @@ func ParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 			arguments[ind] = ParseExpr(argument, source, ctx)
 
 			// Look up each argument and find its type
-			if argument.Type() != "identifier" {
+			if argument.Kind() != "identifier" {
 				argumentTypes[ind] = symbol.TypeOfLiteral(argument, source)
 			} else {
-				if localDef := ctx.localScope.FindVariable(argument.Content(source)); localDef != nil {
+				if localDef := ctx.localScope.FindVariable(argument.Utf8Text(source)); localDef != nil {
 					argumentTypes[ind] = localDef.OriginalType
 					// Otherwise, a variable may exist as a global variable
-				} else if def := ctx.currentFile.FindField().ByOriginalName(argument.Content(source)); len(def) > 0 {
+				} else if def := ctx.currentFile.FindField().ByOriginalName(argument.Utf8Text(source)); len(def) > 0 {
 					argumentTypes[ind] = def[0].OriginalType
 				}
 			}
@@ -186,10 +186,10 @@ func ParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 
 		var constructor *symbol.Definition
 		// Find the respective constructor, and call it
-		if objectType.Type() == "generic_type" {
-			constructor = ctx.currentClass.FindMethodByName(objectType.NamedChild(0).Content(source), argumentTypes)
+		if objectType.Kind() == "generic_type" {
+			constructor = ctx.currentClass.FindMethodByName(objectType.NamedChild(0).Utf8Text(source), argumentTypes)
 		} else {
-			constructor = ctx.currentClass.FindMethodByName(objectType.Content(source), argumentTypes)
+			constructor = ctx.currentClass.FindMethodByName(objectType.Utf8Text(source), argumentTypes)
 		}
 
 		if constructor != nil {
@@ -202,7 +202,7 @@ func ParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 		// It is also possible that a constructor could be unresolved, so we handle
 		// this by calling the type of the type + "Construct" at the beginning
 		return &ast.CallExpr{
-			Fun:  &ast.Ident{Name: "Construct" + objectType.Content(source)},
+			Fun:  &ast.Ident{Name: "Construct" + objectType.Utf8Text(source)},
 			Args: arguments,
 		}
 	case "array_creation_expression":
@@ -210,7 +210,7 @@ func ParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 		arrayType := astutil.ParseType(node.ChildByFieldName("type"), source)
 
 		for _, child := range nodeutil.NamedChildrenOf(node) {
-			if child.Type() == "dimensions_expr" {
+			if child.Kind() == "dimensions_expr" {
 				dimensions = append(dimensions, ParseExpr(child, source, ctx))
 			}
 		}
@@ -227,7 +227,7 @@ func ParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 	case "dimensions_expr":
 		return ParseExpr(node.NamedChild(0), source, ctx)
 	case "binary_expression":
-		if node.Child(1).Content(source) == ">>>" {
+		if node.Child(1).Utf8Text(source) == ">>>" {
 			return &ast.CallExpr{
 				Fun:  &ast.Ident{Name: "UnsignedRightShift"},
 				Args: []ast.Expr{ParseExpr(node.Child(0), source, ctx), ParseExpr(node.Child(2), source, ctx)},
@@ -235,12 +235,12 @@ func ParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 		}
 		return &ast.BinaryExpr{
 			X:  ParseExpr(node.Child(0), source, ctx),
-			Op: StrToToken(node.Child(1).Content(source)),
+			Op: StrToToken(node.Child(1).Utf8Text(source)),
 			Y:  ParseExpr(node.Child(2), source, ctx),
 		}
 	case "unary_expression":
 		return &ast.UnaryExpr{
-			Op: StrToToken(node.Child(0).Content(source)),
+			Op: StrToToken(node.Child(0).Utf8Text(source)),
 			X:  ParseExpr(node.Child(1), source, ctx),
 		}
 	case "parenthesized_expression":
@@ -269,13 +269,13 @@ func ParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 		// X.Sel
 		obj := node.ChildByFieldName("object")
 
-		if obj.Type() == "this" {
-			def := ctx.currentClass.FindField().ByOriginalName(node.ChildByFieldName("field").Content(source))
+		if obj.Kind() == "this" {
+			def := ctx.currentClass.FindField().ByOriginalName(node.ChildByFieldName("field").Utf8Text(source))
 			if len(def) == 0 {
 				// TODO: This field could not be found in the current class, because it exists in the superclass
 				// definition for the class
 				def = []*symbol.Definition{&symbol.Definition{
-					Name: node.ChildByFieldName("field").Content(source),
+					Name: node.ChildByFieldName("field").Utf8Text(source),
 				}}
 			}
 
@@ -298,9 +298,9 @@ func ParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 	case "this":
 		return &ast.Ident{Name: ShortName(ctx.className)}
 	case "identifier":
-		return &ast.Ident{Name: node.Content(source)}
+		return &ast.Ident{Name: node.Utf8Text(source)}
 	case "type_identifier": // Any reference type
-		switch node.Content(source) {
+		switch node.Utf8Text(source) {
 		// Special case for strings, because in Go, these are primitive types
 		case "String":
 			return &ast.Ident{Name: "string"}
@@ -308,7 +308,7 @@ func ParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 
 		if ctx.currentFile != nil {
 			// Look for the class locally first
-			if localClass := ctx.currentFile.FindClass(node.Content(source)); localClass != nil {
+			if localClass := ctx.currentFile.FindClass(node.Utf8Text(source)); localClass != nil {
 				return &ast.StarExpr{
 					X: &ast.Ident{Name: localClass.Name},
 				}
@@ -316,22 +316,22 @@ func ParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 		}
 
 		return &ast.StarExpr{
-			X: &ast.Ident{Name: node.Content(source)},
+			X: &ast.Ident{Name: node.Utf8Text(source)},
 		}
 	case "null_literal":
 		return &ast.Ident{Name: "nil"}
 	case "decimal_integer_literal":
-		literal := node.Content(source)
+		literal := node.Utf8Text(source)
 		switch literal[len(literal)-1] {
 		case 'L':
 			return &ast.CallExpr{Fun: &ast.Ident{Name: "int64"}, Args: []ast.Expr{&ast.BasicLit{Kind: token.INT, Value: literal[:len(literal)-1]}}}
 		}
 		return &ast.Ident{Name: literal}
 	case "hex_integer_literal":
-		return &ast.Ident{Name: node.Content(source)}
+		return &ast.Ident{Name: node.Utf8Text(source)}
 	case "decimal_floating_point_literal":
 		// This is something like 1.3D or 1.3F
-		literal := node.Content(source)
+		literal := node.Utf8Text(source)
 		switch literal[len(literal)-1] {
 		case 'D':
 			return &ast.CallExpr{Fun: &ast.Ident{Name: "float64"}, Args: []ast.Expr{&ast.BasicLit{Kind: token.FLOAT, Value: literal[:len(literal)-1]}}}
@@ -340,11 +340,11 @@ func ParseExpr(node *sitter.Node, source []byte, ctx Ctx) ast.Expr {
 		}
 		return &ast.Ident{Name: literal}
 	case "string_literal":
-		return &ast.Ident{Name: node.Content(source)}
+		return &ast.Ident{Name: node.Utf8Text(source)}
 	case "character_literal":
-		return &ast.Ident{Name: node.Content(source)}
+		return &ast.Ident{Name: node.Utf8Text(source)}
 	case "true", "false":
-		return &ast.Ident{Name: node.Content(source)}
+		return &ast.Ident{Name: node.Utf8Text(source)}
 	}
-	panic("Unhandled expression: " + node.Type())
+	panic("Unhandled expression: " + node.Kind())
 }

@@ -5,7 +5,7 @@ Java2go is a transpiler that automatically converts Java source code to compatib
 
 It does this through several steps:
 
-1. Parse the java source code into a [`tree-sitter`](https://github.com/smacker/go-tree-sitter) AST
+1. Parse the java source code into a [`tree-sitter`](https://github.com/tree-sitter/go-tree-sitter) AST
 
 2. Convert that AST into Golang's own internal [AST representation](https://pkg.go.dev/go/ast)
 

@@ -8,14 +8,14 @@ import (
 	"github.com/NickyBoy89/java2go/nodeutil"
 	"github.com/NickyBoy89/java2go/symbol"
 	log "github.com/sirupsen/logrus"
-	sitter "github.com/smacker/go-tree-sitter"
+	sitter "github.com/tree-sitter/go-tree-sitter"
 )
 
 // Inspect is a function for debugging that prints out every named child of a
 // given node and the source code for that child
 func Inspect(node *sitter.Node, source []byte) {
 	for _, c := range nodeutil.NamedChildrenOf(node) {
-		fmt.Println(c, c.Content(source))
+		fmt.Println(c, c.Utf8Text(source))
 	}
 }
 
@@ -68,10 +68,10 @@ func (c Ctx) Clone() Ctx {
 // expression or statement, as those are parsed with `ParseExpr` and `ParseStmt`
 // respectively
 func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
-	switch node.Type() {
+	switch node.Kind() {
 	case "ERROR":
 		log.WithFields(log.Fields{
-			"parsed":    node.Content(source),
+			"parsed":    node.Utf8Text(source),
 			"className": ctx.className,
 		}).Warn("Error parsing generic node")
 		return &ast.BadStmt{}
@@ -82,9 +82,9 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 		}
 
 		for _, c := range nodeutil.NamedChildrenOf(node) {
-			switch c.Type() {
+			switch c.Kind() {
 			case "package_declaration":
-				program.Name = &ast.Ident{Name: c.NamedChild(0).NamedChild(int(c.NamedChild(0).NamedChildCount()) - 1).Content(source)}
+				program.Name = &ast.Ident{Name: c.NamedChild(0).NamedChild(c.NamedChild(0).NamedChildCount() - 1).Utf8Text(source)}
 			case "class_declaration", "interface_declaration":
 				program.Decls = ParseDecls(c, source, ctx)
 			case "import_declaration":
@@ -95,9 +95,9 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 	case "field_declaration":
 		var public bool
 
-		if node.NamedChild(0).Type() == "modifiers" {
+		if node.NamedChild(0).Kind() == "modifiers" {
 			for _, modifier := range nodeutil.UnnamedChildrenOf(node.NamedChild(0)) {
-				if modifier.Type() == "public" {
+				if modifier.Kind() == "public" {
 					public = true
 				}
 			}
@@ -128,12 +128,12 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 	case "method_declaration":
 		comments := []*ast.Comment{}
 
-		if node.NamedChild(0).Type() == "modifiers" {
+		if node.NamedChild(0).Kind() == "modifiers" {
 			for _, modifier := range nodeutil.UnnamedChildrenOf(node.NamedChild(0)) {
-				switch modifier.Type() {
+				switch modifier.Kind() {
 				case "marker_annotation", "annotation":
-					comments = append(comments, &ast.Comment{Text: "//" + modifier.Content(source)})
-					if _, in := excludedAnnotations[modifier.Content(source)]; in {
+					comments = append(comments, &ast.Comment{Text: "//" + modifier.Utf8Text(source)})
+					if _, in := excludedAnnotations[modifier.Utf8Text(source)]; in {
 						// If this entire method is ignored, we return an empty field, which
 						// is handled by the logic that parses a class file
 						return &ast.Field{}
@@ -148,7 +148,7 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 			parameters.List = append(parameters.List, ParseNode(param, source, ctx).(*ast.Field))
 		}
 
-		methodName := node.ChildByFieldName("name").Content(source)
+		methodName := node.ChildByFieldName("name").Utf8Text(source)
 		methodParameters := node.ChildByFieldName("parameters")
 
 		comparison := func(d *symbol.Definition) bool {
@@ -165,10 +165,10 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 			// Go through the types and check to see if they differ
 			for index, param := range nodeutil.NamedChildrenOf(methodParameters) {
 				var paramType string
-				if param.Type() == "spread_parameter" {
-					paramType = param.NamedChild(0).Content(source)
+				if param.Kind() == "spread_parameter" {
+					paramType = param.NamedChild(0).Utf8Text(source)
 				} else {
-					paramType = param.ChildByFieldName("type").Content(source)
+					paramType = param.ChildByFieldName("type").Utf8Text(source)
 				}
 				if paramType != d.Parameters[index].OriginalType {
 					return false
@@ -229,11 +229,11 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 		return params
 	case "formal_parameter":
 		if ctx.localScope != nil {
-			paramDef := ctx.localScope.ParameterByName(node.ChildByFieldName("name").Content(source))
+			paramDef := ctx.localScope.ParameterByName(node.ChildByFieldName("name").Utf8Text(source))
 			if paramDef == nil {
 				paramDef = &symbol.Definition{
-					Name: node.ChildByFieldName("name").Content(source),
-					Type: node.ChildByFieldName("type").Content(source),
+					Name: node.ChildByFieldName("name").Utf8Text(source),
+					Type: node.ChildByFieldName("type").Utf8Text(source),
 				}
 			}
 			return &ast.Field{
@@ -272,5 +272,5 @@ func ParseNode(node *sitter.Node, source []byte, ctx Ctx) interface{} {
 	case "comment": // Ignore comments
 		return nil
 	}
-	panic(fmt.Sprintf("Unknown node type: %v", node.Type()))
+	panic(fmt.Sprintf("Unknown node type: %v", node.Kind()))
 }
