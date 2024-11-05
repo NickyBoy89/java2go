@@ -1,19 +1,1 @@
-# Main binary
 java2go
-
-# Intemediary decompiled directories
-quiltflower-src/
-intellij-fernflower/
-yarn/
-
-# Decompiled code
-fernflower/
-quiltflower/
-namedSrc/
-*.jar
-
-# Analytic files
-*.dot
-
-# Compiled test files
-*.class
