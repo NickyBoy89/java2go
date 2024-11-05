@@ -6,6 +6,8 @@ import (
 
 	"github.com/NickyBoy89/java2go/ng/codegen"
 	"github.com/NickyBoy89/java2go/parsing"
+	"github.com/NickyBoy89/java2go/symbol"
+	mapset "github.com/deckarep/golang-set/v2"
 	sitter "github.com/tree-sitter/go-tree-sitter"
 )
 
@@ -30,29 +32,38 @@ func ParseProgram(p parsing.SourceFile) (ast.Node, error) {
 	fmt.Printf("program { kind: %s }\n", p.Ast.Kind())
 	cursor := p.Ast.Walk()
 
+	code := &ast.File{
+		// The package name of the generated file
+		// TODO: Change this to handle packages correctly
+		Name: &ast.Ident{Name: "main"},
+	}
+
 	source = p.Source
 
 	for _, child := range p.Ast.Children(cursor) {
 		if IsStatement(child) {
+			// TODO: Handle multiple top-level declarations
 			if parsed, err := ParseStatement(child); err != nil {
 				return nil, err
 			} else {
-				return parsed, nil
+				code.Decls = append(code.Decls, parsed...)
 			}
 		} else if child.Kind() == "method_declaration" {
-			fmt.Println("Method declaration")
+			panic("TODO: Handle top-level method declarations")
 		} else {
 			return nil, fmt.Errorf(errUnknownNodeText, child.Kind())
 		}
 	}
 
-	return nil, nil
+	// TODO: Handle Name, Decls, Imports
+
+	return code, nil
 }
 
 const errUnknownNodeText = "unhandled node kind: %s"
 
 // From: https://github.com/tree-sitter/tree-sitter-java/blob/master/grammar.js#L539
-func ParseStatement(node sitter.Node) (ast.Node, error) {
+func ParseStatement(node sitter.Node) ([]ast.Decl, error) {
 
 	if IsDeclaration(node) {
 		return ParseDeclaration(node)
@@ -98,8 +109,10 @@ func UnimplementedField(node sitter.Node, name string) {
 	}
 }
 
-func ParseModifiers(node sitter.Node) error {
+func ParseModifiers(node sitter.Node) (mapset.Set[string], error) {
 	cursor := node.Walk()
+
+	mods := mapset.NewSet[string]()
 
 	for _, child := range node.Children(cursor) {
 		switch child.Kind() {
@@ -120,24 +133,79 @@ func ParseModifiers(node sitter.Node) error {
 		case "annotation", "marker_annotation":
 			panic("TODO: Implement annotations")
 		default:
-			return fmt.Errorf(errUnknownNodeText, node.Kind())
+			return nil, fmt.Errorf(errUnknownNodeText, node.Kind())
+		}
+
+		mods.Add(child.Kind())
+	}
+
+	return mods, nil
+}
+
+func IdentToString(node sitter.Node, source []byte) string {
+	return node.Utf8Text(source)
+}
+
+const (
+	ModifierPublic       = "public"
+	ModifierProtected    = "protected"
+	ModifierPrivate      = "private"
+	ModifierAbstract     = "abstract"
+	ModifierStatic       = "static"
+	ModifierFinal        = "final"
+	ModifierStrictfp     = "strictfp"
+	ModifierDefault      = "default"
+	ModifierSynchronized = "synchronized"
+	ModifierNative       = "native"
+	ModifierTransient    = "transient"
+	ModifierVolatile     = "volatile"
+	ModifierSealed       = "sealed"
+	ModifierNonSealed    = "non-sealed"
+)
+
+func HandleModifiers(node sitter.Node) (mapset.Set[string], error) {
+	var err error
+	mods := mapset.NewSet[string]()
+
+	if HasModifiers(node) {
+		mods, err = ParseModifiers(*node.NamedChild(0))
+		if err != nil {
+			return nil, err
 		}
 	}
 
-	return nil
+	return mods, nil
 }
 
 // A class declaration is converted to a struct with some additional changes
-// 1. Yes
-func ParseClassDeclaration(node sitter.Node) (ast.Node, error) {
-	if HasModifiers(node) {
-		ParseModifiers(*node.NamedChild(0))
+//
+// Its return value is a list of declarations for its own struct, as well as
+// any methods and fields
+//
+// Notable changes to the class while parsing include:
+// 1. Its name is renamed with respect to the access modifier (public, private)
+func ParseClassDeclaration(node sitter.Node) ([]ast.Decl, error) {
+
+	decls := []ast.Decl{}
+
+	mods, err := HandleModifiers(node)
+	if err != nil {
+		return nil, err
 	}
 
-	var s ast.Node = codegen.NewStruct("test", &ast.FieldList{List: []*ast.Field{}})
+	name := node.ChildByFieldName("name").Utf8Text(source)
 
-	// name
-	ParseIdentifier(*node.ChildByFieldName("name"))
+	// TODO: Handle access modifiers more accurately with respect to modules
+	if mods.Contains(ModifierPublic, ModifierProtected) {
+		name = symbol.Uppercase(name)
+	} else if mods.Contains(ModifierPrivate) {
+		name = symbol.Lowercase(name)
+	} else {
+		name = symbol.Uppercase(name)
+	}
+
+	// TODO: Add class fields
+	decls = append(decls, codegen.NewStruct(name, &ast.FieldList{List: []*ast.Field{}}))
 
 	UnimplementedField(node, "type_parameters")
 	UnimplementedField(node, "superclass")
@@ -145,22 +213,90 @@ func ParseClassDeclaration(node sitter.Node) (ast.Node, error) {
 	UnimplementedField(node, "permits")
 
 	// body
-	ParseClassBody(*node.ChildByFieldName("body"))
+	bodyDecls, err := ParseClassBody(*node.ChildByFieldName("body"))
+	if err != nil {
+		return nil, err
+	}
 
-	return s, nil
+	decls = append(decls, bodyDecls...)
+
+	return decls, nil
 }
 
 func ParseIdentifier(node sitter.Node) error {
-	// TODO: Handle identifiers
-	return nil
+	panic("TODO: Handle identifiers")
 }
 
-func ParseClassBody(node sitter.Node) error {
-	// TODO: Handle class body
-	return nil
+func ParseClassBody(node sitter.Node) ([]ast.Decl, error) {
+	cursor := node.Walk()
+
+	decls := []ast.Decl{}
+
+	for _, child := range node.NamedChildren(cursor) {
+		var err error
+		var decl ast.Decl
+
+		switch child.Kind() {
+		case "field_declaration":
+			panic("TODO: Unimplemented")
+		case "record_declaration":
+			panic("TODO: Unimplemented")
+		case "method_declaration":
+			decl, err = ParseMethodDeclaration(child)
+		case "compact_constructor_declaration": // For records.
+			panic("TODO: Unimplemented")
+		case "class_declaration":
+			panic("TODO: Unimplemented")
+		case "interface_declaration":
+			panic("TODO: Unimplemented")
+		case "annotation_type_declaration":
+			panic("TODO: Unimplemented")
+		case "enum_declaration":
+			panic("TODO: Unimplemented")
+		case "block":
+			panic("TODO: Unimplemented")
+		case "static_initializer":
+			panic("TODO: Unimplemented")
+		case "constructor_declaration":
+			panic("TODO: Unimplemented")
+		default:
+			return nil, fmt.Errorf(errUnknownNodeText, child.Kind())
+		}
+
+		if err != nil {
+			return nil, err
+		}
+
+		decls = append(decls, decl)
+	}
+
+	return decls, nil
 }
 
-func ParseDeclaration(node sitter.Node) (ast.Node, error) {
+func ParseMethodDeclaration(node sitter.Node) (ast.Decl, error) {
+	mods, err := HandleModifiers(node)
+	if err != nil {
+		return nil, err
+	}
+
+	_ = mods
+
+	// TODO: Method header
+
+	// TODO: Handle method body
+
+	body := node.ChildByFieldName("body")
+	// An empty method means that the function is meant to be filled by the
+	// classes that implement it
+	if body == nil {
+		panic("TODO: Handle empty methods with code generation")
+	}
+
+	return nil, nil
+}
+
+// TODO: Determine the return type
+func ParseDeclaration(node sitter.Node) ([]ast.Decl, error) {
 	switch node.Kind() {
 	case "module_declaration":
 	case "package_declaration":
