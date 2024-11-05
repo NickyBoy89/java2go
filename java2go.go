@@ -2,6 +2,8 @@ package main
 
 import (
 	"flag"
+	"go/printer"
+	"go/token"
 	"io"
 	"os"
 	"path/filepath"
@@ -167,7 +169,10 @@ or to fix crashes with the symbol handling`,
 		// 	initialContext.currentClass = file.Symbols.BaseClass
 		// }
 
-		if err := ng.ParseProgram(file); err != nil {
+		parsed, err := ng.ParseProgram(file)
+
+		// TODO: Error handling
+		if err != nil {
 			panic(err)
 		}
 
@@ -180,11 +185,11 @@ or to fix crashes with the symbol handling`,
 		// }
 
 		// Output the parsed AST, into the source specified earlier
-		// if err := printer.Fprint(output, token.NewFileSet(), parsed); err != nil {
-		// 	log.WithFields(log.Fields{
-		// 		"error": err,
-		// 	}).Panic("Error printing generated code")
-		// }
+		if err := printer.Fprint(output, token.NewFileSet(), parsed); err != nil {
+			log.WithFields(log.Fields{
+				"error": err,
+			}).Panic("Error printing generated code")
+		}
 
 		if writeFiles {
 			output.(*os.File).Close()

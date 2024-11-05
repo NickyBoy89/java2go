@@ -2,7 +2,9 @@ package ng
 
 import (
 	"fmt"
+	"go/ast"
 
+	"github.com/NickyBoy89/java2go/ng/codegen"
 	"github.com/NickyBoy89/java2go/parsing"
 	sitter "github.com/tree-sitter/go-tree-sitter"
 )
@@ -21,30 +23,36 @@ const (
 // null_literal
 )
 
+var source []byte
+
 // From: https://github.com/tree-sitter/tree-sitter-java/blob/master/grammar.js#L94
-func ParseProgram(p parsing.SourceFile) error {
+func ParseProgram(p parsing.SourceFile) (ast.Node, error) {
 	fmt.Printf("program { kind: %s }\n", p.Ast.Kind())
 	cursor := p.Ast.Walk()
 
+	source = p.Source
+
 	for _, child := range p.Ast.Children(cursor) {
 		if IsStatement(child) {
-			if err := ParseStatement(child); err != nil {
-				return err
+			if parsed, err := ParseStatement(child); err != nil {
+				return nil, err
+			} else {
+				return parsed, nil
 			}
 		} else if child.Kind() == "method_declaration" {
 			fmt.Println("Method declaration")
 		} else {
-			return fmt.Errorf(errUnknownNodeText, child.Kind())
+			return nil, fmt.Errorf(errUnknownNodeText, child.Kind())
 		}
 	}
 
-	return nil
+	return nil, nil
 }
 
 const errUnknownNodeText = "unhandled node kind: %s"
 
 // From: https://github.com/tree-sitter/tree-sitter-java/blob/master/grammar.js#L539
-func ParseStatement(node sitter.Node) error {
+func ParseStatement(node sitter.Node) (ast.Node, error) {
 
 	if IsDeclaration(node) {
 		return ParseDeclaration(node)
@@ -72,12 +80,12 @@ func ParseStatement(node sitter.Node) error {
 	case "try_with_resources_statement":
 	case "expression_statement":
 	default:
-		return fmt.Errorf(errUnknownNodeText, node.Kind())
+		return nil, fmt.Errorf(errUnknownNodeText, node.Kind())
 	}
 
 	fmt.Printf("statement: %s\n", node.Kind())
 
-	return nil
+	return nil, nil
 }
 
 func HasModifiers(node sitter.Node) bool {
@@ -85,7 +93,7 @@ func HasModifiers(node sitter.Node) bool {
 }
 
 func UnimplementedField(node sitter.Node, name string) {
-	if node.ChildByFieldName(name) == nil {
+	if node.ChildByFieldName(name) != nil {
 		panic("TODO: Unimplemented field " + name)
 	}
 }
@@ -119,10 +127,14 @@ func ParseModifiers(node sitter.Node) error {
 	return nil
 }
 
-func ParseClassDeclaration(node sitter.Node) error {
+// A class declaration is converted to a struct with some additional changes
+// 1. Yes
+func ParseClassDeclaration(node sitter.Node) (ast.Node, error) {
 	if HasModifiers(node) {
 		ParseModifiers(*node.NamedChild(0))
 	}
+
+	var s ast.Node = codegen.NewStruct("test", &ast.FieldList{List: []*ast.Field{}})
 
 	// name
 	ParseIdentifier(*node.ChildByFieldName("name"))
@@ -135,7 +147,7 @@ func ParseClassDeclaration(node sitter.Node) error {
 	// body
 	ParseClassBody(*node.ChildByFieldName("body"))
 
-	return nil
+	return s, nil
 }
 
 func ParseIdentifier(node sitter.Node) error {
@@ -148,7 +160,7 @@ func ParseClassBody(node sitter.Node) error {
 	return nil
 }
 
-func ParseDeclaration(node sitter.Node) error {
+func ParseDeclaration(node sitter.Node) (ast.Node, error) {
 	switch node.Kind() {
 	case "module_declaration":
 	case "package_declaration":
@@ -160,10 +172,10 @@ func ParseDeclaration(node sitter.Node) error {
 	case "annotation_type_declaration":
 	case "enum_declaration":
 	default:
-		return fmt.Errorf(errUnknownNodeText, node.Kind())
+		return nil, fmt.Errorf(errUnknownNodeText, node.Kind())
 	}
 
 	fmt.Printf("declaration: %s\n", node.Kind())
 
-	return nil
+	return nil, nil
 }
