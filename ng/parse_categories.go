@@ -13,46 +13,29 @@ func IsStatement(node sitter.Node) bool {
 	// TODO: Handle semicolon
 	switch node.Kind() {
 	case "labeled_statement":
-		fallthrough
 	case "if_statement":
-		fallthrough
 	case "while_statement":
-		fallthrough
 	case "for_statement":
-		fallthrough
 	case "enhanced_for_statement":
-		fallthrough
 	case "block":
-		fallthrough
 	case "assert_statement":
-		fallthrough
 	case "do_statement":
-		fallthrough
 	case "break_statement":
-		fallthrough
 	case "continue_statement":
-		fallthrough
 	case "return_statement":
-		fallthrough
 	case "yield_statement":
-		fallthrough
 	case "switch_expression": // switch statements and expressions are identical
-		fallthrough
 	case "synchronized_statement":
-		fallthrough
 	case "local_variable_declaration":
-		fallthrough
 	case "throw_statement":
-		fallthrough
 	case "try_statement":
-		fallthrough
 	case "try_with_resources_statement":
-		fallthrough
 	case "expression_statement":
-		return true
+	default:
+		return false
 	}
 
-	return false
+	return true
 }
 
 func IsDeclaration(node sitter.Node) bool {
