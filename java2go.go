@@ -2,18 +2,14 @@ package main
 
 import (
 	"flag"
-	"fmt"
-	"go/ast"
-	"go/printer"
-	"go/token"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 
+	"github.com/NickyBoy89/java2go/ng"
 	"github.com/NickyBoy89/java2go/parsing"
-	"github.com/NickyBoy89/java2go/symbol"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -93,6 +89,7 @@ or to fix crashes with the symbol handling`,
 	// We might still have some parsing jobs, so wait on them
 	wg.Wait()
 
+	// TODO: Change this to an assert
 	for _, file := range files {
 		if file.Ast == nil {
 			panic("Not all files have asts")
@@ -100,32 +97,32 @@ or to fix crashes with the symbol handling`,
 	}
 
 	// Generate the symbol tables for the files
-	if symbolAware {
-		log.Info("Generating symbol tables...")
-
-		for index, file := range files {
-			if file.Ast.HasError() {
-				log.WithFields(log.Fields{
-					"fileName": file.Name,
-				}).Warn("AST parse error in file, skipping file")
-				continue
-			}
-
-			symbols := files[index].ParseSymbols()
-			// Add the symbols to the global symbol table
-			symbol.AddSymbolsToPackage(symbols)
-		}
-
-		// Go back through the symbol tables and fill in anything that could not be resolved
-
-		log.Info("Resolving symbols...")
-
-		for _, file := range files {
-			if !file.Ast.HasError() {
-				ResolveFile(file)
-			}
-		}
-	}
+	// if symbolAware {
+	// 	log.Info("Generating symbol tables...")
+	//
+	// 	for index, file := range files {
+	// 		if file.Ast.HasError() {
+	// 			log.WithFields(log.Fields{
+	// 				"fileName": file.Name,
+	// 			}).Warn("AST parse error in file, skipping file")
+	// 			continue
+	// 		}
+	//
+	// 		symbols := files[index].ParseSymbols()
+	// 		// Add the symbols to the global symbol table
+	// 		symbol.AddSymbolsToPackage(symbols)
+	// 	}
+	//
+	// 	// Go back through the symbol tables and fill in anything that could not be resolved
+	//
+	// 	log.Info("Resolving symbols...")
+	//
+	// 	for _, file := range files {
+	// 		if !file.Ast.HasError() {
+	// 			ResolveFile(file)
+	// 		}
+	// 	}
+	// }
 
 	// Transpile the files
 
@@ -143,10 +140,7 @@ or to fix crashes with the symbol handling`,
 		var output io.Writer = os.Stdout
 		if writeFiles {
 			// Write to a `.go` file in the same directory
-			outputFile := fmt.Sprintf("%s/%s",
-				outputDirectory,
-				strings.TrimSuffix(file.Name, filepath.Ext(file.Name))+".go",
-			)
+			outputFile := filepath.Join(outputDirectory, strings.TrimSuffix(file.Name, filepath.Ext(file.Name))+".go")
 
 			err := os.MkdirAll(outputDirectory, 0755)
 			if err != nil {
@@ -167,25 +161,30 @@ or to fix crashes with the symbol handling`,
 		}
 
 		// The converted AST, in Go's AST representation
-		var initialContext Ctx
-		if symbolAware {
-			initialContext.currentFile = file.Symbols
-			initialContext.currentClass = file.Symbols.BaseClass
+		// var initialContext Ctx
+		// if symbolAware {
+		// 	initialContext.currentFile = file.Symbols
+		// 	initialContext.currentClass = file.Symbols.BaseClass
+		// }
+
+		if err := ng.ParseProgram(file); err != nil {
+			panic(err)
 		}
 
-		parsed := ParseNode(file.Ast, file.Source, initialContext).(ast.Node)
+		// ng.ParseNode(file.Ast, file.Source)
+		// parsed := ParseNode(file.Ast, file.Source, initialContext).(ast.Node)
 
 		// Print the generated AST
-		if displayAST {
-			ast.Print(token.NewFileSet(), parsed)
-		}
+		// if displayAST {
+		// 	ast.Print(token.NewFileSet(), parsed)
+		// }
 
 		// Output the parsed AST, into the source specified earlier
-		if err := printer.Fprint(output, token.NewFileSet(), parsed); err != nil {
-			log.WithFields(log.Fields{
-				"error": err,
-			}).Panic("Error printing generated code")
-		}
+		// if err := printer.Fprint(output, token.NewFileSet(), parsed); err != nil {
+		// 	log.WithFields(log.Fields{
+		// 		"error": err,
+		// 	}).Panic("Error printing generated code")
+		// }
 
 		if writeFiles {
 			output.(*os.File).Close()
