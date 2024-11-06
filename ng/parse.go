@@ -177,6 +177,17 @@ func HandleModifiers(node sitter.Node) (mapset.Set[string], error) {
 	return mods, nil
 }
 
+func HandleAccessModifierRename(ident string, mods mapset.Set[string]) string {
+	if mods.Contains(ModifierPublic, ModifierProtected) {
+		return symbol.Uppercase(ident)
+	} else if mods.Contains(ModifierPrivate) {
+		return symbol.Lowercase(ident)
+	} else {
+		// TODO: Re-implement this with knowledge of default access modifiers and modules
+		return symbol.Uppercase(ident)
+	}
+}
+
 // A class declaration is converted to a struct with some additional changes
 //
 // Its return value is a list of declarations for its own struct, as well as
@@ -194,15 +205,7 @@ func ParseClassDeclaration(node sitter.Node) ([]ast.Decl, error) {
 	}
 
 	name := node.ChildByFieldName("name").Utf8Text(source)
-
-	// TODO: Handle access modifiers more accurately with respect to modules
-	if mods.Contains(ModifierPublic, ModifierProtected) {
-		name = symbol.Uppercase(name)
-	} else if mods.Contains(ModifierPrivate) {
-		name = symbol.Lowercase(name)
-	} else {
-		name = symbol.Uppercase(name)
-	}
+	name = HandleAccessModifierRename(name, mods)
 
 	// TODO: Add class fields
 	decls = append(decls, codegen.NewStruct(name, &ast.FieldList{List: []*ast.Field{}}))
@@ -279,20 +282,59 @@ func ParseMethodDeclaration(node sitter.Node) (ast.Decl, error) {
 		return nil, err
 	}
 
-	_ = mods
+	// TODO: Handle reserved identifiers
+	name := node.ChildByFieldName("name").Utf8Text(source)
+	name = HandleAccessModifierRename(name, mods)
 
-	// TODO: Method header
+	// TODO: Handle type parameters
+	UnimplementedField(node, "type_parameters")
 
-	// TODO: Handle method body
-
-	body := node.ChildByFieldName("body")
+	bodyNode := node.ChildByFieldName("body")
 	// An empty method means that the function is meant to be filled by the
 	// classes that implement it
-	if body == nil {
+	if bodyNode == nil {
 		panic("TODO: Handle empty methods with code generation")
 	}
 
+	body, err := ParseBlock(*bodyNode)
+	if err != nil {
+		return nil, err
+	}
+
+	// TODO: Method header
+
+	params, err := ParseFormalParameters(*node.ChildByFieldName("parameters"))
+	if err != nil {
+		return nil, err
+	}
+
+	UnimplementedField(node, "dimensions")
+
+	return &ast.FuncDecl{
+		Doc:  nil,
+		Name: &ast.Ident{Name: name},
+		Recv: nil,
+		Type: &ast.FuncType{
+			Params: params,
+			Results: &ast.FieldList{
+				List: []*ast.Field{},
+			},
+		},
+		Body: body,
+	}, nil
+}
+
+func ParseFormalParameters(node sitter.Node) (*ast.FieldList, error) {
+	panic("TODO: Parse formal parameters")
+	// TODO: Handle receiver parameter
+
+	// params := &ast.FieldList{List: []*ast.Field{}}
 	return nil, nil
+}
+
+func ParseBlock(node sitter.Node) (*ast.BlockStmt, error) {
+	// TODO: Handle blocks
+	return &ast.BlockStmt{}, nil
 }
 
 // TODO: Determine the return type
