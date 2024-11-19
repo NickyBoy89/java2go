@@ -1,4 +1,7 @@
 # Java2go
+
+[![GoDoc](https://godoc.org/github.com/golang/gddo?status.svg)](https://godoc.org/github.com/NickyBoy89/java2go)
+
 ## About
 
 Java2go is a transpiler that automatically converts Java source code to compatible Go code
