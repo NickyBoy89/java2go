@@ -141,7 +141,7 @@ func ParseMethodDeclaration(node sitter.Node) (*ast.FuncDecl, error) {
 		Recv: &ast.FieldList{
 			List: []*ast.Field{
 				{
-					Names: []*ast.Ident{{Name: "this"}}, // Using "this" as the method receiver should be safe here
+					Names: []*ast.Ident{{Name: MethodReceiverName}},
 					// TODO: We want the name of the class here, which means that we should pass in the class's context as well
 					Type: &ast.StarExpr{X: &ast.Ident{Name: "temp"}},
 				},
