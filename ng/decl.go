@@ -87,13 +87,18 @@ func ParseFieldDeclaration(node sitter.Node) (*ast.Field, error) {
 
 	fmt.Println(node.Utf8Text(source))
 
+	fieldVars := []*ast.Ident{}
+
 	cursor := node.Walk()
 	for _, decl := range node.ChildrenByFieldName("declarator", cursor) {
-		_ = decl
-		// TODO: Handle decl
+		fieldVars = append(fieldVars, ParseVariableDeclarator(decl))
 	}
 
-	return &ast.Field{}, nil
+	// A field declaration in a struct type
+	return &ast.Field{
+		Names: fieldVars,
+		Type:  fieldType,
+	}, nil
 }
 
 func ParseMethodDeclaration(node sitter.Node) (ast.Decl, error) {

@@ -366,31 +366,29 @@ func ParseFormalParameter(node sitter.Node) (*ast.Field, error) {
 		return nil, err
 	}
 
-	fmt.Printf("%v\n", paramType.Utf8Text(source))
-	fmt.Printf("%v\n", paramType.NextSibling().Kind())
-
-	// TODO: Debug this declarator
-	// id, err := ParseVariableDeclaratorId(*paramType.NextSibling())
-	// if err != nil {
-	// 	return nil, err
-	// }
-	// _ = id
+	id := parseVariableDeclaratorId(node)
 
 	return &ast.Field{
-		Names: []*ast.Ident{ast.NewIdent("test")},
+		Names: []*ast.Ident{id},
 		Type:  parsedType,
 	}, nil
 }
 
-// TODO: Determine the return type
-func ParseVariableDeclaratorId(node sitter.Node) (*ast.Ident, error) {
-	name := node.ChildByFieldName("name")
-	dimensions := node.ChildByFieldName("dimensions")
-	if dimensions != nil {
-		return nil, fmt.Errorf("TODO: Handle dimensions")
-	}
+func ParseVariableDeclarator(node sitter.Node) *ast.Ident {
+	// TODO: Implement code generation for the initial values
+	UnimplementedField(node, "value")
+	return parseVariableDeclaratorId(node)
+}
 
-	return ast.NewIdent(name.Utf8Text(source)), nil
+// `variable_declarator_id` is hidden, but contains enough hidden information
+// to separate it out into a separate function
+// Structure:
+// field('name', choice($.identifier, $._reserved_identifier, $.underscore_pattern)),
+// field('dimensions', optional($.dimensions)),
+func parseVariableDeclaratorId(node sitter.Node) *ast.Ident {
+	name := node.ChildByFieldName("name")
+	UnimplementedField(node, "dimensions")
+	return ast.NewIdent(name.Utf8Text(source))
 }
 
 func ParseReceiverParameter(node sitter.Node) (*ast.FieldList, error) {
