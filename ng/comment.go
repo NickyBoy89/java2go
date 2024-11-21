@@ -1,6 +1,10 @@
 package ng
 
-import sitter "github.com/tree-sitter/go-tree-sitter"
+import (
+	"go/ast"
+
+	sitter "github.com/tree-sitter/go-tree-sitter"
+)
 
 func IsComment(node sitter.Node) bool {
 	switch node.Kind() {
@@ -9,4 +13,14 @@ func IsComment(node sitter.Node) bool {
 	}
 
 	return false
+}
+
+func ParseBlockComment(node sitter.Node) *ast.CommentGroup {
+	return &ast.CommentGroup{
+		List: []*ast.Comment{
+			{
+				Text: node.Utf8Text(source),
+			},
+		},
+	}
 }
