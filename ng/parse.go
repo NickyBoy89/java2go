@@ -50,6 +50,8 @@ func ParseProgram(p parsing.SourceFile) (ast.Node, error) {
 			}
 		} else if child.Kind() == "method_declaration" {
 			panic("TODO: Handle top-level method declarations")
+		} else if IsComment(child) {
+			continue
 		} else {
 			return nil, fmt.Errorf(errUnknownNodeText, child.Kind())
 		}
@@ -242,7 +244,10 @@ func ParseClassBody(node sitter.Node) ([]ast.Decl, *ast.FieldList, error) {
 		var err error
 		var decl ast.Decl
 
-		panic("TODO: Why are we trying to parse specific things in a class")
+		if IsComment(child) {
+			continue
+		}
+
 		switch child.Kind() {
 		case "field_declaration":
 			if field, err := ParseFieldDeclaration(child); err != nil {
@@ -257,8 +262,10 @@ func ParseClassBody(node sitter.Node) ([]ast.Decl, *ast.FieldList, error) {
 		case "compact_constructor_declaration": // For records.
 			panic("TODO: Unimplemented")
 		case "class_declaration":
-			// TODO: See if this should instead use ParseDeclaration
-			panic("TODO: Unimplemented")
+			// TODO: Handle subclasses better
+			var subDecls []ast.Decl
+			subDecls, err = ParseClassDeclaration(child)
+			decls = append(decls, subDecls...)
 		case "interface_declaration":
 			panic("TODO: Unimplemented")
 		case "annotation_type_declaration":
@@ -279,7 +286,10 @@ func ParseClassBody(node sitter.Node) ([]ast.Decl, *ast.FieldList, error) {
 			return nil, nil, err
 		}
 
-		decls = append(decls, decl)
+		// Happens in the field declarations
+		if decl != nil {
+			decls = append(decls, decl)
+		}
 	}
 
 	return decls, fields, nil
