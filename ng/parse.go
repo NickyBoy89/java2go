@@ -29,7 +29,6 @@ var source []byte
 
 // From: https://github.com/tree-sitter/tree-sitter-java/blob/master/grammar.js#L94
 func ParseProgram(p parsing.SourceFile) (ast.Node, error) {
-	fmt.Printf("program { kind: %s }\n", p.Ast.Kind())
 	cursor := p.Ast.Walk()
 
 	code := &ast.File{
@@ -38,6 +37,7 @@ func ParseProgram(p parsing.SourceFile) (ast.Node, error) {
 		Name: &ast.Ident{Name: "main"},
 	}
 
+	// TODO: Don't pass this as a global variable
 	source = p.Source
 
 	for _, child := range p.Ast.Children(cursor) {
@@ -216,32 +216,40 @@ func ParseClassDeclaration(node sitter.Node) ([]ast.Decl, error) {
 	UnimplementedField(node, "permits")
 
 	// body
-	bodyDecls, err := ParseClassBody(*node.ChildByFieldName("body"))
+	bodyDecls, classFields, err := ParseClassBody(*node.ChildByFieldName("body"))
 	if err != nil {
 		return nil, err
 	}
+
+	_ = classFields
 
 	decls = append(decls, bodyDecls...)
 
 	return decls, nil
 }
 
-func ParseIdentifier(node sitter.Node) error {
-	panic("TODO: Handle identifiers")
+func ParseIdentifier(node sitter.Node) string {
+	return node.Utf8Text(source)
 }
 
-func ParseClassBody(node sitter.Node) ([]ast.Decl, error) {
+func ParseClassBody(node sitter.Node) ([]ast.Decl, *ast.FieldList, error) {
 	cursor := node.Walk()
 
 	decls := []ast.Decl{}
+	fields := &ast.FieldList{List: []*ast.Field{}}
 
 	for _, child := range node.NamedChildren(cursor) {
 		var err error
 		var decl ast.Decl
 
+		panic("TODO: Why are we trying to parse specific things in a class")
 		switch child.Kind() {
 		case "field_declaration":
-			panic("TODO: Unimplemented")
+			if field, err := ParseFieldDeclaration(child); err != nil {
+				return nil, nil, err
+			} else {
+				fields.List = append(fields.List, field)
+			}
 		case "record_declaration":
 			panic("TODO: Unimplemented")
 		case "method_declaration":
@@ -249,6 +257,7 @@ func ParseClassBody(node sitter.Node) ([]ast.Decl, error) {
 		case "compact_constructor_declaration": // For records.
 			panic("TODO: Unimplemented")
 		case "class_declaration":
+			// TODO: See if this should instead use ParseDeclaration
 			panic("TODO: Unimplemented")
 		case "interface_declaration":
 			panic("TODO: Unimplemented")
@@ -261,75 +270,144 @@ func ParseClassBody(node sitter.Node) ([]ast.Decl, error) {
 		case "static_initializer":
 			panic("TODO: Unimplemented")
 		case "constructor_declaration":
-			panic("TODO: Unimplemented")
+			decl, err = ParseConstructorDeclaration(child)
 		default:
-			return nil, fmt.Errorf(errUnknownNodeText, child.Kind())
+			return nil, nil, fmt.Errorf(errUnknownNodeText, child.Kind())
 		}
 
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 
 		decls = append(decls, decl)
 	}
 
-	return decls, nil
+	return decls, fields, nil
 }
 
-func ParseMethodDeclaration(node sitter.Node) (ast.Decl, error) {
+func ParseFormalParameters(node sitter.Node) (*ast.FieldList, error) {
+	cursor := node.Walk()
+
+	params := &ast.FieldList{List: []*ast.Field{}}
+
+	for _, child := range node.NamedChildren(cursor) {
+		switch child.Kind() {
+		case "receiver_parameter":
+			ParseReceiverParameter(child)
+		case "formal_parameter":
+			param, err := ParseFormalParameter(child)
+			if err != nil {
+				return nil, err
+			}
+			params.List = append(params.List, param)
+		case "spread_parameter":
+
+		}
+	}
+
+	return params, nil
+}
+
+func ParseArrayType(node sitter.Node) (*ast.ArrayType, error) {
+	element := *node.ChildByFieldName("element")
+	dimensions := *node.ChildByFieldName("dimensions")
+
+	parsedElt, err := ParseUnannotatedType(element)
+	if err != nil {
+		return nil, err
+	}
+
+	// TODO: Handle dimensions
+	_ = dimensions
+	return &ast.ArrayType{
+		Elt: parsedElt,
+	}, nil
+}
+
+func ParseUnannotatedType(node sitter.Node) (ast.Expr, error) {
+	switch node.Kind() {
+	case "array_type":
+		return ParseArrayType(node)
+	case "void_type":
+	case "integral_type":
+	case "floating_point_type":
+	case "boolean_type":
+	case "identifier", "type_identifier":
+		return ast.NewIdent(node.Utf8Text(source)), nil
+	case "scoped_type_identifier":
+	case "generic_type":
+	}
+
+	return ast.NewIdent(node.Kind()), nil
+}
+
+func ParseFormalParameter(node sitter.Node) (*ast.Field, error) {
 	mods, err := HandleModifiers(node)
 	if err != nil {
 		return nil, err
 	}
 
-	// TODO: Handle reserved identifiers
-	name := node.ChildByFieldName("name").Utf8Text(source)
-	name = HandleAccessModifierRename(name, mods)
+	// TODO: Handle modifiers
+	_ = mods
 
-	// TODO: Handle type parameters
-	UnimplementedField(node, "type_parameters")
-
-	bodyNode := node.ChildByFieldName("body")
-	// An empty method means that the function is meant to be filled by the
-	// classes that implement it
-	if bodyNode == nil {
-		panic("TODO: Handle empty methods with code generation")
-	}
-
-	body, err := ParseBlock(*bodyNode)
+	paramType := *node.ChildByFieldName("type")
+	parsedType, err := ParseUnannotatedType(paramType)
 	if err != nil {
 		return nil, err
 	}
 
-	// TODO: Method header
+	fmt.Printf("%v\n", paramType.Utf8Text(source))
+	fmt.Printf("%v\n", paramType.NextSibling().Kind())
 
-	params, err := ParseFormalParameters(*node.ChildByFieldName("parameters"))
-	if err != nil {
-		return nil, err
-	}
+	// TODO: Debug this declarator
+	// id, err := ParseVariableDeclaratorId(*paramType.NextSibling())
+	// if err != nil {
+	// 	return nil, err
+	// }
+	// _ = id
 
-	UnimplementedField(node, "dimensions")
-
-	return &ast.FuncDecl{
-		Doc:  nil,
-		Name: &ast.Ident{Name: name},
-		Recv: nil,
-		Type: &ast.FuncType{
-			Params: params,
-			Results: &ast.FieldList{
-				List: []*ast.Field{},
-			},
-		},
-		Body: body,
+	return &ast.Field{
+		Names: []*ast.Ident{ast.NewIdent("test")},
+		Type:  parsedType,
 	}, nil
 }
 
-func ParseFormalParameters(node sitter.Node) (*ast.FieldList, error) {
-	panic("TODO: Parse formal parameters")
-	// TODO: Handle receiver parameter
+// TODO: Determine the return type
+func ParseVariableDeclaratorId(node sitter.Node) (*ast.Ident, error) {
+	name := node.ChildByFieldName("name")
+	dimensions := node.ChildByFieldName("dimensions")
+	if dimensions != nil {
+		return nil, fmt.Errorf("TODO: Handle dimensions")
+	}
 
-	// params := &ast.FieldList{List: []*ast.Field{}}
-	return nil, nil
+	return ast.NewIdent(name.Utf8Text(source)), nil
+}
+
+func ParseReceiverParameter(node sitter.Node) (*ast.FieldList, error) {
+	cursor := node.Walk()
+	for _, child := range node.NamedChildren(cursor) {
+		switch child.Kind() {
+		case "marker_annotation", "annotation":
+			panic("TODO: Handle annotations")
+		default:
+			return nil, fmt.Errorf("Unknown receiver parameter type: %s", child.Kind())
+		}
+	}
+	panic("TODO: Handle receiver parameter")
+}
+
+// constructor_body: $ => seq(
+//
+//	'{',
+//	optional($.explicit_constructor_invocation),
+//	repeat($.statement),
+//	'}',
+//
+// ),
+func ParseConstructorBody(node sitter.Node) (*ast.BlockStmt, error) {
+	UnimplementedField(node, "explicit_constructor_invocation")
+	// TODO: Handle constructor body
+	return &ast.BlockStmt{}, nil
 }
 
 func ParseBlock(node sitter.Node) (*ast.BlockStmt, error) {
