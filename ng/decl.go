@@ -101,7 +101,7 @@ func ParseFieldDeclaration(node sitter.Node) (*ast.Field, error) {
 	}, nil
 }
 
-func ParseMethodDeclaration(node sitter.Node) (ast.Decl, error) {
+func ParseMethodDeclaration(node sitter.Node) (*ast.FuncDecl, error) {
 	mods, err := HandleModifiers(node)
 	if err != nil {
 		return nil, err
@@ -138,7 +138,15 @@ func ParseMethodDeclaration(node sitter.Node) (ast.Decl, error) {
 	return &ast.FuncDecl{
 		Doc:  nil,
 		Name: &ast.Ident{Name: name},
-		Recv: nil,
+		Recv: &ast.FieldList{
+			List: []*ast.Field{
+				{
+					Names: []*ast.Ident{{Name: "this"}}, // Using "this" as the method receiver should be safe here
+					// TODO: We want the name of the class here, which means that we should pass in the class's context as well
+					Type: &ast.StarExpr{X: &ast.Ident{Name: "temp"}},
+				},
+			},
+		},
 		Type: &ast.FuncType{
 			Params: params,
 			Results: &ast.FieldList{
