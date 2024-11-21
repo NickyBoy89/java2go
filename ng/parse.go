@@ -210,7 +210,6 @@ func ParseClassDeclaration(node sitter.Node) ([]ast.Decl, error) {
 	name = HandleAccessModifierRename(name, mods)
 
 	// TODO: Add class fields
-	decls = append(decls, codegen.NewStruct(name, &ast.FieldList{List: []*ast.Field{}}))
 
 	UnimplementedField(node, "type_parameters")
 	UnimplementedField(node, "superclass")
@@ -223,8 +222,7 @@ func ParseClassDeclaration(node sitter.Node) ([]ast.Decl, error) {
 		return nil, err
 	}
 
-	_ = classFields
-
+	decls = append(decls, codegen.NewStruct(name, classFields))
 	decls = append(decls, bodyDecls...)
 
 	return decls, nil
