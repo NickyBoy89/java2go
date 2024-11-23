@@ -338,6 +338,7 @@ func ParseUnannotatedType(node sitter.Node) (ast.Expr, error) {
 		return ParseArrayType(node)
 	case "void_type":
 	case "integral_type":
+		return ParseIntegralType(node), nil
 	case "floating_point_type":
 	case "boolean_type":
 	case "identifier", "type_identifier":
@@ -346,7 +347,30 @@ func ParseUnannotatedType(node sitter.Node) (ast.Expr, error) {
 	case "generic_type":
 	}
 
-	return ast.NewIdent(node.Kind()), nil
+	panic("TODO: Unannotated type " + node.Kind())
+}
+
+// `integral_type` represents any of java's primitive integer types
+// 'byte',
+// 'short',
+// 'int',
+// 'long',
+// 'char',
+func ParseIntegralType(node sitter.Node) *ast.Ident {
+	switch node.Child(0).Kind() {
+	case "byte":
+		return ast.NewIdent("byte")
+	case "short":
+		return ast.NewIdent("int16")
+	case "int":
+		return ast.NewIdent("int32")
+	case "long":
+		return ast.NewIdent("int64")
+	case "char":
+		return ast.NewIdent("byte")
+	}
+
+	panic("Unhandled integer type: " + node.Child(0).Kind())
 }
 
 func ParseFormalParameter(node sitter.Node) (*ast.Field, error) {
