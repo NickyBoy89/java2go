@@ -91,6 +91,13 @@ func NewStruct(structName string, structFields *ast.FieldList) ast.Decl {
 	}
 }
 
+func AstString(text string) *ast.BasicLit {
+	return &ast.BasicLit{
+		Kind:  token.STRING,
+		Value: text,
+	}
+}
+
 func genType(remaining []string) ast.Expr {
 	if len(remaining) == 1 {
 		return &ast.UnaryExpr{

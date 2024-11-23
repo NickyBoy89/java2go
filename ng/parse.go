@@ -46,14 +46,14 @@ func ParseProgram(p parsing.SourceFile) (ast.Node, error) {
 			if parsed, err := ParseStatement(child); err != nil {
 				return nil, err
 			} else {
-				code.Decls = append(code.Decls, parsed...)
+				code.Decls = append(code.Decls, parsed.([]ast.Decl)...)
 			}
 		} else if child.Kind() == "method_declaration" {
 			panic("TODO: Handle top-level method declarations")
 		} else if IsComment(child) {
 			continue
 		} else {
-			return nil, fmt.Errorf(errUnknownNodeText, child.Kind())
+			panic("TODO: Unknown node: " + child.Kind())
 		}
 	}
 
@@ -65,7 +65,14 @@ func ParseProgram(p parsing.SourceFile) (ast.Node, error) {
 const errUnknownNodeText = "unhandled node kind: %s"
 
 // From: https://github.com/tree-sitter/tree-sitter-java/blob/master/grammar.js#L539
-func ParseStatement(node sitter.Node) ([]ast.Decl, error) {
+// This function is interesting, because it can return either a declaration or a statement
+// TODO: Fix this method to make this return value more explicit
+func ParseStatement(node sitter.Node) (any, error) {
+
+	// TODO: Handle inline comments
+	if IsComment(node) {
+		return &ast.EmptyStmt{}, nil
+	}
 
 	if IsDeclaration(node) {
 		return ParseDeclaration(node)
@@ -75,30 +82,67 @@ func ParseStatement(node sitter.Node) ([]ast.Decl, error) {
 	switch node.Kind() {
 	case "labeled_statement":
 	case "if_statement":
+		return ParseIfStatement(node)
 	case "while_statement":
 	case "for_statement":
 	case "enhanced_for_statement":
 	case "block":
+		return ParseBlock(node)
 	case "assert_statement":
 	case "do_statement":
 	case "break_statement":
 	case "continue_statement":
 	case "return_statement":
+		return ParseReturnStatement(node), nil
 	case "yield_statement":
 	case "switch_expression": // switch statements and expressions are identical
 	case "synchronized_statement":
 	case "local_variable_declaration":
+		return ParseLocalVariableDeclaration(node)
 	case "throw_statement":
 	case "try_statement":
 	case "try_with_resources_statement":
 	case "expression_statement":
-	default:
-		return nil, fmt.Errorf(errUnknownNodeText, node.Kind())
+		return ParseExpressionStatement(node)
 	}
 
-	fmt.Printf("statement: %s\n", node.Kind())
+	panic("TODO: Unhandled statement: " + node.Kind())
+}
 
-	return nil, nil
+// `literal` structure:
+// _literal: $ => choice(
+//
+//	$.decimal_integer_literal,
+//	$.hex_integer_literal,
+//	$.octal_integer_literal,
+//	$.binary_integer_literal,
+//	$.decimal_floating_point_literal,
+//	$.hex_floating_point_literal,
+//	$.true,
+//	$.false,
+//	$.character_literal,
+//	$.string_literal,
+//	$.null_literal,
+//
+// ),
+func TryParseLiteral(node sitter.Node) ast.Expr {
+	// TODO: Maybe should return *ast.Ident?
+	switch node.Kind() {
+	case "decimal_integer_literal":
+	case "hex_integer_literal":
+	case "octal_integer_literal":
+	case "binary_integer_literal":
+	case "decimal_floating_point_literal":
+	case "hex_floating_point_literal":
+	case "true":
+	case "false":
+	case "character_literal":
+	case "string_literal":
+	case "null_literal":
+		return ast.NewIdent("nil")
+	}
+
+	return nil
 }
 
 func HasModifiers(node sitter.Node) bool {
@@ -135,7 +179,7 @@ func ParseModifiers(node sitter.Node) (mapset.Set[string], error) {
 		case "annotation", "marker_annotation":
 			panic("TODO: Implement annotations")
 		default:
-			return nil, fmt.Errorf(errUnknownNodeText, node.Kind())
+			panic("TODO: Unknown node: " + node.Kind())
 		}
 
 		mods.Add(child.Kind())
@@ -277,7 +321,7 @@ func ParseClassBody(node sitter.Node) ([]ast.Decl, *ast.FieldList, error) {
 		case "constructor_declaration":
 			decl, err = ParseConstructorDeclaration(child)
 		default:
-			return nil, nil, fmt.Errorf(errUnknownNodeText, child.Kind())
+			panic("TODO: Unknown node: " + child.Kind())
 		}
 
 		if err != nil {
@@ -441,8 +485,18 @@ func ParseConstructorBody(node sitter.Node) (*ast.BlockStmt, error) {
 }
 
 func ParseBlock(node sitter.Node) (*ast.BlockStmt, error) {
-	// TODO: Handle blocks
-	return &ast.BlockStmt{}, nil
+	stmts := []ast.Stmt{}
+
+	cursor := node.Walk()
+	for _, child := range node.NamedChildren(cursor) {
+		stmt, err := ParseStatement(child)
+		if err != nil {
+			return nil, err
+		}
+		stmts = append(stmts, stmt.(ast.Stmt))
+	}
+
+	return &ast.BlockStmt{List: stmts}, nil
 }
 
 // TODO: Determine the return type
@@ -458,7 +512,7 @@ func ParseDeclaration(node sitter.Node) ([]ast.Decl, error) {
 	case "annotation_type_declaration":
 	case "enum_declaration":
 	default:
-		return nil, fmt.Errorf(errUnknownNodeText, node.Kind())
+		panic("TODO: Unknown node: " + node.Kind())
 	}
 
 	fmt.Printf("declaration: %s\n", node.Kind())

@@ -1,0 +1,186 @@
+package ng
+
+import (
+	"go/ast"
+
+	"github.com/NickyBoy89/java2go/ng/codegen"
+	sitter "github.com/tree-sitter/go-tree-sitter"
+)
+
+// `expression` struture:
+// $.assignment_expression,
+// $.binary_expression,
+// $.instanceof_expression,
+// $.lambda_expression,
+// $.ternary_expression,
+// $.update_expression,
+// $.primary_expression,
+// $.unary_expression,
+// $.cast_expression,
+// $.switch_expression,
+func ParseExpression(node sitter.Node) (ast.Expr, error) {
+	switch node.Kind() {
+	case "assignment_expression":
+		return ParseAssignmentExpression(node)
+	case "binary_expression":
+		return ParseBinaryExpression(node)
+	case "instanceof_expression":
+	case "lambda_expression":
+	case "ternary_expression":
+	case "update_expression":
+		return ParseUpdateExpression(node)
+	case "primary_expression":
+	case "unary_expression":
+	case "cast_expression":
+	case "switch_expression":
+	}
+
+	return ParsePrimaryExpression(node)
+
+	panic("TODO: Unhandled expression: " + node.Kind())
+}
+
+// `primary_expression` structure:
+// &._literal,
+// $.class_literal,
+// $.this,
+// $.identifier,
+// $._reserved_identifier,
+// $.parenthesized_expression,
+// $.object_creation_expression,
+// $.field_access,
+// $.array_access,
+// $.method_invocation,
+// $.method_reference,
+// $.array_creation_expression,
+// $.template_expression,
+func ParsePrimaryExpression(node sitter.Node) (ast.Expr, error) {
+	// TODO:
+	// &._literal,
+	// $._reserved_identifier,
+
+	if lit := TryParseLiteral(node); lit != nil {
+		return lit, nil
+	}
+
+	switch node.Kind() {
+	case "class_literal":
+	case "this":
+	case "identifier":
+	case "parenthesized_expression":
+		return ParseParenthesizedExpression(node)
+	case "object_creation_expression":
+	case "field_access":
+		return ParseFieldAccess(node), nil
+	case "array_access":
+	case "method_invocation":
+	case "method_reference":
+	case "array_creation_expression":
+	case "template_expression":
+	}
+
+	panic("TODO: Unhandled primary expression: " + node.Kind())
+}
+
+func ParseParenthesizedExpression(node sitter.Node) (*ast.ParenExpr, error) {
+	expr, err := ParseExpression(*node.NamedChild(0))
+	return &ast.ParenExpr{
+		X: expr,
+	}, err
+}
+
+func ParseBinaryExpression(node sitter.Node) (*ast.BinaryExpr, error) {
+	l, err := ParseExpression(*node.ChildByFieldName("left"))
+	if err != nil {
+		return nil, err
+	}
+	r, err := ParseExpression(*node.ChildByFieldName("right"))
+	if err != nil {
+		return nil, err
+	}
+	return &ast.BinaryExpr{
+		X:  l,
+		Y:  r,
+		Op: codegen.StrToToken(node.ChildByFieldName("operator").Kind()),
+	}, nil
+}
+
+// `field_access` structure:
+// field_access: $ => seq(
+//
+//	field('object', choice($.primary_expression, $.super)),
+//	optional(seq(
+//	  '.',
+//	  $.super,
+//	)),
+//	'.',
+//	field('field', choice($.identifier, $._reserved_identifier, $.this)),
+//
+// ),
+func ParseFieldAccess(node sitter.Node) *ast.SelectorExpr {
+	// UnimplementedField(node, "object")
+	// UnimplementedField(node, "field")
+
+	// X.Sel
+	return &ast.SelectorExpr{
+		X:   ast.NewIdent("foo"),
+		Sel: ast.NewIdent("bar"),
+	}
+}
+
+// `update_expression` is a bit difficult
+// Structure:
+// seq($.expression, '++'),
+// seq($.expression, '--'),
+// seq('++', $.expression),
+// seq('--', $.expression),
+//
+// Go only supports statements of the form `expr += 1` instead of `expr++`
+// However, this is not an expression, and cannot be used as a value, so we
+// have to replace this with the use of an inline function
+func ParseUpdateExpression(node sitter.Node) (*ast.CallExpr, error) {
+	var updateFunctionName *ast.Ident
+
+	// Post-update expression, e.g. `i++`
+	if node.Child(0).IsNamed() {
+		updateFunctionName = ast.NewIdent("PostUpdate")
+	} else {
+		updateFunctionName = ast.NewIdent("PreUpdate")
+	}
+
+	expr, err := ParseExpression(*node.NamedChild(0))
+
+	return &ast.CallExpr{
+		Fun:  updateFunctionName,
+		Args: []ast.Expr{expr},
+	}, err
+}
+
+// `assignment_expression` is also a bit difficult
+// Structure:
+// assignment_expression: $ => prec.right(PREC.ASSIGN, seq(
+//
+//	field('left', choice(
+//	  $.identifier,
+//	  $._reserved_identifier,
+//	  $.field_access,
+//	  $.array_access,
+//	)),
+//	field('operator', choice('=', '+=', '-=', '*=', '/=', '&=', '|=', '^=', '%=', '<<=', '>>=', '>>>=')),
+//	field('right', $.expression),
+//
+// )),
+//
+// Go's assignments are only in the form of statements, so they cannot be used
+// as values, similar to Java's. This makes statements such as `x = a = 1` invalid.
+//
+// We replace these with an inline function
+func ParseAssignmentExpression(node sitter.Node) (*ast.CallExpr, error) {
+	// TODO: Handle the rest of the function call
+	return &ast.CallExpr{
+		Fun: ast.NewIdent("AssignmentExpression"),
+		Args: []ast.Expr{
+			codegen.AstString(node.ChildByFieldName("operator").Kind()),
+		},
+	}, nil
+}
