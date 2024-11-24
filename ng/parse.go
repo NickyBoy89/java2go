@@ -85,6 +85,7 @@ func ParseStatement(node sitter.Node) (any, error) {
 		return ParseIfStatement(node)
 	case "while_statement":
 	case "for_statement":
+		return ParseForStatement(node)
 	case "enhanced_for_statement":
 	case "block":
 		return ParseBlock(node)
@@ -129,6 +130,17 @@ func TryParseLiteral(node sitter.Node) ast.Expr {
 	// TODO: Maybe should return *ast.Ident?
 	switch node.Kind() {
 	case "decimal_integer_literal":
+		decStr := node.Utf8Text(source)
+
+		switch decStr[len(decStr)-1] {
+		case 'l', 'L': // Marked explicitly as a long
+			return &ast.CallExpr{
+				Fun:  ast.NewIdent("int64"),
+				Args: []ast.Expr{ast.NewIdent(decStr)},
+			}
+		}
+
+		return ast.NewIdent(decStr)
 	case "hex_integer_literal":
 	case "octal_integer_literal":
 	case "binary_integer_literal":
@@ -272,6 +284,7 @@ func ParseClassDeclaration(node sitter.Node) ([]ast.Decl, error) {
 	return decls, nil
 }
 
+// TODO: Parse identifiers correctly
 func ParseIdentifier(node sitter.Node) string {
 	return node.Utf8Text(source)
 }
@@ -360,6 +373,20 @@ func ParseFormalParameters(node sitter.Node) (*ast.FieldList, error) {
 	return params, nil
 }
 
+func ParseArgumentList(node sitter.Node) ([]ast.Expr, error) {
+	exprs := []ast.Expr{}
+
+	for _, child := range node.NamedChildren(node.Walk()) {
+		expr, err := ParseExpression(child)
+		if err != nil {
+			return nil, err
+		}
+		exprs = append(exprs, expr)
+	}
+
+	return exprs, nil
+}
+
 func ParseArrayType(node sitter.Node) (*ast.ArrayType, error) {
 	element := *node.ChildByFieldName("element")
 	dimensions := *node.ChildByFieldName("dimensions")
@@ -442,7 +469,7 @@ func ParseFormalParameter(node sitter.Node) (*ast.Field, error) {
 
 func ParseVariableDeclarator(node sitter.Node) *ast.Ident {
 	// TODO: Implement code generation for the initial values
-	UnimplementedField(node, "value")
+	// UnimplementedField(node, "value")
 	return parseVariableDeclaratorId(node)
 }
 

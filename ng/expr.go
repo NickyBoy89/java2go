@@ -67,6 +67,7 @@ func ParsePrimaryExpression(node sitter.Node) (ast.Expr, error) {
 	case "class_literal":
 	case "this":
 	case "identifier":
+		return ast.NewIdent(ParseIdentifier(node)), nil
 	case "parenthesized_expression":
 		return ParseParenthesizedExpression(node)
 	case "object_creation_expression":
@@ -74,6 +75,7 @@ func ParsePrimaryExpression(node sitter.Node) (ast.Expr, error) {
 		return ParseFieldAccess(node), nil
 	case "array_access":
 	case "method_invocation":
+		return ParseMethodInvocation(node)
 	case "method_reference":
 	case "array_creation_expression":
 	case "template_expression":
@@ -182,5 +184,43 @@ func ParseAssignmentExpression(node sitter.Node) (*ast.CallExpr, error) {
 		Args: []ast.Expr{
 			codegen.AstString(node.ChildByFieldName("operator").Kind()),
 		},
+	}, nil
+}
+
+// `method_invocation`
+// Structure:
+// method_invocation: $ => seq(
+//
+//	choice(
+//	  field('name', choice($.identifier, $._reserved_identifier)),
+//	  seq(
+//	    field('object', choice($.primary_expression, $.super)),
+//	    '.',
+//	    optional(seq(
+//	      $.super,
+//	      '.',
+//	    )),
+//	    field('type_arguments', optional($.type_arguments)),
+//	    field('name', choice($.identifier, $._reserved_identifier)),
+//	  ),
+//	),
+//	field('arguments', $.argument_list),
+//
+// ),
+func ParseMethodInvocation(node sitter.Node) (*ast.CallExpr, error) {
+	UnimplementedField(node, "object")
+
+	nameNode := node.ChildByFieldName("name")
+	// TODO: Change this to not assume that there is an object every time
+	name := ParseIdentifier(*nameNode)
+
+	args, err := ParseArgumentList(*node.ChildByFieldName("arguments"))
+	if err != nil {
+		return nil, err
+	}
+
+	return &ast.CallExpr{
+		Fun:  ast.NewIdent(name),
+		Args: args,
 	}, nil
 }

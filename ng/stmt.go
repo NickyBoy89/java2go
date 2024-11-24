@@ -110,3 +110,38 @@ func ParseLocalVariableDeclaration(node sitter.Node) (*ast.DeclStmt, error) {
 		},
 	}, nil
 }
+
+// `for_statement`
+// Structure:
+// for_statement: $ => seq(
+//
+//	'for', '(',
+//	choice(
+//	  field('init', $.local_variable_declaration),
+//	  seq(
+//	    commaSep(field('init', $.expression)),
+//	    ';',
+//	  ),
+//	),
+//	field('condition', optional($.expression)), ';',
+//	commaSep(field('update', $.expression)), ')',
+//	field('body', $.statement),
+//
+// ),
+func ParseForStatement(node sitter.Node) (*ast.ForStmt, error) {
+	s, err := ParseStatement(*node.ChildByFieldName("body"))
+	if err != nil {
+		return nil, err
+	}
+
+	// TODO: Implement the rest of the for loop
+	return &ast.ForStmt{
+		Init: nil,
+		Cond: nil,
+		Post: nil,
+		Body: &ast.BlockStmt{
+			// TODO: Fix this for non-inline for loops
+			List: []ast.Stmt{s.(ast.Stmt)},
+		},
+	}, nil
+}
