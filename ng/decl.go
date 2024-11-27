@@ -1,7 +1,6 @@
 package ng
 
 import (
-	"fmt"
 	"go/ast"
 
 	sitter "github.com/tree-sitter/go-tree-sitter"
@@ -84,8 +83,6 @@ func ParseFieldDeclaration(node sitter.Node) (*ast.Field, error) {
 	}
 
 	_ = fieldType
-
-	fmt.Println(node.Utf8Text(source))
 
 	fieldVars := []*ast.Ident{}
 

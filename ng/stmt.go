@@ -145,3 +145,13 @@ func ParseForStatement(node sitter.Node) (*ast.ForStmt, error) {
 		},
 	}, nil
 }
+
+func ParseThrowStatement(node sitter.Node) (*ast.ExprStmt, error) {
+	expr, err := ParseExpression(*node.NamedChild(0))
+	return &ast.ExprStmt{
+		X: &ast.CallExpr{
+			Fun:  ast.NewIdent("panic"),
+			Args: []ast.Expr{expr},
+		},
+	}, err
+}

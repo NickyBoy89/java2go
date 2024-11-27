@@ -31,6 +31,7 @@ func ParseExpression(node sitter.Node) (ast.Expr, error) {
 		return ParseUpdateExpression(node)
 	case "primary_expression":
 	case "unary_expression":
+		return ParseUnaryExpression(node)
 	case "cast_expression":
 	case "switch_expression":
 	}
@@ -66,14 +67,17 @@ func ParsePrimaryExpression(node sitter.Node) (ast.Expr, error) {
 	switch node.Kind() {
 	case "class_literal":
 	case "this":
+		return ParseThis(node), nil
 	case "identifier":
 		return ast.NewIdent(ParseIdentifier(node)), nil
 	case "parenthesized_expression":
 		return ParseParenthesizedExpression(node)
 	case "object_creation_expression":
+		return ParseObjectCreationExpression(node)
 	case "field_access":
 		return ParseFieldAccess(node), nil
 	case "array_access":
+		return ParseArrayAccess(node)
 	case "method_invocation":
 		return ParseMethodInvocation(node)
 	case "method_reference":
@@ -208,11 +212,27 @@ func ParseAssignmentExpression(node sitter.Node) (*ast.CallExpr, error) {
 //
 // ),
 func ParseMethodInvocation(node sitter.Node) (*ast.CallExpr, error) {
-	UnimplementedField(node, "object")
+	objNode := node.ChildByFieldName("object")
+	if objNode != nil {
+		if objNode.Kind() == "super" {
+			panic("TODO: Implement superclasses")
+		}
+		obj, err := ParsePrimaryExpression(*objNode)
+		if err != nil {
+			return nil, err
+		}
 
-	nameNode := node.ChildByFieldName("name")
-	// TODO: Change this to not assume that there is an object every time
-	name := ParseIdentifier(*nameNode)
+		if objNode.NextNamedSibling().Kind() == "super" {
+			panic("TODO: Implement second superclass")
+		}
+
+		UnimplementedField(node, "type_arguments")
+
+		_ = obj
+		// TODO: Implement full object support for methods
+	}
+
+	name := ParseIdentifier(*node.ChildByFieldName("name"))
 
 	args, err := ParseArgumentList(*node.ChildByFieldName("arguments"))
 	if err != nil {
@@ -223,4 +243,38 @@ func ParseMethodInvocation(node sitter.Node) (*ast.CallExpr, error) {
 		Fun:  ast.NewIdent(name),
 		Args: args,
 	}, nil
+}
+
+// TODO: Change this to call into generated code constructors
+func ParseObjectCreationExpression(node sitter.Node) (*ast.CallExpr, error) {
+	// TODO: Implement this
+	return &ast.CallExpr{
+		Fun:  ast.NewIdent("object_creation_expression"),
+		Args: []ast.Expr{},
+	}, nil
+}
+
+func ParseArrayAccess(node sitter.Node) (*ast.IndexExpr, error) {
+	arr, err := ParsePrimaryExpression(*node.ChildByFieldName("array"))
+	if err != nil {
+		return nil, err
+	}
+
+	expr, err := ParseExpression(*node.ChildByFieldName("index"))
+	if err != nil {
+		return nil, err
+	}
+
+	return &ast.IndexExpr{
+		X:     arr,
+		Index: expr,
+	}, nil
+}
+
+func ParseUnaryExpression(node sitter.Node) (*ast.UnaryExpr, error) {
+	expr, err := ParseExpression(*node.ChildByFieldName("operand"))
+	return &ast.UnaryExpr{
+		Op: codegen.StrToToken(node.ChildByFieldName("operator").Kind()),
+		X:  expr,
+	}, err
 }

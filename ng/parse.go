@@ -101,6 +101,7 @@ func ParseStatement(node sitter.Node) (any, error) {
 	case "local_variable_declaration":
 		return ParseLocalVariableDeclaration(node)
 	case "throw_statement":
+		return ParseThrowStatement(node)
 	case "try_statement":
 	case "try_with_resources_statement":
 	case "expression_statement":
@@ -150,11 +151,17 @@ func TryParseLiteral(node sitter.Node) ast.Expr {
 	case "false":
 	case "character_literal":
 	case "string_literal":
+		return ParseStringLiteral(node)
 	case "null_literal":
 		return ast.NewIdent("nil")
 	}
 
 	return nil
+}
+
+// TODO: Implement string literal parsing
+func ParseStringLiteral(node sitter.Node) *ast.BasicLit {
+	return codegen.AstString("string_literal")
 }
 
 func HasModifiers(node sitter.Node) bool {
@@ -287,6 +294,10 @@ func ParseClassDeclaration(node sitter.Node) ([]ast.Decl, error) {
 // TODO: Parse identifiers correctly
 func ParseIdentifier(node sitter.Node) string {
 	return node.Utf8Text(source)
+}
+
+func ParseThis(node sitter.Node) *ast.Ident {
+	return ast.NewIdent("this")
 }
 
 func ParseClassBody(node sitter.Node) ([]ast.Decl, *ast.FieldList, error) {
