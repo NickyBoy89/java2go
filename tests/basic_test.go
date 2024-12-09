@@ -15,6 +15,24 @@ type Foo struct {
 	ComparePrograms(javaInput, goOutput, t)
 }
 
+func TestMethod(t *testing.T) {
+	javaInput := `class Foo {
+
+void Hello() {}
+
+}`
+	goOutput := `package main
+
+type Foo struct {
+}
+
+func (this *Foo) Hello() {
+}
+`
+
+	ComparePrograms(javaInput, goOutput, t)
+}
+
 func TestStaticMethod(t *testing.T) {
 	javaInput := `class Foo {
 
