@@ -38,6 +38,14 @@ Currently, the following features are not implemented
 
 * `./java2go <files>` to parse a list of files or directories
 
+### Running the Built-in Tests
+
+`java2go` contains an ever-expanding set of tests that ensure compatibility with the java source code. These live in the `tests` directory.
+
+To run:
+
+`go test ./tests -v`
+
 ## Options
 
 * `-w` writes the files directly to their corresponding `.go` files, instead of `stdout`
