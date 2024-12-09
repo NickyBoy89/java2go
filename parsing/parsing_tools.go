@@ -39,3 +39,20 @@ func ReadSourcesInDir(directoryName string) ([]SourceFile, error) {
 
 	return sources, nil
 }
+
+func ReadSource(fileName string) (SourceFile, error) {
+	var result SourceFile
+
+	sourceCode, err := os.ReadFile(fileName)
+	if err != nil {
+		return result, err
+	}
+
+	sf := SourceFile{
+		Name:   fileName,
+		Source: sourceCode,
+	}
+	sf.ParseAST()
+
+	return sf, nil
+}

@@ -20,6 +20,7 @@ func (file SourceFile) String() string {
 	return fmt.Sprintf("SourceFile { Name: %s, Ast: %v, Symbols: %v }", file.Name, file.Ast, file.Symbols)
 }
 
+// TODO: Maybe move this into a constructor of some type
 func (file *SourceFile) ParseAST() {
 	parser := sitter.NewParser()
 	parser.SetLanguage(sitter.NewLanguage(java.Language()))
