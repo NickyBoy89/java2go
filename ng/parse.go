@@ -422,7 +422,9 @@ func ParseUnannotatedType(node sitter.Node) (ast.Expr, error) {
 	case "integral_type":
 		return ParseIntegralType(node), nil
 	case "floating_point_type":
+		return ParseFloatingPointType(node), nil
 	case "boolean_type":
+		return ast.NewIdent("bool"), nil
 	case "identifier", "type_identifier":
 		return ast.NewIdent(node.Utf8Text(source)), nil
 	case "scoped_type_identifier":
@@ -449,10 +451,22 @@ func ParseIntegralType(node sitter.Node) *ast.Ident {
 	case "long":
 		return ast.NewIdent("int64")
 	case "char":
-		return ast.NewIdent("byte")
+		// TODO: Test this extensively later, this isn't quite a drop-in replacement
+		return ast.NewIdent("rune")
 	}
 
 	panic("Unhandled integer type: " + node.Child(0).Kind())
+}
+
+func ParseFloatingPointType(node sitter.Node) *ast.Ident {
+	switch node.Child(0).Kind() {
+	case "float":
+		return ast.NewIdent("float32")
+	case "double":
+		return ast.NewIdent("float64")
+	}
+
+	panic("Unhandled floating point type: " + node.Child(0).Kind())
 }
 
 func ParseFormalParameter(node sitter.Node) (*ast.Field, error) {
