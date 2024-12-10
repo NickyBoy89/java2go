@@ -44,13 +44,13 @@ type Foo struct {
 
 func TestBooleanType(t *testing.T) {
 	javaInput := `class Foo {
-	boolean a;
+	bool a;
 }`
 
 	goOutput := `package main
 
 type Foo struct {
-	a	bool
+	a bool
 }
 `
 

@@ -94,10 +94,11 @@ func ComparePrograms(javaInput string, goOutput string, t *testing.T) {
 		t.Fatal(err)
 	}
 
-	diffCmd := exec.Command("git", "diff", "--no-index", f1.Name(), f2.Name())
+	diffCmd := exec.Command("git", "diff", "--color=always", "--no-index", f1.Name(), f2.Name())
 
 	var diffOutput bytes.Buffer
 	diffCmd.Stdout = &diffOutput
+	diffCmd.Stderr = os.Stderr
 
 	err = diffCmd.Run()
 	if err != nil {
