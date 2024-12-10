@@ -50,3 +50,18 @@ func Hello() {}
 
 	ComparePrograms(javaInput, goOutput, t)
 }
+
+func TestClassFields(t *testing.T) {
+	javaInput := `class Foo {
+	int x;
+}
+`
+	goOutput := `package main
+
+type Foo struct {
+	x int32
+}
+`
+
+	ComparePrograms(javaInput, goOutput, t)
+}
