@@ -75,7 +75,7 @@ func ShortName(longName string) string {
 
 // NewStruct is a utility method for generating the ast representation of
 // a struct, given its name and fields
-func NewStruct(structName string, structFields *ast.FieldList) ast.Decl {
+func NewStruct(structName string, structFields *ast.FieldList, typeParams *ast.FieldList) ast.Decl {
 	return &ast.GenDecl{
 		Tok: token.TYPE,
 		Specs: []ast.Spec{
@@ -86,6 +86,7 @@ func NewStruct(structName string, structFields *ast.FieldList) ast.Decl {
 				Type: &ast.StructType{
 					Fields: structFields,
 				},
+				TypeParams: typeParams,
 			},
 		},
 	}

@@ -108,8 +108,10 @@ func ParseMethodDeclaration(node sitter.Node, classContext ClassContext) (*ast.F
 	name := node.ChildByFieldName("name").Utf8Text(source)
 	name = HandleAccessModifierRename(name, mods)
 
-	// TODO: Handle type parameters
-	UnimplementedField(node, "type_parameters")
+	var typeParams *ast.FieldList
+	if params := node.ChildByFieldName("type_parameters"); params != nil {
+		typeParams = ParseTypeParameters(*params)
+	}
 
 	bodyNode := node.ChildByFieldName("body")
 	// An empty method means that the function is meant to be filled by the
@@ -150,7 +152,8 @@ func ParseMethodDeclaration(node sitter.Node, classContext ClassContext) (*ast.F
 		Recv: recv,
 		Name: &ast.Ident{Name: name},
 		Type: &ast.FuncType{
-			Params: params,
+			Params:     params,
+			TypeParams: typeParams,
 			Results: &ast.FieldList{
 				List: []*ast.Field{},
 			},

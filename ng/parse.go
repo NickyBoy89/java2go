@@ -274,7 +274,11 @@ func ParseClassDeclaration(node sitter.Node) ([]ast.Decl, error) {
 
 	// TODO: Add class fields
 
-	UnimplementedField(node, "type_parameters")
+	var typeParams *ast.FieldList
+
+	if params := node.ChildByFieldName("type_parameters"); params != nil {
+		typeParams = ParseTypeParameters(*params)
+	}
 	UnimplementedField(node, "superclass")
 	UnimplementedField(node, "interfaces")
 	UnimplementedField(node, "permits")
@@ -288,7 +292,7 @@ func ParseClassDeclaration(node sitter.Node) ([]ast.Decl, error) {
 		return nil, err
 	}
 
-	decls = append(decls, codegen.NewStruct(name, classFields))
+	decls = append(decls, codegen.NewStruct(name, classFields, typeParams))
 	decls = append(decls, bodyDecls...)
 
 	return decls, nil
@@ -422,6 +426,7 @@ func ParseUnannotatedType(node sitter.Node) (ast.Expr, error) {
 	case "array_type":
 		return ParseArrayType(node)
 	case "void_type":
+		return ast.NewIdent(""), nil
 	case "integral_type":
 		return ParseIntegralType(node), nil
 	case "floating_point_type":
