@@ -304,7 +304,7 @@ func ParseIdentifier(node sitter.Node) string {
 }
 
 func ParseThis(node sitter.Node) *ast.Ident {
-	return ast.NewIdent("this")
+	return ast.NewIdent(MethodReceiverName)
 }
 
 func ParseClassBody(node sitter.Node, classContext ClassContext) ([]ast.Decl, *ast.FieldList, error) {
