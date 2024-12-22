@@ -98,7 +98,7 @@ func ParseFieldDeclaration(node sitter.Node) (*ast.Field, error) {
 	}, nil
 }
 
-func ParseMethodDeclaration(node sitter.Node) (*ast.FuncDecl, error) {
+func ParseMethodDeclaration(node sitter.Node, classContext ClassContext) (*ast.FuncDecl, error) {
 	mods, err := HandleModifiers(node)
 	if err != nil {
 		return nil, err
@@ -132,18 +132,23 @@ func ParseMethodDeclaration(node sitter.Node) (*ast.FuncDecl, error) {
 
 	UnimplementedField(node, "dimensions")
 
-	return &ast.FuncDecl{
-		Doc:  nil,
-		Name: &ast.Ident{Name: name},
-		Recv: &ast.FieldList{
+	var recv *ast.FieldList
+	if !mods.Contains("static") {
+		recv = &ast.FieldList{
 			List: []*ast.Field{
 				{
 					Names: []*ast.Ident{{Name: MethodReceiverName}},
 					// TODO: We want the name of the class here, which means that we should pass in the class's context as well
-					Type: &ast.StarExpr{X: &ast.Ident{Name: "temp"}},
+					Type: &ast.StarExpr{X: ast.NewIdent(classContext.className)},
 				},
 			},
-		},
+		}
+	}
+
+	return &ast.FuncDecl{
+		Doc:  nil,
+		Recv: recv,
+		Name: &ast.Ident{Name: name},
 		Type: &ast.FuncType{
 			Params: params,
 			Results: &ast.FieldList{

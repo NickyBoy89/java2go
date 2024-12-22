@@ -279,8 +279,11 @@ func ParseClassDeclaration(node sitter.Node) ([]ast.Decl, error) {
 	UnimplementedField(node, "interfaces")
 	UnimplementedField(node, "permits")
 
+	var classContext ClassContext
+	classContext.className = name
+
 	// body
-	bodyDecls, classFields, err := ParseClassBody(*node.ChildByFieldName("body"))
+	bodyDecls, classFields, err := ParseClassBody(*node.ChildByFieldName("body"), classContext)
 	if err != nil {
 		return nil, err
 	}
@@ -300,7 +303,7 @@ func ParseThis(node sitter.Node) *ast.Ident {
 	return ast.NewIdent("this")
 }
 
-func ParseClassBody(node sitter.Node) ([]ast.Decl, *ast.FieldList, error) {
+func ParseClassBody(node sitter.Node, classContext ClassContext) ([]ast.Decl, *ast.FieldList, error) {
 	cursor := node.Walk()
 
 	decls := []ast.Decl{}
@@ -324,7 +327,7 @@ func ParseClassBody(node sitter.Node) ([]ast.Decl, *ast.FieldList, error) {
 		case "record_declaration":
 			panic("TODO: Unimplemented")
 		case "method_declaration":
-			decl, err = ParseMethodDeclaration(child)
+			decl, err = ParseMethodDeclaration(child, classContext)
 		case "compact_constructor_declaration": // For records.
 			panic("TODO: Unimplemented")
 		case "class_declaration":

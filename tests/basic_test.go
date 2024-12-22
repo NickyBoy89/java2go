@@ -45,7 +45,8 @@ static void Hello() {}
 type Foo struct {
 }
 
-func Hello() {}
+func Hello() {
+}
 `
 
 	ComparePrograms(javaInput, goOutput, t)
