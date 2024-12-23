@@ -22,7 +22,7 @@ func TestSimpleGenericMethod(t *testing.T) {
 type Foo struct {
 }
 
-func (this *temp) Bar[T any]() {
+func (this *Foo) Bar[T any]() {
 }
 `
 

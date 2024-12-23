@@ -240,7 +240,10 @@ func ParseMethodInvocation(node sitter.Node) (*ast.CallExpr, error) {
 	}
 
 	return &ast.CallExpr{
-		Fun:  ast.NewIdent(name),
+		Fun: &ast.SelectorExpr{
+			X:   ast.NewIdent(MethodReceiverName),
+			Sel: ast.NewIdent(name),
+		},
 		Args: args,
 	}, nil
 }
