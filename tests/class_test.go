@@ -24,3 +24,17 @@ func (this *Foo) Bar() {
 
 	ComparePrograms(javaInput, goOutput, t)
 }
+
+func TestInstanceVariables(t *testing.T) {
+	javaInput := `class Foo {
+	int x;
+}`
+	goOutput := `package main
+
+type Foo struct {
+	x int32
+}
+`
+
+	ComparePrograms(javaInput, goOutput, t)
+}
