@@ -66,13 +66,16 @@ func ParseExpressionStatement(node sitter.Node) (*ast.ExprStmt, error) {
 }
 
 // TODO: Update all call sides for this function
-func ParseVariableDeclaratorList(node sitter.Node) []*ast.Ident {
+func ParseVariableDeclaratorList(node sitter.Node) ([]*ast.Ident, []ast.Expr) {
 	decls := []*ast.Ident{}
+	vars := []ast.Expr{}
 	for _, decl := range node.ChildrenByFieldName("declarator", node.Walk()) {
-		decls = append(decls, ParseVariableDeclarator(decl))
+		decl, val := ParseVariableDeclarator(decl)
+		decls = append(decls, decl)
+		vars = append(vars, val)
 	}
 
-	return decls
+	return decls, vars
 }
 
 // `local_variable_declaration`
@@ -97,14 +100,16 @@ func ParseLocalVariableDeclaration(node sitter.Node) (*ast.DeclStmt, error) {
 		return nil, err
 	}
 
+	vars, values := ParseVariableDeclaratorList(node)
+
 	return &ast.DeclStmt{
 		Decl: &ast.GenDecl{
 			Tok: token.VAR,
 			Specs: []ast.Spec{
 				&ast.ValueSpec{
-					Names:  ParseVariableDeclaratorList(node),
+					Names:  vars,
 					Type:   typ,
-					Values: []ast.Expr{},
+					Values: values,
 				},
 			},
 		},

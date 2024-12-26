@@ -88,7 +88,11 @@ func ParseFieldDeclaration(node sitter.Node) (*ast.Field, error) {
 
 	cursor := node.Walk()
 	for _, decl := range node.ChildrenByFieldName("declarator", cursor) {
-		fieldVars = append(fieldVars, ParseVariableDeclarator(decl))
+		fieldVar, initialFieldValue := ParseVariableDeclarator(decl)
+		if initialFieldValue != nil {
+			panic("TODO: Implement initial field values")
+		}
+		fieldVars = append(fieldVars, fieldVar)
 	}
 
 	// A field declaration in a struct type

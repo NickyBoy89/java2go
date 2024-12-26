@@ -500,10 +500,22 @@ func ParseFormalParameter(node sitter.Node) (*ast.Field, error) {
 	}, nil
 }
 
-func ParseVariableDeclarator(node sitter.Node) *ast.Ident {
+func ParseVariableDeclarator(node sitter.Node) (*ast.Ident, ast.Expr) {
+	valueNode := node.ChildByFieldName("value")
+
+	var value ast.Expr
+	if valueNode != nil {
+		if valueNode.Kind() == "array_initializer" {
+			panic("TODO: Unhandled array initializer when initializing a variable")
+		}
+		var err error
+		value, err = ParseExpression(*valueNode)
+		if err != nil {
+			panic(err)
+		}
+	}
 	// TODO: Implement code generation for the initial values
-	// UnimplementedField(node, "value")
-	return parseVariableDeclaratorId(node)
+	return parseVariableDeclaratorId(node), value
 }
 
 // `variable_declarator_id` is hidden, but contains enough hidden information
