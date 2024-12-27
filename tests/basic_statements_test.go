@@ -17,7 +17,15 @@ func TestVariableDeclaration(t *testing.T) {
 		int x = 1;
 	}
 }`
-	goOutput := ``
+	goOutput := `package main
+
+type Foo struct {
+}
+
+func (this *Foo) Bar() {
+	var x int32 = 1
+}
+`
 
 	ComparePrograms(javaInput, goOutput, t)
 }
@@ -29,7 +37,16 @@ func TestPostIncStmt(t *testing.T) {
 		x++;
 	}
 }`
-	goOutput := ``
+	goOutput := `package main
+
+type Foo struct {
+}
+
+func (this *Foo) Bar() {
+	var x int32 = 1
+	PostUpdate(x)
+}
+`
 
 	ComparePrograms(javaInput, goOutput, t)
 }
