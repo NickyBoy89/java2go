@@ -421,10 +421,8 @@ func ParseArrayType(node sitter.Node) (*ast.ArrayType, error) {
 	}, nil
 }
 
-func ParseUnannotatedType(node sitter.Node) (ast.Expr, error) {
+func ParseSimpleType(node sitter.Node) (ast.Expr, error) {
 	switch node.Kind() {
-	case "array_type":
-		return ParseArrayType(node)
 	case "void_type":
 		return ast.NewIdent(""), nil
 	case "integral_type":
@@ -438,8 +436,15 @@ func ParseUnannotatedType(node sitter.Node) (ast.Expr, error) {
 	case "scoped_type_identifier":
 	case "generic_type":
 	}
+	panic("TODO: Simple type " + node.Kind())
+}
 
-	panic("TODO: Unannotated type " + node.Kind())
+func ParseUnannotatedType(node sitter.Node) (ast.Expr, error) {
+	if node.Kind() == "array_type" {
+		return ParseArrayType(node)
+	}
+
+	return ParseSimpleType(node)
 }
 
 // `integral_type` represents any of java's primitive integer types

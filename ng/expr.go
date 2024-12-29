@@ -82,6 +82,7 @@ func ParsePrimaryExpression(node sitter.Node) (ast.Expr, error) {
 		return ParseMethodInvocation(node)
 	case "method_reference":
 	case "array_creation_expression":
+		return ParseArrayCreationExpression(node), nil
 	case "template_expression":
 	}
 
@@ -280,4 +281,50 @@ func ParseUnaryExpression(node sitter.Node) (*ast.UnaryExpr, error) {
 		Op: codegen.StrToToken(node.ChildByFieldName("operator").Kind()),
 		X:  expr,
 	}, err
+}
+
+// array_creation_expression: $ => prec.right(seq(
+//
+//	'new',
+//	repeat($._annotation),
+//	field('type', $._simple_type),
+//	choice(
+//		seq(
+//			field('dimensions', repeat1($.dimensions_expr)),
+//			field('dimensions', optional($.dimensions)),
+//		),
+//		seq(
+//			field('dimensions', $.dimensions),
+//			field('value', $.array_initializer),
+//		),
+//	),
+//
+// )),
+func ParseArrayCreationExpression(node sitter.Node) *ast.CallExpr {
+	// TODO: Handle annotations
+
+	arrayType, err := ParseSimpleType(*node.ChildByFieldName("type"))
+	if err != nil {
+		panic(err)
+	}
+
+	for _, dimensionNode := range node.ChildrenByFieldName("dimensions", node.Walk()) {
+		switch dimensionNode.Kind() {
+		case "dimensions_expr":
+		case "dimensions":
+		}
+	}
+
+	// TODO: Handle dimensions
+	// initialElementCount := ParseArrayInitializer(*node.ChildByFieldName("value")
+
+	return &ast.CallExpr{
+		Fun: ast.NewIdent("make"),
+		Args: []ast.Expr{
+			&ast.ArrayType{
+				Elt: arrayType,
+			},
+			ast.NewIdent("0"),
+		},
+	}
 }
