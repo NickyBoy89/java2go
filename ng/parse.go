@@ -3,6 +3,7 @@ package ng
 import (
 	"fmt"
 	"go/ast"
+	"go/token"
 
 	"github.com/NickyBoy89/java2go/ng/codegen"
 	"github.com/NickyBoy89/java2go/parsing"
@@ -46,7 +47,11 @@ func ParseProgram(p parsing.SourceFile) (ast.Node, error) {
 			if parsed, err := ParseStatement(child); err != nil {
 				return nil, err
 			} else {
-				code.Decls = append(code.Decls, parsed.([]ast.Decl)...)
+				if stmt, ok := parsed.(*ast.DeclStmt); ok {
+					code.Decls = append(code.Decls, stmt.Decl)
+				} else {
+					code.Decls = append(code.Decls, parsed.([]ast.Decl)...)
+				}
 			}
 		} else if child.Kind() == "method_declaration" {
 			panic("TODO: Handle top-level method declarations")
@@ -130,26 +135,37 @@ func ParseStatement(node sitter.Node) (any, error) {
 func TryParseLiteral(node sitter.Node) ast.Expr {
 	// TODO: Maybe should return *ast.Ident?
 	switch node.Kind() {
-	case "decimal_integer_literal":
-		decStr := node.Utf8Text(source)
+	case "decimal_integer_literal", "hex_integer_literal", "octal_integer_literal", "binary_integer_literal", "decimal_floating_point_literal", "hex_floating_point_literal":
+		litStr := node.Utf8Text(source)
+		shortStr := litStr[:len(litStr)-1]
 
-		switch decStr[len(decStr)-1] {
-		case 'l', 'L': // Marked explicitly as a long
+		finalChar := litStr[len(litStr)-1]
+
+		switch finalChar {
+		case 'l', 'L':
 			return &ast.CallExpr{
 				Fun:  ast.NewIdent("int64"),
-				Args: []ast.Expr{ast.NewIdent(decStr)},
+				Args: []ast.Expr{ast.NewIdent(shortStr)},
 			}
+		case 'f', 'F':
+			return &ast.CallExpr{
+				Fun:  ast.NewIdent("float32"),
+				Args: []ast.Expr{ast.NewIdent(shortStr)},
+			}
+		case 'd', 'D':
+			return &ast.CallExpr{
+				Fun:  ast.NewIdent("float64"),
+				Args: []ast.Expr{ast.NewIdent(shortStr)},
+			}
+		default:
+			return ast.NewIdent(litStr)
 		}
-
-		return ast.NewIdent(decStr)
-	case "hex_integer_literal":
-	case "octal_integer_literal":
-	case "binary_integer_literal":
-	case "decimal_floating_point_literal":
-	case "hex_floating_point_literal":
 	case "true":
+		return ast.NewIdent("true")
 	case "false":
+		return ast.NewIdent("false")
 	case "character_literal":
+		return ast.NewIdent(node.Utf8Text(source))
 	case "string_literal":
 		return ParseStringLiteral(node)
 	case "null_literal":
@@ -161,7 +177,10 @@ func TryParseLiteral(node sitter.Node) ast.Expr {
 
 // TODO: Implement string literal parsing
 func ParseStringLiteral(node sitter.Node) *ast.BasicLit {
-	return codegen.AstString("string_literal")
+	return &ast.BasicLit{
+		Kind:  token.STRING,
+		Value: node.Utf8Text(source),
+	}
 }
 
 func HasModifiers(node sitter.Node) bool {
@@ -510,17 +529,34 @@ func ParseVariableDeclarator(node sitter.Node) (*ast.Ident, ast.Expr) {
 
 	var value ast.Expr
 	if valueNode != nil {
-		if valueNode.Kind() == "array_initializer" {
-			panic("TODO: Unhandled array initializer when initializing a variable")
-		}
-		var err error
-		value, err = ParseExpression(*valueNode)
-		if err != nil {
-			panic(err)
-		}
+		value = parseVariableInitializer(*valueNode)
 	}
 	// TODO: Implement code generation for the initial values
 	return parseVariableDeclaratorId(node), value
+}
+
+func parseArrayInitializer(node sitter.Node) *ast.CompositeLit {
+	elements := []ast.Expr{}
+
+	for _, decl := range node.NamedChildren(node.Walk()) {
+		elements = append(elements, parseVariableInitializer(decl))
+	}
+
+	return &ast.CompositeLit{
+		Elts: elements,
+	}
+}
+
+func parseVariableInitializer(node sitter.Node) ast.Expr {
+	if node.Kind() == "array_initializer" {
+		return parseArrayInitializer(node)
+	}
+	expr, err := ParseExpression(node)
+	if err != nil {
+		panic(err)
+	}
+
+	return expr
 }
 
 // `variable_declarator_id` is hidden, but contains enough hidden information
@@ -530,7 +566,7 @@ func ParseVariableDeclarator(node sitter.Node) (*ast.Ident, ast.Expr) {
 // field('dimensions', optional($.dimensions)),
 func parseVariableDeclaratorId(node sitter.Node) *ast.Ident {
 	name := node.ChildByFieldName("name")
-	UnimplementedField(node, "dimensions")
+	// UnimplementedField(node, "dimensions")
 	return ast.NewIdent(name.Utf8Text(source))
 }
 
