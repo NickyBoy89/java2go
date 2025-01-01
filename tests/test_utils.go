@@ -69,6 +69,84 @@ func GetParsedProgram(javaText string, t *testing.T) ast.Node {
 	return tree
 }
 
+// `compareProgramOutputs` takes in Java source code, runs it, transpiles it,
+// and tests if the output from the original code is the same as the transpiled
+// output
+func compareProgramOutputs(javaInput string, t *testing.T) {
+	srcFile, err := os.CreateTemp("", "*.java")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(srcFile.Name())
+
+	// Write the Java source file
+	if _, err := srcFile.WriteString(javaInput); err != nil {
+		t.Fatal(err)
+	}
+
+	transpiledSrc, err := os.CreateTemp("", "*.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(transpiledSrc.Name())
+
+	// Write the transpiled file
+	WriteProgramText(transpiledSrc, GetParsedProgram(javaInput, t))
+
+	programOutput, err := os.CreateTemp("", "java2go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(programOutput.Name())
+
+	// Run the source code and capture the output
+	javaCmd := exec.Command("java", srcFile.Name())
+	javaCmd.Stdout = programOutput
+	javaCmd.Stderr = os.Stderr
+
+	if err := javaCmd.Run(); err != nil {
+		t.Fatal(err)
+	}
+
+	transpiledOutput, err := os.CreateTemp("", "java2go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(transpiledOutput.Name())
+
+	// Run the transpiled code and capture the output
+	goCmd := exec.Command("go", "run", transpiledSrc.Name())
+	goCmd.Stdout = transpiledOutput
+	goCmd.Stderr = os.Stderr
+
+	if err := goCmd.Run(); err != nil {
+		t.Fatal(err)
+	}
+
+	diffFiles(transpiledOutput.Name(), programOutput.Name(), t)
+}
+
+func diffFiles(fstName, sndName string, t *testing.T) {
+	diffCmd := exec.Command("git", "diff", "--color=always", "--no-index", fstName, sndName)
+
+	var diffOutput bytes.Buffer
+	diffCmd.Stdout = &diffOutput
+	diffCmd.Stderr = os.Stderr
+
+	err := diffCmd.Run()
+	if err != nil {
+		exitCode := err.(*exec.ExitError).ExitCode()
+
+		// Exit code of 1 means that the files were not equal
+		if exitCode == 1 {
+			t.Log("error: generated code did not match")
+			t.Error(diffOutput.String())
+		} else if exitCode != 0 {
+			t.Fatal(err)
+		}
+	}
+}
+
 func ComparePrograms(javaInput string, goOutput string, t *testing.T) {
 
 	f1, err := os.CreateTemp("", "java2go")
@@ -87,29 +165,9 @@ func ComparePrograms(javaInput string, goOutput string, t *testing.T) {
 	javaOutAst := GetParsedProgram(javaInput, t)
 	WriteProgramText(f1, javaOutAst)
 
-	var javaOut strings.Builder
-	WriteProgramText(&javaOut, javaOutAst)
-
 	if _, err := f2.WriteString(goOutput); err != nil {
 		t.Fatal(err)
 	}
 
-	diffCmd := exec.Command("git", "diff", "--color=always", "--no-index", f1.Name(), f2.Name())
-
-	var diffOutput bytes.Buffer
-	diffCmd.Stdout = &diffOutput
-	diffCmd.Stderr = os.Stderr
-
-	err = diffCmd.Run()
-	if err != nil {
-		exitCode := err.(*exec.ExitError).ExitCode()
-
-		// Exit code of 1 means that the files were not equal
-		if exitCode == 1 {
-			t.Log("error: generated code did not match")
-			t.Error(diffOutput.String())
-		} else if exitCode != 0 {
-			t.Fatal(err)
-		}
-	}
+	diffFiles(f1.Name(), f2.Name(), t)
 }
