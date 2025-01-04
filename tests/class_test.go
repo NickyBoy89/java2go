@@ -38,3 +38,25 @@ type foo struct {
 
 	ComparePrograms(javaInput, goOutput, t)
 }
+
+func TestFieldAccess(t *testing.T) {
+	javaInput := `class Foo {
+	int x;
+
+	void bar() {
+		this.x;
+	}
+}`
+	goOutput := `package main
+
+type foo struct {
+	x int32
+}
+
+func (this *foo) bar() {
+	this.x;
+}
+`
+
+	ComparePrograms(javaInput, goOutput, t)
+}
