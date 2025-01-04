@@ -633,3 +633,16 @@ func ParseDeclaration(node sitter.Node) ([]ast.Decl, error) {
 
 	return nil, nil
 }
+
+func parseReservedIdentifier(node sitter.Node) *ast.Ident {
+	switch node.Kind() {
+	case "open":
+	case "module":
+	case "record":
+	case "with":
+	case "yield":
+	case "sealed":
+	}
+
+	panic("TODO: Implement reserved identifiers")
+}

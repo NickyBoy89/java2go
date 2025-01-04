@@ -56,6 +56,19 @@ func ParseExpression(node sitter.Node) (ast.Expr, error) {
 // $.array_creation_expression,
 // $.template_expression,
 func ParsePrimaryExpression(node sitter.Node) (ast.Expr, error) {
+	expr, err := TryParsePrimaryExpression(node)
+	if err != nil {
+		return nil, err
+	}
+
+	if expr == nil {
+		panic("TODO: Unhandled primary expression: " + node.Kind())
+	}
+
+	return expr, err
+}
+
+func TryParsePrimaryExpression(node sitter.Node) (ast.Expr, error) {
 	// TODO:
 	// &._literal,
 	// $._reserved_identifier,
@@ -86,7 +99,7 @@ func ParsePrimaryExpression(node sitter.Node) (ast.Expr, error) {
 	case "template_expression":
 	}
 
-	panic("TODO: Unhandled primary expression: " + node.Kind())
+	return nil, nil
 }
 
 func ParseParenthesizedExpression(node sitter.Node) (*ast.ParenExpr, error) {
@@ -125,13 +138,36 @@ func ParseBinaryExpression(node sitter.Node) (*ast.BinaryExpr, error) {
 //
 // ),
 func ParseFieldAccess(node sitter.Node) *ast.SelectorExpr {
-	// UnimplementedField(node, "object")
-	// UnimplementedField(node, "field")
+	objNode := *node.ChildByFieldName("object")
+
+	if nxt := objNode.NextNamedSibling(); nxt != nil && nxt.Kind() == "super" {
+		panic("TODO: Superclass subclass access not implemented")
+	}
+
+	if objNode.Kind() == "super" {
+		panic("TODO: Superclass access not implemented")
+	}
+
+	obj, err := ParsePrimaryExpression(objNode)
+	if err != nil {
+		panic(err)
+	}
+
+	var sel *ast.Ident
+
+	switch fieldNode := *node.ChildByFieldName("field"); fieldNode.Kind() {
+	case "this":
+		sel = ast.NewIdent("this")
+	case "identifier":
+		sel = ast.NewIdent(ParseIdentifier(fieldNode))
+	default:
+		sel = parseReservedIdentifier(fieldNode)
+	}
 
 	// X.Sel
 	return &ast.SelectorExpr{
-		X:   ast.NewIdent("foo"),
-		Sel: ast.NewIdent("bar"),
+		X:   obj,
+		Sel: sel,
 	}
 }
 

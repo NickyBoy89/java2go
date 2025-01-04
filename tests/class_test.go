@@ -54,7 +54,7 @@ type foo struct {
 }
 
 func (this *foo) bar() {
-	this.x;
+	this.x
 }
 `
 
