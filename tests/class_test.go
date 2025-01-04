@@ -12,13 +12,13 @@ void bar() {}
 }`
 	goOutput := `package main
 
-type Foo struct {
+type foo struct {
 }
 
-func (this *Foo) Hello() {
+func (this *foo) hello() {
 	this.bar()
 }
-func (this *Foo) Bar() {
+func (this *foo) bar() {
 }
 `
 
@@ -31,7 +31,7 @@ func TestInstanceVariables(t *testing.T) {
 }`
 	goOutput := `package main
 
-type Foo struct {
+type foo struct {
 	x int32
 }
 `

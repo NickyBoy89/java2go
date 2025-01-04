@@ -6,7 +6,7 @@ func TestDefaultModifier(t *testing.T) {
 	javaInput := `class Foo {}`
 	goOutput := `package main
 
-type Foo struct {
+type foo struct {
 }
 `
 

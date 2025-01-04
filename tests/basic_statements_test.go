@@ -12,19 +12,10 @@ func Test(t *testing.T) {
 */
 
 func TestVariableDeclaration(t *testing.T) {
-	javaInput := `class Foo {
-	void bar() {
-		int x = 1;
-	}
-}`
+	javaInput := `int x = 1;`
 	goOutput := `package main
 
-type Foo struct {
-}
-
-func (this *Foo) Bar() {
-	var x int32 = 1
-}
+var x int32 = 1
 `
 
 	ComparePrograms(javaInput, goOutput, t)
@@ -39,10 +30,10 @@ func TestPostIncStmt(t *testing.T) {
 }`
 	goOutput := `package main
 
-type Foo struct {
+type foo struct {
 }
 
-func (this *Foo) Bar() {
+func (this *foo) bar() {
 	var x int32 = 1
 	PostUpdate(x)
 }
@@ -59,10 +50,10 @@ func TestMathAssign(t *testing.T) {
 	}`
 	goOutput := `package main
 
-type Foo struct {
+type foo struct {
 }
 
-func (this *Foo) Bar() {
+func (this *foo) bar() {
 	var x int32 = 1 + 2
 }
 `

@@ -8,7 +8,7 @@ func TestParseClass(t *testing.T) {
 	javaInput := "class Foo {}"
 	goOutput := `package main
 
-type Foo struct {
+type foo struct {
 }
 `
 
@@ -23,10 +23,10 @@ void Hello() {}
 }`
 	goOutput := `package main
 
-type Foo struct {
+type foo struct {
 }
 
-func (this *Foo) Hello() {
+func (this *foo) hello() {
 }
 `
 
@@ -42,10 +42,10 @@ static void Hello() {}
 `
 	goOutput := `package main
 
-type Foo struct {
+type foo struct {
 }
 
-func Hello() {
+func hello() {
 }
 `
 
@@ -59,7 +59,7 @@ func TestClassFields(t *testing.T) {
 `
 	goOutput := `package main
 
-type Foo struct {
+type foo struct {
 	x int32
 }
 `

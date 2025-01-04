@@ -47,9 +47,10 @@ func ParseProgram(p parsing.SourceFile) (ast.Node, error) {
 			if parsed, err := ParseStatement(child); err != nil {
 				return nil, err
 			} else {
-				if stmt, ok := parsed.(*ast.DeclStmt); ok {
-					code.Decls = append(code.Decls, stmt.Decl)
-				} else {
+				switch parsed.(type) {
+				case *ast.DeclStmt:
+					code.Decls = append(code.Decls, parsed.(*ast.DeclStmt).Decl)
+				default:
 					code.Decls = append(code.Decls, parsed.([]ast.Decl)...)
 				}
 			}
@@ -262,13 +263,13 @@ func HandleModifiers(node sitter.Node) (mapset.Set[string], error) {
 }
 
 func HandleAccessModifierRename(ident string, mods mapset.Set[string]) string {
-	if mods.Contains(ModifierPublic, ModifierProtected) {
+	if mods.ContainsAny(ModifierPublic, ModifierProtected) {
 		return symbol.Uppercase(ident)
 	} else if mods.Contains(ModifierPrivate) {
 		return symbol.Lowercase(ident)
 	} else {
 		// TODO: Re-implement this with knowledge of default access modifiers and modules
-		return symbol.Uppercase(ident)
+		return symbol.Lowercase(ident)
 	}
 }
 

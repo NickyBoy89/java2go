@@ -6,7 +6,7 @@ func TestSimpleGenericClass(t *testing.T) {
 	javaInput := `class Foo<T> {}`
 	goOutput := `package main
 
-type Foo[T any] struct {
+type foo[T any] struct {
 }
 `
 
@@ -19,10 +19,10 @@ func TestSimpleGenericMethod(t *testing.T) {
 }`
 	goOutput := `package main
 
-type Foo struct {
+type foo struct {
 }
 
-func (this *Foo) Bar[T any]() {
+func (this *foo) bar[T any]() {
 }
 `
 

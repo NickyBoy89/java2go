@@ -13,7 +13,7 @@ func TestPrimitiveIntegralTypes(t *testing.T) {
 
 	goOutput := `package main
 
-type Foo struct {
+type foo struct {
 	a	byte
 	b	int16
 	c	int32
@@ -33,7 +33,7 @@ func TestFloatingPointTypes(t *testing.T) {
 
 	goOutput := `package main
 
-type Foo struct {
+type foo struct {
 	a	float32
 	b	float64
 }
@@ -49,7 +49,7 @@ func TestBooleanType(t *testing.T) {
 
 	goOutput := `package main
 
-type Foo struct {
+type foo struct {
 	a bool
 }
 `
