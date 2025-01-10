@@ -219,11 +219,41 @@ func ParseUpdateExpression(node sitter.Node) (*ast.CallExpr, error) {
 //
 // We replace these with an inline function
 func ParseAssignmentExpression(node sitter.Node) (*ast.CallExpr, error) {
+	leftNode := *node.ChildByFieldName("left")
+
+	var err error
+	var left ast.Expr
+
+	switch leftNode.Kind() {
+	case "field_access":
+		left = ParseFieldAccess(leftNode)
+	case "array_access":
+		left, err = ParseArrayAccess(leftNode)
+	default:
+		ident := tryParseReservedIdentifier(leftNode)
+		if ident == nil {
+			left = ast.NewIdent(ParseIdentifier(leftNode))
+		} else {
+			left = ident
+		}
+	}
+
+	if err != nil {
+		panic(err)
+	}
+
+	rightExpr, err := ParseExpression(*node.ChildByFieldName("right"))
+	if err != nil {
+		panic(err)
+	}
+
 	// TODO: Handle the rest of the function call
 	return &ast.CallExpr{
 		Fun: ast.NewIdent("AssignmentExpression"),
 		Args: []ast.Expr{
+			left,
 			codegen.AstString(node.ChildByFieldName("operator").Kind()),
+			rightExpr,
 		},
 	}, nil
 }
